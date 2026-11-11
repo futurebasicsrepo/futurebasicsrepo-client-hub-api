@@ -47,7 +47,7 @@ test('engineering goes into the pack: views, parts and cables, steps and tooling
   const lab = { engineering: { ...P, sketches: [{ id: 'lab-eng-assembled', view: 'front', label: 'Assembled', image: png }, { id: 'lab-eng-exploded', view: 'other', label: 'Exploded', image: png }] } };
   const once = normalizeTechPack(labHandoff(before, lab)), twice = normalizeTechPack(labHandoff(once, lab));
   assert.equal(once.bom.filter(r => r.notes === ENG_NOTE).length, P.bom.length); assert.ok(once.bom.some(r => r.component === 'Gift box'), 'the pack\'s own lines stay');
-  assert.ok(once.bom.some(r => /^Cable W1:/.test(r.component)) && once.bom.find(r => r.component === 'Chassis').cost === '2.07');
+  assert.ok(once.bom.some(r => /^Cable W1:/.test(r.component)) && once.bom.find(r => r.component === 'Chassis').cost === '2.7');
   assert.ok(once.construction.some(r => /^Assembly · \d+$/.test(r.area)) && once.construction.some(r => /^Tooling · Chassis$/.test(r.area)) && once.construction.some(r => r.area === 'Packing'));
   assert.ok(!once.construction.some(r => /\$/.test(r.detail)), 'no tool costs in the pack');
   assert.equal(once.sketches.filter(x => x.id.startsWith('lab-eng-')).length, 2); assert.equal(once.sketches.find(x => x.id === 'lab-eng-assembled').view, 'front');

@@ -27,6 +27,8 @@ import { archetype, cleanAssembly, engineer, guessArch, radioOf, stlOf, drawingS
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // the categories engineered as parts rather than cut from a pattern
 export const ENGINEERED = ['electronics', 'toys', 'home'];
+// a part a factory makes (moulded, machined, stamped, cut), as against one bought in or a board
+const madeHere = p => p.process !== 'bought in' && p.shape !== 'pcb';
 // a size written in the concept's words: "120 x 70 x 86 mm", "9 cm tall"
 export function dimsOf(c = {}) {
   const t = [c.name, c.spec?.description, c.spec?.silhouette, (c.spec?.details || []).join(' ')].join(' ');
@@ -126,8 +128,10 @@ export function registerLabAssemblyRoutes(app, d) {
   const tOf = q => Math.min(Math.max(Number(q?.t ?? 0) || 0, 0), 1), slug = c => String(c.name || 'assembly').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 60) || 'assembly';
   app.get('/v1/lab/concepts/:id/assembly.stl', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
-    const only = req.query?.part && L.spec.parts.some(p => p.id === req.query.part) ? req.query.part : null;
-    return reply.header('content-disposition', `attachment; filename="${slug(L.c)}${only ? `-${only}` : ''}.stl"`).type('model/stl').send(Buffer.from(stlOf(L.spec, { t: tOf(req.query), only, real: simple(req.query) ? null : await realOf(L.spec, L.c.name, tOf(req.query)) })));
+    const only = req.query?.part && L.spec.parts.some(p => p.id === req.query.part) ? req.query.part : null, one = only && L.spec.parts.find(p => p.id === only);
+    // a part a factory makes downloads as its solid (one closed body with its openings and bosses, the same as its STEP); the assembly and
+    // bought-in parts as the picture of the real thing
+    return reply.header('content-disposition', `attachment; filename="${slug(L.c)}${only ? `-${only}` : ''}.stl"`).type('model/stl').send(Buffer.from(stlOf(L.spec, { t: tOf(req.query), only, real: simple(req.query) || (one && madeHere(one)) ? null : await realOf(L.spec, L.c.name, tOf(req.query)) })));
   });
   // STEP (AP214) for a toolmaker's CAD: every part an exact solid (planes and cylinders), named and coloured, in mm (src/lab-step.js)
   app.get('/v1/lab/concepts/:id/assembly.step', { preHandler: pre }, async (req, reply) => {
@@ -221,7 +225,9 @@ export function registerLabAssemblyRoutes(app, d) {
       // the assembly in place (the exploded one is the same triangles moved apart, so it stays on the page's Files menu; the drawing shows it)
       const shut = await realOf(s, name, 0); out.push({ name: 'engineering/assembly.stl', data: Buffer.from(stlOf(s, { t: 0, real: shut })) });
       // one file per part a factory makes (moulded, machined, stamped, cut), for the toolmaker; bought-in parts come from their makers
-      s.parts.filter(p => p.process !== 'bought in' && p.shape !== 'pcb').forEach(p => { const base = `engineering/parts/${String(s.parts.indexOf(p) + 1).padStart(2, '0')}-${safe(p.name)}`; out.push({ name: `${base}.stl`, data: Buffer.from(stlOf(s, { t: 0, only: p.id, real: shut })) }, { name: `${base}.step`, data: Buffer.from(stepOf(s, { only: p.id, title: `${name}: ${p.name}` })) }); });
+      // (its STL is the part's solid, as its STEP is: one closed body, wound outward, with its openings and bosses; the drawn shapes, which are
+      // several bodies with detail for the eye, stay in the assembly's STL and the drawing)
+      s.parts.filter(madeHere).forEach(p => { const base = `engineering/parts/${String(s.parts.indexOf(p) + 1).padStart(2, '0')}-${safe(p.name)}`; out.push({ name: `${base}.stl`, data: Buffer.from(stlOf(s, { t: 0, only: p.id })) }, { name: `${base}.step`, data: Buffer.from(stepOf(s, { only: p.id, title: `${name}: ${p.name}` })) }); });
       const pic = await pictureOf(s, 1, name); out.push({ name: 'engineering/exploded-drawing.svg', data: Buffer.from(drawingSvg(s, { t: 1, title: name, picture: pic, costs: false })) });
     } catch (e) { notes.push(`The 3D files could not be made (${String(e.message).slice(0, 120)})`); }
     out.push({ name: 'engineering/assembly.step', data: Buffer.from(stepOf(s, { title: name })) });

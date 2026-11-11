@@ -32,7 +32,7 @@ test('each animal in the kit drafts the pieces its parts need, cut and counted, 
     if (sp.horn === 'one') assert.ok(ids.includes('horn'), `${name}: a horn`);
     if (sp.horn === 'two') assert.ok(ids.includes('horn') && pat.pieces.find(q => q.id === 'horn').cut === 4, `${name}: two horns, a pair each`);
     if (sp.horn === 'antlers') assert.ok(ids.includes('antler'), `${name}: antlers`);
-    if (sp.mane && sp.mane !== 'none') assert.match(pat.pieces.find(q => q.id === 'mane').notes[0], sp.mane === 'ruff' ? /round the face/ : /down the back of the neck/);
+    if (sp.mane && sp.mane !== 'none') assert.match(pat.pieces.find(q => q.id === 'mane').notes[0], sp.mane === 'ruff' ? /joins the head to the neck, all the way round/ : /centre of the head gusset.*back seam from the neck/); // a mane lies in a seam the toy has: a ruff in the neck seam, a crest on the gusset's centre and in the back seam
     if (sp.wings) assert.equal(pat.pieces.find(q => q.id === 'wing').cut, 4, `${name}: two wings, lined`);
     if (sp.spikes) assert.ok(ids.includes('spikes'), `${name}: spikes`);
     if (sp.shape === 'sea') { assert.ok(ids.includes('belly') && ids.includes('fin'), 'a sea creature: a belly gusset and side fins'); assert.match(pat.size, /long$/); }

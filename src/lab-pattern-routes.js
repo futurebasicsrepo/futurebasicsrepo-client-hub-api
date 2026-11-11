@@ -46,11 +46,13 @@ const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const WIDTHS = [36, 44, 54, 58, 60, 72];
 // what kind of pattern a concept is cut from: plush has its own drafting; a garment needs a style the flats know; the rest is still to come
 export const SOON = { toys: 'Toys and objects are engineered as 3D parts', electronics: 'Electronics are engineered as 3D parts with the board', home: 'Home and objects are engineered as 3D parts' }; // the page sends these to /lab/engineer (src/lab-assembly.js)
+// a product type (a mug, a poster, a phone case: src/lab-goods.js) has no pattern, and the page says why
+export const notSewn = flatStyle => (STYLES[flatStyle]?.kind === 'goods' ? `${/^[aeiou]/i.test(STYLES[flatStyle].label) ? 'An' : 'A'} ${STYLES[flatStyle].label.toLowerCase()} is printed or bought in, not cut and sewn, so it has no pattern and no size run. Its flat carries its measurements and its print area.` : '');
 export function kindOf(c, flatStyle = null) {
   if (c.category === 'plush') return 'plush';
   if (c.category === 'footwear') return 'footwear';
   if (c.category === 'bags') return 'bag';
-  if (flatStyle && STYLES[flatStyle]) return 'garment';
+  if (flatStyle && STYLES[flatStyle]) return STYLES[flatStyle].kind === 'goods' ? 'none' : 'garment'; // a product type (src/lab-goods.js) is not cut and sewn
   if (SOON[c.category]) return 'soon';
   return detectStyle(c) ? 'garment' : 'none';
 }
@@ -102,9 +104,9 @@ export function registerLabPatternRoutes(app, d) {
   // does the pattern make the product? (src/lab-pattern-check.js) Run every time a garment or a bag's pattern is drafted for the page, saved or
   // exported: its seams walked, the made piece measured against its spec, every component its features call for, every outline clean, and the
   // same at each size of its run. Pieces edited by hand on the Pattern page are not walked (the check reads the pattern as drafted), so it says so.
-  // → { ok, passed, made, size, sizes: [{size, ok, why}], problems: [string], edited } or null (a shoe, a plush, a hard good: checked their own way)
+  // → { ok, passed, made, size, sizes: [{size, ok, why}], problems: [string], edited } or null (a shoe, a hard good: checked their own way)
   const checkOf = (L, pat, { full = false } = {}) => {
-    if (!pat || !(['garment', 'bag'].includes(pat.kind) || (pat.kind === 'plush' && pat.build)) || (pat.kind === 'garment' && !L.flat)) return null; // a plush built from parts is checked; the kit's plush by its own checks
+    if (!pat || !['garment', 'bag', 'plush'].includes(pat.kind) || (pat.kind === 'garment' && !L.flat)) return null; // a plush is checked by its joins (built from parts) or its assembly (a fixed body type)
     const style = L.flat?.style, m = z => (pat.kind === 'garment' ? measurementsFor(L.flat, z) : null), c = constructionCheck(draftOnly(L, pat.size), { m: m(pat.size), style, edges: full });
     if (!c) return null;
     const run = pat.kind === 'garment' && !STYLES[style]?.oneSize ? SIZES : [], sizes = proveSizes(z => draftOnly(L, z), m, style, run);
@@ -116,7 +118,7 @@ export function registerLabPatternRoutes(app, d) {
   const draftOnly = (L, size) => draft(L, size);
   // the proof for one product: its block sewn on paper, its seams and measurements, what it is made with, its cutting table
   const proofOf = (L, pat) => { const k = checkOf(L, pat, { full: true }); if (!k) return null;
-    const card = proofCard({ id: 'proof', label: L.c.name || 'Pattern', style: pat.kind === 'bag' ? 'Bag' : pat.kind === 'plush' ? `Plush built from parts · ${pat.size}` : STYLES[L.flat.style]?.label || L.flat.style, kind: pat.kind === 'bag' ? 'bag' : pat.kind === 'plush' ? 'plush' : STYLES[L.flat.style]?.kind, pat: draftOnly(L, pat.size), c: k.detail, sizes: k.sizes });
+    const card = proofCard({ id: 'proof', label: L.c.name || 'Pattern', style: pat.kind === 'bag' ? 'Bag' : pat.kind === 'plush' ? `${pat.build ? 'Plush built from parts' : 'Plush'} · ${pat.size}` : STYLES[L.flat.style]?.label || L.flat.style, kind: pat.kind === 'bag' ? 'bag' : pat.kind === 'plush' ? 'plush' : STYLES[L.flat.style]?.kind, pat: draftOnly(L, pat.size), c: k.detail, sizes: k.sizes });
     return proofPage({ title: `${L.c.name || 'Pattern'}: cut and sew proof`, lede: `The pattern at size ${pat.size}, proved by measurement: every seam walked against the edge it is sewn to, the made piece measured against its spec, every component its features call for, every piece laid on its cloth.${k.edited ? ' Pieces edited by hand on the Pattern page are not walked here: check them on the sample.' : ''}`, totals: [[k.ok ? 'Passes' : 'Does not pass', k.sizes.length ? `at ${k.sizes.filter(z => z.ok).length} of ${k.sizes.length} sizes` : 'its one size'], [`${k.passed}/${k.made}`, `checks at ${pat.size}`]], cards: [card], filters: false }); };
   // what a drawing is built with, read by the vision model: the concept's picture and its drawn flats, front and back. Not saved: the pattern page
   // shows it to the designer, who keeps it (it then saves with the pattern). Without a vision model, the sketch's name and the style stand
@@ -149,11 +151,11 @@ export function registerLabPatternRoutes(app, d) {
     const pat = patternOf(L, L.flat?.size), check = checkOf(L, pat), extra = pat ? { ...(check ? { check } : {}), yardage: yardage(pat, Number(L.spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat) } : {}), ...(pat.kind === 'footwear' ? footExtra(L.spec, pat) : {}) } : {};
     const hasImage = L.kind === 'footwear' || L.kind === 'plush' ? Boolean((await pool.query('select image is not null h from lab_concepts where id=$1', [L.c.id])).rows[0]?.h) : false;
     const materials = (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.part); // what goes on the product's parts, drawn on its flats
-    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage, productId: L.c.product_id || null }, marks: L.kind === 'plush' || L.kind === 'footwear' ? Object.fromEntries(Object.keys(MARKS).flatMap(k => [[k, logoSvg(k === 'cue' ? 'mark' : k)], [`${k}:light`, logoSvg(k === 'cue' ? 'mark' : k, { fill: '#ffffff' })]])) : undefined, colourways: (Array.isArray(L.c.spec?.colourways) ? L.c.spec.colourways : []).filter(c => /^#[0-9a-f]{6}$/i.test(String(c?.hex || ''))).slice(0, 8).map(c => ({ name: clip(c.name, 60), hex: String(c.hex).toLowerCase() })), materials, allMaterials: (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.kind === 'fabric' && !p.part), parts: partsFor(L.c.category), kind: L.kind, flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, coloursFrom: L.coloursFrom || null, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
+    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage, productId: L.c.product_id || null }, marks: L.kind === 'plush' || L.kind === 'footwear' ? Object.fromEntries(Object.keys(MARKS).flatMap(k => [[k, logoSvg(k === 'cue' ? 'mark' : k)], [`${k}:light`, logoSvg(k === 'cue' ? 'mark' : k, { fill: '#ffffff' })]])) : undefined, colourways: (Array.isArray(L.c.spec?.colourways) ? L.c.spec.colourways : []).filter(c => /^#[0-9a-f]{6}$/i.test(String(c?.hex || ''))).slice(0, 8).map(c => ({ name: clip(c.name, 60), hex: String(c.hex).toLowerCase() })), materials, allMaterials: (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.kind === 'fabric' && !p.part), parts: partsFor(L.c.category), kind: L.kind, ...(L.kind === 'none' && notSewn(L.flat?.style) ? { why: notSewn(L.flat.style) } : {}), flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, coloursFrom: L.coloursFrom || null, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
   });
   app.put('/v1/lab/concepts/:id/pattern', { preHandler: pre, bodyLimit: 4_000_000 }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
-    if (!['plush', 'garment', 'footwear', 'bag'].includes(L.kind)) return bad(reply, L.kind === 'soon' ? SOON[L.c.category] : 'This piece has no pattern the Lab can draft yet');
+    if (!['plush', 'garment', 'footwear', 'bag'].includes(L.kind)) return bad(reply, L.kind === 'soon' ? SOON[L.c.category] : notSewn(L.flat?.style) || 'This piece has no pattern the Lab can draft yet');
     const spec = await save(L, req.body?.spec, actorOf(req));
     const pat = patternOf({ ...L, spec }, L.flat?.size);
     const check = checkOf({ ...L, spec }, pat);

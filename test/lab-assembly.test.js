@@ -87,7 +87,7 @@ test('the files carry the parts\' real shapes: the same 3D parts the page shows,
   const board = s.parts.find(p => p.shape === 'pcb'), green = real[board.id].some(m => { const [r, g, b] = [1, 3, 5].map(i => parseInt(m.colour.slice(i, i + 2), 16)); return g > r + 20 && g > b; });
   assert.ok(green, 'the board reads as solder mask, not a blank texture');
   const box = stlOf(s, { t: 0 }), rl = stlOf(s, { t: 0, real }), n = new DataView(rl.buffer).getUint32(80, true);
-  assert.equal(rl.length, 84 + n * 50); assert.ok(n > 20 * new DataView(box.buffer).getUint32(80, true), 'many times the detail of the boxes');
+  assert.equal(rl.length, 84 + n * 50); assert.ok(n > 10 * new DataView(box.buffer).getUint32(80, true), 'many times the detail of the plain solids'); // the plain solids now carry their openings and bosses, and the CD player has 23 parts where it had 17
   assert.ok(stlOf(s, { only: board.id, real }).length < rl.length);
   const pic = await isoPicture(s, { t: 1, real }); assert.match(pic.href, /^data:image\/png;base64,/); assert.ok(pic.box[2] > pic.box[0] && pic.box[3] > pic.box[1]);
   const svg = drawingSvg(s, { title: 'CD player', picture: pic }); assert.match(svg, /<image href="data:image\/png/); assert.ok(!/<path d="M/.test(svg), 'the picture replaces the painted boxes'); assert.match(svg, /Parts list/);

@@ -79,8 +79,9 @@ test('every kind of bag is drafted: panels, its gusset, how it is carried and cl
   assert.ok(['zip-gusset', 'base-gusset', 'strap', 'front-pocket', 'sleeve'].every(i => bp.pieces.some(q => q.id === i)), 'a zip backpack: clamshell gusset, straps, front pocket, laptop sleeve');
   assert.ok(bp.trims.some(t => t.item === 'Zip' && /two-way/.test(t.spec)));
   const tote = bagPattern({ type: 'tote', w: 16, h: 14, d: 5.5 }), g = tote.pieces.find(q => q.id === 'gusset');
-  // down a side, across the bottom and up the other: the panel's edge less its open top (its corners are rounded, so a little under 2h + w)
-  const gl = Math.max(...g.sew.map(([x]) => x)); assert.ok(gl > 2 * 14 + 16 - 1.5 && gl <= 2 * 14 + 16, `the gusset runs down a side, across the bottom and up the other (${gl})`);
+  // down a side, across the bottom and up the other, and up the 1½ in of each side that is turned back at the top; a little under
+  // 2(h + 1½) + w because the two bottom corners are rounded
+  const gl = Math.max(...g.sew.map(([x]) => x)); assert.ok(gl > 2 * 15.5 + 16 - .5 && gl <= 2 * 15.5 + 16, `the gusset runs down a side, across the bottom and up the other (${gl})`);
   assert.equal(kindOf({ category: 'bags', name: 'Field tote' }), 'bag');
   assert.equal(cleanBagSpec({}, 'Night rolltop pack').type, 'rolltop'); assert.equal(cleanBagSpec({ type: 'duffel', w: 99 }).w, undefined, 'a size out of range is dropped');
 });

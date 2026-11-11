@@ -42,7 +42,7 @@ import { brandDoc, fact, table, safe, INK, DIM, LINE } from './brand-pdf.js';
 import { imageConfig, openaiEdit } from './check.js';
 import { callJsonSchema, nearestName } from './studio.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
-import { rankTemplates, candidateTemplates, tagMarks } from './lab-flats.js';
+import { rankTemplates, candidateTemplates, tagMarks, viewsOf } from './lab-flats.js';
 import { tagFaceSvg } from './lab-tags.js';
 import { washWords, washPrompt, cleanWash, washShrink } from './lab-wash.js';
 import { necklineWords, necklineOf } from './lab-neck.js';
@@ -179,7 +179,7 @@ export function registerLabFlatsRoutes(app, d) {
     if (env.AI_FIXTURE || !env.ANTHROPIC_API_KEY) { try { out = env.FLAT_READ_FIXTURE ? JSON.parse(env.FLAT_READ_FIXTURE) : null; } catch { out = null; } }
     else {
       try {
-        const jpeg = await sharp(img).resize({ width: 900, height: 900, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer(), styles = Object.keys(STYLES);
+        const jpeg = await sharp(img).resize({ width: 900, height: 900, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer(), styles = Object.keys(STYLES).filter(k => STYLES[k].kind !== 'goods'); // the picture is read for a garment; a product type is chosen, not read
         out = await pickImpl('You are a garment technologist. Say which garment a product picture shows, so its technical flat is drawn from the right sketch: the garment type, its fit, and the colour of its main cloth.',
           [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpeg.toString('base64') } }, { type: 'text', text: `The garment types:\n${styles.map(k => `- "${k}": ${STYLES[k].label}`).join('\n')}\n- "other": none of these (footwear, accessories, anything else)\nThe concept is called "${clip(c.name, 80)}". If the picture shows several views of one garment, judge that garment.` }],
           { type: 'object', additionalProperties: false, required: ['style', 'fit', 'color', 'why'], properties: { style: { type: 'string', enum: [...styles, 'other'] }, fit: { type: 'string', enum: Object.keys(FITS) }, color: { type: 'string', description: 'the main cloth colour as #rrggbb' }, why: { type: 'string' } } }, { maxTokens: 300 });
@@ -218,7 +218,7 @@ export function registerLabFlatsRoutes(app, d) {
     // a sketch chosen by the person (started from the sketch pack) is the sketch, whatever the name or the picture suggests
     const chosen = c.spec?.template && c.spec.template !== 'none' ? FLAT_TEMPLATES.find(t => t.id === c.spec.template) || null : null;
     if (chosen) det = { style: chosen.style, fit: det.fit || 'regular', options: det.options || {}, template: chosen.id };
-    else if (det.template !== 'none' || !c.spec?.scratch) det.template = await pickTemplate(c, det);
+    else if (det.template !== 'none' || !(c.spec?.scratch || c.spec?.catalog)) det.template = await pickTemplate(c, det); // (a catalogue product on a style with no sketch keeps none)
     // what the concept's own words say of how a tailored piece closes (double-breasted, a peak lapel): kept on the flats, so the pattern drafts it
     { const w = ` ${[c.name, c.spec?.silhouette, c.spec?.description, ...(c.spec?.details || [])].join(' ').toLowerCase().replace(/[^a-z]+/g, ' ')} `, k = {};
       if (/ double breasted /.test(w)) k.breasted = 'double'; else if (/ single breasted /.test(w)) k.breasted = 'single';
@@ -597,7 +597,7 @@ export function registerLabFlatsRoutes(app, d) {
     const p = { ...r.params, size: SIZES.includes(size) ? size : r.params.size || 'M' }, pl = r.placements, list = await techniques(c.client_id), hrefs = {};
     for (const q of pl) { const b = await pngOf(q); if (b) hrefs[q.id] = `data:image/png;base64,${(await sharp(b).resize({ width: 600, height: 600, fit: 'inside', withoutEnlargement: true }).png().toBuffer()).toString('base64')}`; }
     const ck = r.check_result || { findings: {}, summary: { fail: 0, warn: 0 } };
-    const views = STYLES[p.style].kind === 'cap' || STYLES[p.style].kind === 'top' || STYLES[p.style].kind === 'bottom' ? ['front', 'back'] : ['front'];
+    const views = viewsOf(p.style);
     await prepMasks(p);
     const tags = tagMarks(p, await labelsOf(c));
     const editHrefs = await editHrefsOf(p), alloverHref = await alloverHrefOf(p), svgs = views.map(v => renderSvg(p, v, { maskHref, placements: pl, hrefs, findings: ck.findings, showPom: true, scale: 0, templateHref, partHref, editHrefs, alloverHref, tags }));

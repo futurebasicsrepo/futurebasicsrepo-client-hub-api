@@ -760,25 +760,41 @@ function capPieces(S, m, o) {
     const wt = C / Math.PI * .98, wb = wt + flare * 1.2, h = m.crownHeight, bo = brim * .78, bd = brim * .62, sp = (pts, n = 6) => pts, top = Array.from({ length: 13 }, (_, k) => { const a = Math.PI + k / 12 * Math.PI; return [Math.cos(a) * wt / 2, -h + Math.sin(a) * .35]; });
     void sp;
     pieces.push(piece('crown', 'Crown top', ellipse(r * 1.08, r * .92, 48), { cut: 2, notes: ['Outer and lining'], shown: [...top, ...top.slice().reverse().map(([x, y]) => [x, -h + (-h - y) * -.4 - .0])], place: { view: 'front', x: 0, y: 0, z: 1 } }));
-    const bandP = [[flare, 0], [C / 2 - flare, 0], [C / 2, bandH], [0, bandH]], brimP = [[0, 0], [C / 2, 0], [C / 2 + 3, brim], [-3, brim]];
-    pieces.push(piece('band', 'Side band', bandP, { cut: 4, notes: ['Two halves, outer and lining'], shown: [[-wt / 2, -h], [wt / 2, -h], [wb / 2, 0], [-wb / 2, 0]], place: { view: 'front', x: 0, y: 0, z: 0 } }));
-    pieces.push(piece('brim', 'Brim', brimP, { cut: 4, notes: ['Two halves, top and under; rows of topstitching every ¼ in'], shown: [[-wb / 2, 0], ...tail(cubic([-wb / 2, 0], [-wb * .2, .25], [wb * .2, .25], [wb / 2, 0])), [wb / 2 + bo, bd], ...tail(cubic([wb / 2 + bo, bd], [wb * .3, bd + .9], [-wb * .3, bd + .9], [-wb / 2 - bo, bd]))], place: { view: 'front', x: 0, y: 0, z: 2 } }));
-    pieces.block = { crown: { sew: tidy(ellipse(r * 1.08, r * .92, 48)), at: {} }, band: { sew: tidy(bandP), at: { t0: bandP[0], t1: bandP[1], b1: bandP[2], b0: bandP[3] } }, brim: { sew: tidy(brimP), at: { i0: brimP[0], i1: brimP[1], o1: brimP[2], o0: brimP[3] } } };
+    // The band and the brim are each a cone round the head, and a cone opens flat into part of a ring: its two curved edges the cone's two
+    // rims, its straight ends the cone's slant. (Cut as a straight-sided trapezoid, its ends came out longer than its middle: a brim 2¼ in
+    // at the front was 3¾ in at the side seams.) Half of each is cut, twice.
+    const ring = (R1, R2, ang, n) => { const pt = (R, a) => [R * Math.sin(a), R * Math.cos(a) - R1], inn = Array.from({ length: n + 1 }, (_, i) => pt(R1, -ang / 2 + ang * i / n)), out = Array.from({ length: n + 1 }, (_, i) => pt(R2, ang / 2 - ang * i / n)); return { pts: [...inn, ...out], a0: inn[0], a1: inn[n], b1: out[0], b0: out[n] }; };
+    // the band: its top rim the crown's round, its foot the head's, the crown's height up its slant
+    const bR1 = bandH * topC / (C - topC), bandR = ring(bR1, bR1 + bandH, C / 2 / (bR1 + bandH), 16), bandP = bandR.pts;
+    // the brim: its inner rim the head's round, reaching out 0.78 of its length (as its sketch draws it), its length down its slant
+    const outC = C + 2 * Math.PI * .78 * brim, mR1 = brim * C / (outC - C), brimR = ring(mR1, mR1 + brim, C / 2 / mR1, 36), brimP = brimR.pts;
+    pieces.push(piece('band', 'Side band', bandP, { cut: 4, notes: ['Two halves, outer and lining', 'Part of a ring: the curved edges are the crown seam and the brim seam'], shown: [[-wt / 2, -h], [wt / 2, -h], [wb / 2, 0], [-wb / 2, 0]], place: { view: 'front', x: 0, y: 0, z: 0 } }));
+    pieces.push(piece('brim', 'Brim', brimP, { cut: 4, notes: ['Two halves, top and under; rows of topstitching every ¼ in', 'Half a ring: the inner edge is sewn to the band\'s foot'], shown: [[-wb / 2, 0], ...tail(cubic([-wb / 2, 0], [-wb * .2, .25], [wb * .2, .25], [wb / 2, 0])), [wb / 2 + bo, bd], ...tail(cubic([wb / 2 + bo, bd], [wb * .3, bd + .9], [-wb * .3, bd + .9], [-wb / 2 - bo, bd]))], place: { view: 'front', x: 0, y: 0, z: 2 } }));
+    pieces.block = { crown: { sew: tidy(ellipse(r * 1.08, r * .92, 48)), at: {} }, band: { sew: tidy(bandP), at: { t0: bandR.a0, t1: bandR.a1, b1: bandR.b1, b0: bandR.b0 } }, brim: { sew: tidy(brimP), at: { i0: brimR.a0, i1: brimR.a1, o1: brimR.b1, o0: brimR.b0 } } };
     return pieces;
   }
   // the crown's six panels, each as long from the band to the button as a quarter of the dome (the head's round, the crown's height) is
   // around: solved, not guessed (src/lab-pattern-check.js measures the crown height back off the panel)
-  const C = 22.75 + (m.crownWidth - 8.5) * 2, base = C / 6, qa = C / (2 * Math.PI), qb = m.crownHeight, ph = Math.PI / 4 * (3 * (qa + qb) - Math.sqrt((3 * qa + qb) * (qa + 3 * qb)));
-  const panel = [[-.12, 0], [.12, 0], ...tail(cubic([.12, 0], [base * .36, ph * .2], [base * .52, ph * .6], [base / 2, ph])), [-base / 2, ph], ...tail(cubic([-base / 2, ph], [-base * .52, ph * .6], [-base * .36, ph * .2], [-.12, 0])).slice(0, -1)];
+  // The dome is the head's round at its foot and the crown's height tall. A panel is a sixth of it: at every point of its length it is as
+  // wide as a sixth of the dome is round there, so the six lie round the crown and meet in a point under the button. (Drawn as a free
+  // curve it was too wide towards the top: the six together were 13½ in where the dome is 9½ in round.)
+  const C = 22.75 + (m.crownWidth - 8.5) * 2, base = C / 6, qa = C / (2 * Math.PI), qb = m.crownHeight;
+  const mer = Array.from({ length: 25 }, (_, i) => { const t = i / 24 * Math.PI / 2; return [qa * Math.sin(t), qb * (1 - Math.cos(t))]; });
+  let run = 0; const gore = mer.map((q, i) => { if (i) run += Math.hypot(q[0] - mer[i - 1][0], q[1] - mer[i - 1][1]); return [Math.PI * q[0] / 6, run]; }), ph = run;
+  const panel = [...gore, ...gore.slice(1).reverse().map(([x, y]) => [-x, y])];
+  // a back panel: the back opening cut from its foot at the centre back seam, 1⅛ in across and 1½ in up (the two make the 2¼ in opening)
+  const OH = 1.5, k = gore.findIndex(([, y]) => y >= ph - OH), ga = gore[k - 1], gb = gore[k], xr = ga[0] + (gb[0] - ga[0]) * (ph - OH - ga[1]) / (gb[1] - ga[1]), OW = 1.125 - (base / 2 - xr); // the foot ends 1⅛ in short of the panel's corner
+  const backPanel = [...gore.slice(0, k), ...Array.from({ length: 7 }, (_, i) => { const a = i / 6 * Math.PI / 2; return [xr - OW * Math.sin(a), ph - OH * Math.cos(a)]; }), ...gore.slice(1).reverse().map(([x, y]) => [-x, y])];
   // on the product every panel hangs from the button at the top of the crown, turned out round it: the fronts a little, the sides further
-  const PANELS = [['front', 'Front panel', 'Fused with buckram for structure', 13, 1], ['side', 'Side panel', 'One embroidered eyelet', 38, 0], ['back', 'Back panel', 'The back opening (2¼ × 1½ in) cut from the bottom edge', 13, 1]];
+  const PANELS = [['front', 'Front panel', 'Fused with buckram for structure', 13, 1], ['side', 'Side panel', 'One embroidered eyelet', 38, 0], ['back', 'Back panel', 'The back opening cut from its foot at the centre back: 1⅛ in across, 1½ in up (2¼ in across the two)', 13, 1]];
   // seen from the front, as its sketch draws it: a dome (the crown's width across, its height up), the two fronts meeting at the centre seam,
   // the sides showing at its edges; the back from behind the same, the opening at its foot
   const Wd = C / Math.PI * 1.08, Hd = m.crownHeight * 1.05, dome = x => -Hd * Math.sqrt(Math.max(0, 1 - (x / (Wd / 2)) ** 2)) ** .85, arc = (a, b) => Array.from({ length: 9 }, (_, k) => { const x = a + (b - a) * k / 8; return [x, dome(x)]; });
   const SEEN = { front: [...arc(0, Wd * .34), [Wd * .34, 0], [0, 0]], side: [...arc(Wd * .34, Wd / 2), [Wd * .34, 0]], back: [...arc(0, Wd * .34), [Wd * .34, 0], [1.1, 0], [1.1, -1.5], [0, -1.5]] };
   for (const [id, nm, note, , z] of PANELS) {
     const view = id === 'back' ? 'back' : 'front', at = { view, x: 0, y: 0, z };
-    pieces.push(piece(`panel-${id}`, nm, panel, { cut: 2, pair: true, notes: [note], shown: SEEN[id], place: at }), { ...twin(`panel-${id}-2`, nm, panel, { ...at, flip: true }), shown: SEEN[id] });
+    const out = id === 'back' ? backPanel : panel;
+    pieces.push(piece(`panel-${id}`, nm, out, { cut: 2, pair: true, notes: [note], shown: SEEN[id], place: at }), { ...twin(`panel-${id}-2`, nm, out, { ...at, flip: true }), shown: SEEN[id] });
   }
   // the brim: its inner edge across the two front panels and onto the sides; its width and its length at the centre front (from the seam to
   // the edge) to the spec
@@ -798,16 +814,25 @@ function capPieces(S, m, o) {
   pieces.push(piece('sweatband', 'Sweatband', rect(r8(C - 2.25 + 1), 1.25), { fabric: 'self', cut: 1, notes: ['Cotton or moisture-wicking tape; the main label sewn at the centre back'], hidden: true, shown: [[-Wd / 2 + .2, -1], [Wd / 2 - .2, -1], [Wd / 2 - .2, -.2], [-Wd / 2 + .2, -.2]], place: { view: 'back', x: 0, y: 0, z: -1 }, sa: 0 }));
   // the front panels' buckram, the brim's board inside it; the block the check walks: a panel (the button at its top, the band at its foot) and the brim
   pieces.push(piece('front-buckram', 'Front panel buckram', panel, { fabric: 'fusing', cut: 2, pair: true, hidden: true, notes: ['Fused buckram, so the front stands'], place: { view: 'front', x: 0, y: 0, z: 0 } }));
-  pieces.block = { panel: { sew: tidy(panel), at: { tl: [-.12, 0], tr: [.12, 0], br: [base / 2, ph], bl: [-base / 2, ph] } }, brim: { sew: tidy(brim), at: { i0: [-inner, 0], i1: [inner, 0], tip: [0, bl] }, bow } };
+  pieces.block = { panel: { sew: tidy(panel), at: { tl: [0, 0], tr: [0, 0], br: [base / 2, ph], bl: [-base / 2, ph] } }, brim: { sew: tidy(brim), at: { i0: [-inner, 0], i1: [inner, 0], tip: [0, bl] }, bow } };
   return pieces;
 }
 function beaniePieces(m) {
-  return [piece('body', 'Knit body', rect(r8(m.width * 2), r8(m.height + m.cuff)), { fabric: 'knit', cut: 1, notes: ['Knitted to shape on a flatbed: 1×1 rib, the crown closed with decreases, linked at the back', `The cuff (${m.cuff} in) turns up`], place: { view: 'front', x: -m.width, y: 0 }, sa: 0 })];
+  // Knitted flat and linked at the back: twice the flat width round, the height and the cuff long. The crown is closed by decreases at four
+  // points, so the top of the piece is four petals, each as tall as it is wide (they close into the round of the crown); the cuff's fold is
+  // marked at each edge.
+  const W = r8(m.width * 2), L = r8(m.height + m.cuff), pw = W / 4, ch = Math.min(pw, L * .4), top = [];
+  for (let k = 0; k < 4; k++) for (let i = (k ? 1 : 0); i <= 10; i++) { const t = i / 10; top.push([k * pw + pw * t, ch * (1 - Math.sin(Math.PI * t))]); }
+  const fold = L - m.cuff, body = piece('body', 'Knit body', [...top, [W, fold], [W, L], [0, L], [0, fold]], { fabric: 'knit', cut: 1, notches: [[0, fold], [W, fold]], notes: ['Knitted to shape on a flatbed: 1×1 rib, linked at the back', `The crown closed by decreases at four points: four petals, each ${r8(pw)} in wide and ${r8(ch)} in tall`, `The cuff (${m.cuff} in) turns up at the marked fold`], place: { view: 'front', x: -m.width, y: 0 }, sa: 0 });
+  body.at = { foldL: [0, fold], foldR: [W, fold], hemL: [0, L], hemR: [W, L], tipL: [0, ch], tipR: [W, ch] };
+  return [body];
 }
 function totePieces(m) {
   const w = m.width, H = m.height, hl = r8(m.handleDrop * 2 + 3);
   // one piece, folded at the bottom: twice the height, and 1½ in at each top edge to turn back
-  return [piece('body', 'Body', [[0, 0], [w, 0], [w, H * 2 + 3], [0, H * 2 + 3]], { cut: 1, notes: ['Folded at the bottom; side seams French-seamed', '1½ in turn-back at the top'], place: { view: 'front', x: -w / 2, y: 0 } }),
+  const fold = H + 1.5, body = piece('body', 'Body', [[0, 0], [w, 0], [w, fold], [w, H * 2 + 3], [0, H * 2 + 3], [0, fold]], { cut: 1, notches: [[0, fold], [w, fold], [0, 1.5], [w, 1.5], [0, H * 2 + 1.5], [w, H * 2 + 1.5]], notes: ['Folded at the bottom (marked at each edge); side seams French-seamed', '1½ in turn-back at each top edge (marked)'], place: { view: 'front', x: -w / 2, y: 0 } });
+  body.at = { tl: [0, 0], tr: [w, 0], fr: [w, fold], br: [w, H * 2 + 3], bl: [0, H * 2 + 3], fl: [0, fold] };
+  return [body,
     piece('handle', 'Handle', rect(hl, r8(m.handleWidth * 4)), { cut: 2, notes: ['Folded in four and edge-stitched; box-stitched to the body'], place: { view: 'front', x: -w * .45, y: -m.handleDrop, z: 1 } })];
 }
 
@@ -827,7 +852,7 @@ function finishGarment(pieces, trims, { style, kind, m, K, knit, oneSize = false
   if (style === 'cap') { if (!has(/top button/i)) T({ item: 'Top button', spec: 'Fabric-covered metal button (squatchee), 18 mm', qty: 1, where: 'Crown, where the six panels meet' });
     if (!has(/strap|snap|buckle|closure/i)) T({ item: 'Back closure', spec: 'Plastic 7-position snap strap (or a cloth strap and metal slide buckle)', qty: 1, where: 'Back opening' });
     if (!has(/eyelet/i)) T({ item: 'Embroidered eyelets', spec: '6 mm, in the panel colour', qty: 6, where: 'One on each panel, 2 in below the button' });
-    if (!has(/seam tape/i)) T({ item: 'Crown seam tape', spec: '½ in cotton herringbone, printed optional', qty: `${r8(6 * (lenOf((pieces.find(q => q.id === 'panel-front') || {}).sew || []) / 2 || 6.5) + 23)} in`, where: 'Over the six crown seams and the brim seam, inside' }); }
+    if (!has(/seam tape/i)) T({ item: 'Crown seam tape', spec: '½ in cotton herringbone, printed optional', qty: `${(pf => Math.ceil(6 * (pf.length ? (lenOf([...pf, pf[0]]) - boundsOf(pf).w) / 2 : 6.5) * 1.05))((pieces.find(q => q.id === 'panel-front') || {}).sew || [])} in`, where: 'Over the six crown seams, inside' }); }
   if (style === 'beanie' && !has(/yarn/i)) T({ item: 'Yarn', spec: '2/28 Nm acrylic (or merino), knitted 1×1 rib, 7 gauge', qty: `about ${Math.round((m.width * 2) * (m.height + m.cuff) * .0254 * .0254 * 2 * 300)} g`, where: 'The body, doubled at the cuff' });
   if (!has(/^Thread$/)) { // about a garment's thread: its seams (half the cut edges) times what each stitch takes, an overlock 14×, a lockstitch 2½×, a cover 18× on hems
     const seamIn = pieces.filter(q => q.cut && q.fabric !== 'fusing').reduce((a, q) => a + lenOf([...q.sew, q.sew[0]]) * q.cut / 2, 0), metres = Math.round(seamIn * .0254 * (knit ? 12 : 5) / 10) * 10;
@@ -869,73 +894,207 @@ export function garmentPattern(p, size = p.size || 'M') {
 // A bag drafted from its kind and size (src/lab-bags.js BAG_TYPES: width × height × depth of the body, inches): its panels, gussets, straps
 // and handles, pockets, linings and the hardware, each as a factory cuts and builds it. On the product (front view) the panels and what is
 // sewn on them sit where the bag's drawings put them: x from the centre, y down from the top of the body.
+//
+// A bag is drafted with how it goes together. Each piece of the shell and the lining labels its corners (`at`), and `assembly` lists every
+// seam as the two runs of outline sewn together (a run: a piece, the corners it passes, and which copy when a piece is cut twice), every
+// zip with the two edges it joins, every edge finished on its own, and everything sewn onto a panel with where it sits. Every gusset is
+// sized from the edge it is sewn round, measured off that panel's outline. src/lab-pattern-check.js walks the list: the two sides of each
+// seam, each zip in its opening, that no edge is left unsewn or sewn twice, and that what is sewn on a panel lies on it.
 const roundRect = (w, h, r) => { r = Math.min(r, w / 2, h / 2); const q = (cx, cy, a0) => Array.from({ length: 5 }, (_, i) => { const a = a0 + i * Math.PI / 8; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r]; });
   return [...q(w - r, r, -Math.PI / 2), ...q(w - r, h - r, 0), ...q(r, h - r, Math.PI / 2), ...q(r, r, Math.PI)]; };
 const at0 = (pts, x, y) => pts.map(([a, b]) => [a + x, b + y]);
 export const BAG_KINDS = ['rolltop', 'backpack', 'drawstring', 'sling', 'tote', 'helmet', 'briefcase', 'messenger', 'duffel', 'waist', 'pouch'];
+const arcQ = (cx, cy, r, a0, n = 6) => Array.from({ length: n + 1 }, (_, i) => { const a = a0 + i / n * Math.PI / 2; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r]; });
+// a panel with a straight top (its two top corners square) and rounded bottom corners; `up`: carried up above the body (a roll, a turn-back)
+function panelU(W, H, r, up = 0) { r = Math.max(.05, Math.min(r, W / 4, H / 4));
+  return { pts: [[0, -up], [W, -up], ...arcQ(W - r, H - r, r, 0), [W / 2, H], ...arcQ(r, H - r, r, Math.PI / 2)], at: { tl: [0, -up], tr: [W, -up], bm: [W / 2, H] } }; }
+// a panel rounded at all four corners (a clamshell): the base gusset comes `rise` up each side, the zip gusset runs over the top between
+function panelO(W, H, r, rise) { r = Math.max(.05, Math.min(r, W / 4, H / 4)); const y = H - Math.min(Math.max(rise, r + .25), H - r - .25);
+  return { pts: [[W / 2, 0], ...arcQ(W - r, r, r, -Math.PI / 2), [W, y], ...arcQ(W - r, H - r, r, 0), [W / 2, H], ...arcQ(r, H - r, r, Math.PI / 2), [0, y], ...arcQ(r, r, r, Math.PI)], at: { tm: [W / 2, 0], sr: [W, y], bm: [W / 2, H], sl: [0, y] } }; }
+// a crescent (a sling, a waist bag): the zip runs over the top from side point to side point, the gusset round the belly
+function panelC(W, H) { const top = cubic([0, H * .18], [W * .2, -H * .05], [W * .8, -H * .05], [W, H * .18]), rt = cubic([W, H * .18], [W * 1.02, H * .7], [W * .85, H], [W * .5, H]), lf = cubic([W * .5, H], [W * .15, H], [-W * .02, H * .7], [0, H * .18]);
+  return { pts: [...top, ...tail(rt), ...tail(lf).slice(0, -1)], at: { l: top[0], tm: top[6], r: top[12], bm: [W * .5, H] } }; }
+const stripOf = (len, w) => ({ pts: rect(len, w), at: { a: [0, 0], b: [len, 0], c: [len, w], d: [0, w] } });
+// the length of a shape's outline from one labelled corner to another, by the run that passes none of its other labelled corners
+function edgeRun(sh, a, b) { const P = sh.pts, n = P.length, ix = k => { let j = -1, d = Infinity; P.forEach((p, i) => { const e = Math.hypot(p[0] - sh.at[k][0], p[1] - sh.at[k][1]); if (e < d) { d = e; j = i; } }); return j; };
+  const i = ix(a), j = ix(b), others = new Set(Object.keys(sh.at).filter(k => k !== a && k !== b).map(ix));
+  const walk = (s, e) => { let L = 0, k = s, hit = false; for (let t = 0; t < n && k !== e; t++) { const nx = (k + 1) % n; L += Math.hypot(P[k][0] - P[nx][0], P[k][1] - P[nx][1]); k = nx; if (k !== e && others.has(k)) hit = true; } return { L, hit }; };
+  const f = walk(i, j), r = walk(j, i); return (!f.hit ? f : !r.hit ? r : f.L <= r.L ? f : r).L; }
+const pathOf = (sh, ...ks) => ks.slice(1).reduce((s, k, i) => s + edgeRun(sh, ks[i], k), 0);
+const ZIP_SHOW = .5; // how much of a zip shows between the two edges it is sewn to
 export function bagPattern(spec = {}) {
   const type = BAG_KINDS.includes(spec.type) ? spec.type : 'tote', DEF = { rolltop: [12, 18, 6], backpack: [12, 17, 5.5], drawstring: [12, 17, 6], sling: [10, 6.5, 3], tote: [16, 14, 5.5], helmet: [19, 20, 5], briefcase: [16, 11.5, 3.5], messenger: [15, 11, 4], duffel: [22, 11, 11], waist: [11, 5.5, 2.5], pouch: [7.5, 9.5, 2] }[type];
   const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d), W = num(spec.w, DEF[0]), H = num(spec.h, DEF[1]), D = num(spec.d, DEF[2]), hw = W / 2;
-  const pieces = [], trims = [], push = (...q) => pieces.push(...q), sa = .375;
-  const front = view => ({ view, x: 0, y: 0 });
+  const pieces = [], trims = [], asm = [], sa = .375;
   const pack = ['rolltop', 'backpack', 'drawstring'].includes(type), curved = ['sling', 'waist'].includes(type), round = type === 'duffel';
-  // the body
-  if (round) { // a barrel: one panel wrapped round, two round ends
-    const C = r8(Math.PI * H), wrap = rect(W, C);
-    push(piece('body', 'Body', wrap, { cut: 1, notes: [`Wrapped round the ends; the zip set along the top, ${W - 2} in`], shown: at0(rect(W, H), -hw, 0), place: front('front') }));
-    const end = Array.from({ length: 24 }, (_, i) => { const a = i / 24 * Math.PI * 2; return [H / 2 + Math.cos(a) * H / 2, H / 2 + Math.sin(a) * H / 2]; });
-    push(piece('end', 'End panel', end, { cut: 2, notes: ['Round, the body eased onto it; piped'], hidden: true, place: { view: 'back', x: -H / 2, y: 0 } }));
-    trims.push({ item: 'Zip', spec: `#10 coil, two-way, ${r8(W - 2)} in`, qty: 1, where: 'Along the top' }); }
-  else {
-    const shape = curved ? [[0, H * .18], ...tail(cubic([0, H * .18], [W * .2, -H * .05], [W * .8, -H * .05], [W, H * .18])), ...tail(cubic([W, H * .18], [W * 1.02, H * .7], [W * .85, H], [W * .5, H])), ...tail(cubic([W * .5, H], [W * .15, H], [-W * .02, H * .7], [0, H * .18])).slice(0, -1)]
-      : roundRect(W, H, type === 'pouch' || pack ? 1.25 : type === 'tote' || type === 'helmet' ? .25 : .75);
-    const top = type === 'rolltop' ? 8 : 0, panel = top ? [[0, -top], [W, -top], ...shape.filter(([, y]) => y > H * .3)] : shape;
-    push(piece('front', 'Front panel', panel, { cut: 1, notes: [top ? `Carried up ${top} in above the body for the roll` : 'Self, backed with foam or a bonded fusible'], shown: at0(panel, -hw, 0), place: front('front') }),
-      piece('back', pack ? 'Back panel (padded)' : 'Back panel', panel, { cut: 1, notes: [pack ? 'Spacer mesh over 8 mm foam; channels for air' : 'Self'], shown: at0(panel, -hw, 0), place: front('back') }));
-    // the gusset: round the sides and the bottom (a zip backpack: a zip gusset over the top and a base gusset below)
-    // the gusset as long as the panel's edge it is sewn round: down a side, across the bottom (its rounded corners included) and up the other;
-    // a rolltop's carried up the roll (src/lab-pattern-check.js walks it)
-    const closedLen = q => q.reduce((a, p, i) => a + Math.hypot(p[0] - q[(i + 1) % q.length][0], p[1] - q[(i + 1) % q.length][1]), 0), pb = boundsOf(panel);
-    const per = r8(closedLen(panel) - pb.w);
-    if (type === 'backpack') { const base = r8(W + 2 * H * .2), zg = r8(closedLen(panel) - base); // the zip gusset over the top and down the sides, the base gusset the rest
-      push(piece('zip-gusset', 'Zip gusset', rect(zg, D + 1), { cut: 2, notes: ['Two halves, the two-way zip between them (clamshell)'], hidden: true, place: front('back') }),
-        piece('base-gusset', 'Base gusset', rect(base, D), { cut: 1, notes: ['Ballistic or a doubled base'], hidden: true, place: front('back') }));
-      trims.push({ item: 'Zip', spec: `#10 coil, two-way, ${r8(zg - 2)} in`, qty: 1, where: 'Clamshell, round the top and sides' }); }
-    else push(piece('gusset', 'Gusset', rect(per, D), { cut: 1, notes: ['Sides and bottom in one; bound or turned seams'], hidden: true, place: front('back') }));
-    // the lining: the same panels and gusset
-    push({ ...piece('lining', 'Lining (panels and gusset)', panel, { fabric: 'lining', cut: 2, hidden: true, notes: ['210D nylon or a coated taffeta; the gusset the same as the outer'], place: { view: 'front', x: -hw, y: 0, z: -2 } }) });
-    // how it closes
-    if (type === 'rolltop') trims.push({ item: 'Side-release buckle', spec: '1 in, acetal', qty: 2, where: 'The roll, to the sides' }, { item: 'Webbing', spec: '1 in nylon', qty: `${r8(H + 12)} in`, where: 'Side straps for the roll' }, { item: 'Stiffener', spec: 'HDPE strip, 1 in', qty: `${W} in`, where: 'In the roll edge' });
-    if (type === 'drawstring') { push(piece('channel', 'Drawcord channel', rect(r8(2 * W + 2 * D + 1), 3), { cut: 1, notes: ['Folded to 1¼ in round the top, eyelets at the front'], hidden: true, place: front('back') }));
-      const lid = roundRect(W * .9, H * .42, 1.5); push(piece('lid', 'Lid flap', lid, { cut: 2, notes: ['Outer and lining; a zip pocket in the outer'], shown: at0(lid, -W * .45, -1), place: { view: 'front', x: 0, y: 0, z: 3 } }));
-      trims.push({ item: 'Drawcord', spec: '4 mm braided', qty: `${r8(2 * W + 2 * D + 14)} in`, where: 'Channel' }, { item: 'Cord lock', spec: 'Single-hole, spring', qty: 1, where: 'Front' }, { item: 'Side-release buckle', spec: '¾ in', qty: 2, where: 'Lid to front' }); }
-    if (type === 'messenger') { const fl = roundRect(W, H * .92, 1); push(piece('flap', 'Flap', fl, { cut: 2, notes: ['Outer and lining, cut in one with the back at the top fold'], shown: at0(fl, -hw, -.6), place: { view: 'front', x: 0, y: 0, z: 3 } }));
-      trims.push({ item: 'Side-release buckle', spec: '1 in, with a webbing tongue', qty: 2, where: 'Flap to front' }, { item: 'Hook-and-loop', spec: '2 in', qty: `${r8(W * .6)} in`, where: 'Under the flap' }); }
-    if (['sling', 'tote', 'helmet', 'briefcase', 'waist', 'pouch'].includes(type)) trims.push(type === 'tote' ? { item: 'Magnetic snap', spec: '18 mm', qty: 1, where: 'Centre top, inside' } : { item: 'Zip', spec: `#${type === 'pouch' || type === 'waist' ? 5 : 8} coil, ${type === 'briefcase' ? 'two-way' : 'one-way'}, ${r8(W - 1 + (curved ? 2 : 0))} in`, qty: 1, where: type === 'helmet' ? 'Full width at the top, under a flap' : 'Along the top' });
-    if (type === 'helmet') { const fl = rect(W, 3.5); push(piece('top-flap', 'Zip flap', fl, { cut: 2, notes: ['Over the top zip'], shown: at0(fl, -hw, -.5), place: { view: 'front', x: 0, y: 0, z: 3 } })); }
-    // a pocket on the front
-    if (['backpack', 'rolltop', 'briefcase', 'waist', 'helmet', 'sling'].includes(type)) { const pw = r8(W * (curved ? .75 : .7)), ph = r8(H * (curved ? .42 : .38)), pk = roundRect(pw, ph, curved ? 1 : .75);
-      push(piece('front-pocket', 'Front pocket', pk, { cut: 2, notes: ['Outer and bag; zipped across the top'], shown: at0(pk, -pw / 2, H * (curved ? .42 : .5)), place: { view: 'front', x: 0, y: 0, z: 2 } }));
-      trims.push({ item: 'Zip', spec: `#5 coil, ${r8(pw - 1)} in`, qty: 1, where: 'Front pocket' }); }
-    if (type === 'backpack' || type === 'briefcase') push({ ...piece('sleeve', 'Laptop sleeve', rect(r8(W - 1), r8(H * .85)), { cut: 2, hidden: true, notes: ['8 mm foam between; a hook-and-loop tab'], place: front('back') }) });
+  const ziptop = ['helmet', 'briefcase', 'pouch'].includes(type), flat = D < 1.25; // flat: too shallow for a zip gusset in two halves
+  // a piece of the shell or the lining: its outline and its labelled corners
+  const add = (id, name, sh, o = {}) => { const q = piece(id, name, sh.pts, o); q.at = sh.at; pieces.push(q); return q; };
+  const J = (name, a, b, o = {}) => asm.push({ name, a, b, ...o });           // a seam: two runs sewn together
+  const F = (name, a, fin) => asm.push({ name, a, fin });                      // an edge finished on its own
+  const Z = (name, a, b, zip, o = {}) => asm.push({ name, a, b, zip, ...o }); // a zip between two edges
+  const ON = (name, id, on, at, o = {}) => asm.push({ name, id, on, at, ...o }); // a piece sewn onto a panel, its outline moved by `at`
+  const zipTrim = (gauge, way, len, where) => { trims.push({ item: 'Zip', spec: `#${gauge} coil, ${way}, ${len} in`, qty: 1, where }); return len; };
+  const half = Math.max(.375, r8((D - ZIP_SHOW) / 2)); // one side of a zip gusset: the two and the zip between them make the depth
+  const zipLen = open => Math.max(2, r8(open - 1));     // a zip stops ½ in short of each end of its opening, under a tab
+  let frontSh = null, linSh = null, roll = 0, turn = 0, shown;
+
+  if (round) { // a barrel: one panel wrapped round two round ends, its two long edges meeting at the zip along the top
+    const C = r8(Math.PI * H - ZIP_SHOW), wrap = stripOf(W, C), circle = { pts: Array.from({ length: 48 }, (_, i) => { const a = i / 48 * Math.PI * 2; return [H / 2 + Math.cos(a) * H / 2, H / 2 + Math.sin(a) * H / 2]; }), at: { e: [H, H / 2], w: [0, H / 2] } };
+    add('body', 'Body', wrap, { cut: 1, notes: [`Wrapped round the ends; its two long edges meet at the zip along the top`], shown: at0(rect(W, H), -hw, 0), place: { view: 'front', x: 0, y: 0 } });
+    add('end', 'End panel', circle, { cut: 2, notes: ['Round, the body sewn round it; piped'], hidden: true, place: { view: 'back', x: -H / 2, y: 0 } });
+    add('lining', 'Lining body', wrap, { fabric: 'lining', cut: 1, hidden: true, notes: ['210D nylon or a coated taffeta'], place: { view: 'front', x: -hw, y: 0, z: -2 } });
+    add('lining-end', 'Lining end', circle, { fabric: 'lining', cut: 2, hidden: true, notes: ['Sewn round as the outer end is'], place: { view: 'back', x: -H / 2, y: 0, z: -2 } });
+    const zl = zipTrim(10, 'two-way', zipLen(W), 'Along the top');
+    Z('Top zip', ['body', ['a', 'b']], ['body', ['d', 'c']], zl, { why: 'the body\'s two long edges, one to each side of the zip' });
+    J('Body round one end panel', ['end', ['e', 'w', 'e'], 0], ['body', ['b', 'c']], { gap: ZIP_SHOW, why: 'the body and the zip between its edges go once round the end' });
+    J('Body round the other end panel', ['end', ['e', 'w', 'e'], 1], ['body', ['d', 'a']], { gap: ZIP_SHOW });
+    J('Lining body round one lining end', ['lining-end', ['e', 'w', 'e'], 0], ['lining', ['b', 'c']], { gap: ZIP_SHOW });
+    J('Lining body round the other lining end', ['lining-end', ['e', 'w', 'e'], 1], ['lining', ['d', 'a']], { gap: ZIP_SHOW });
+    J('Lining to the zip, one edge', ['body', ['a', 'b']], ['lining', ['a', 'b']], { caught: true, why: 'the lining is caught in the zip seam' });
+    J('Lining to the zip, the other edge', ['body', ['d', 'c']], ['lining', ['d', 'c']], { caught: true });
+    trims.push({ item: 'Piping', spec: '⅛ in cord, covered in self', qty: `${r8(2 * Math.PI * H + 2)} in`, where: 'Round each end panel' });
+  } else {
+    // the panels: the front and the back the same outline
+    if (curved) frontSh = panelC(W, H);
+    else if (type === 'backpack') frontSh = panelO(W, H, 1.25, H * .2);
+    else { roll = type === 'rolltop' ? 8 : 0; turn = type === 'tote' ? 1.5 : 0; frontSh = panelU(W, H, type === 'pouch' || pack ? 1.25 : type === 'tote' || type === 'helmet' ? .25 : .75, roll + turn); }
+    // the lining's panels: the outer's, except a tote's, which stops at the foot of the turned-back top
+    linSh = type === 'tote' ? panelU(W, H - turn, .25) : frontSh;
+    shown = at0(frontSh.pts, -hw, 0);
+    add('front', 'Front panel', frontSh, { cut: 1, notes: [roll ? `Carried up ${roll} in above the body for the roll` : turn ? `The top ${turn} in turned to the inside and stitched` : 'Self, backed with foam or a bonded fusible'], shown, place: { view: 'front', x: 0, y: 0 } });
+    add('back', pack ? 'Back panel (padded)' : 'Back panel', frontSh, { cut: 1, notes: [pack ? 'Spacer mesh over 8 mm foam; channels for air' : roll ? `Carried up ${roll} in for the roll` : turn ? `The top ${turn} in turned to the inside` : 'Self'], shown, place: { view: 'back', x: 0, y: 0 } });
+    add('lining', 'Lining panel', linSh, { fabric: 'lining', cut: 2, hidden: true, notes: ['210D nylon or a coated taffeta; front and back'], place: { view: 'front', x: -hw, y: 0, z: -2 } });
+    // the shell, and the lining built the same way: `ids` names each one's pieces
+    const shell = (pre, sh, ids) => {
+      const lin = Boolean(pre), n = lin ? 'Lining: ' : '', fab = lin ? { fabric: 'lining' } : {};
+      const fr = ks => (lin ? [ids.panel, ks, 0] : ['front', ks]), bk = ks => (lin ? [ids.panel, ks, 1] : ['back', ks]);
+      // an edge of the two panels closed by a zip: a zip gusset in two halves between them, the zip between the halves. `gid`: the gusset
+      // whose two ends the halves cross. A bag too shallow for two halves has its zip sewn straight to the panels.
+      const zipClose = (ks, gid, zid, zname, gauge, way, where, why) => {
+        const open = r8(pathOf(sh, ...ks));
+        if (flat) { if (!lin) Z(zname, fr(ks), bk(ks), zipTrim(gauge, way, zipLen(open), where), { why: 'the two panels, one to each side of the zip (too shallow for a zip gusset)' });
+          else { J('Lining to the zip, front', ['front', ks], fr(ks), { caught: true, why: 'the lining is caught in the zip seam' }); J('Lining to the zip, back', ['back', ks], bk(ks), { caught: true }); }
+          F(`${n}Gusset: one end`, [gid, ['b', 'c']], 'closed under the zip\'s end tab'); F(`${n}Gusset: the other end`, [gid, ['d', 'a']], 'closed under the zip\'s end tab'); return; }
+        add(zid, `${n}${zid.includes('top') ? 'Top panel' : 'Zip gusset'}`, stripOf(open, half), { ...fab, cut: 2, notes: [`Two, each ${half} in wide, the zip between them`], hidden: true, place: { view: 'back', x: 0, y: 0 } });
+        J(`${n}Front panel ${why}`, fr(ks), [zid, ['d', 'c'], 0], { why: 'one half of the zip gusset along the front panel' });
+        J(`${n}Back panel ${why}`, bk(ks), [zid, ['d', 'c'], 1]);
+        J(`${n}Zip gusset across one end of the gusset`, [gid, ['b', 'c']], [[zid, ['b', 'c'], 0], [zid, ['b', 'c'], 1]], { gap: ZIP_SHOW, why: `the two halves and the ${ZIP_SHOW} in of zip between them make the gusset's width` });
+        J(`${n}Zip gusset across the other end`, [gid, ['d', 'a']], [[zid, ['d', 'a'], 0], [zid, ['d', 'a'], 1]], { gap: ZIP_SHOW });
+        if (!lin) Z(zname, [zid, ['a', 'b'], 0], [zid, ['a', 'b'], 1], zipTrim(gauge, way, zipLen(open), where), { why: 'the two halves, one to each side of the zip' });
+        else { const o = zid.replace(/^lining-/, '').replace(/^top$/, 'top-panel'); J('Lining to the zip, front half', [o, ['a', 'b'], 0], [zid, ['a', 'b'], 0], { caught: true, why: 'the lining is caught in the zip seam' }); J('Lining to the zip, back half', [o, ['a', 'b'], 1], [zid, ['a', 'b'], 1], { caught: true }); }
+      };
+      if (type === 'backpack') { // a clamshell: the zip gusset over the top and down the sides; the base gusset round the bottom
+        const base = r8(pathOf(sh, 'sr', 'bm', 'sl'));
+        add(ids.base, `${n}Base gusset`, stripOf(base, D), { ...fab, cut: 1, notes: [lin ? 'Round the bottom, as the outer' : 'Ballistic or a doubled base; across the bottom and up each side'], hidden: true, place: { view: 'back', x: 0, y: 0 } });
+        J(`${n}Front panel round the base gusset`, fr(['sr', 'bm', 'sl']), [ids.base, ['a', 'b']], { why: 'across the bottom and up each side' });
+        J(`${n}Back panel round the base gusset`, bk(['sr', 'bm', 'sl']), [ids.base, ['d', 'c']]);
+        zipClose(['sl', 'tm', 'sr'], ids.base, ids.zip, 'Clamshell zip', 10, 'two-way', 'Clamshell, round the top and sides', 'over the top and down each side');
+        return; }
+      if (curved) { // a crescent: a zip gusset over the top, a gusset round the belly
+        const belly = r8(pathOf(sh, 'r', 'bm', 'l'));
+        add(ids.gusset, `${n}Gusset`, stripOf(belly, D), { ...fab, cut: 1, notes: ['Round the belly, side point to side point'], hidden: true, place: { view: 'back', x: 0, y: 0 } });
+        J(`${n}Front panel's belly round the gusset`, fr(['r', 'bm', 'l']), [ids.gusset, ['a', 'b']], { why: 'side point, round the bottom, to side point' });
+        J(`${n}Back panel's belly round the gusset`, bk(['r', 'bm', 'l']), [ids.gusset, ['d', 'c']]);
+        zipClose(['l', 'tm', 'r'], ids.gusset, ids.zip, 'Top zip', type === 'waist' ? 5 : 8, 'one-way', 'Along the top', 'over the top, side point to side point');
+        return; }
+      // a box: one gusset down a side, across the bottom and up the other, as long as the panel's edge it is sewn round
+      const u = r8(pathOf(sh, 'tr', 'bm', 'tl'));
+      add(ids.gusset, `${n}Gusset`, stripOf(u, D), { ...fab, cut: 1, notes: [lin ? 'Sides and bottom in one, as the outer' : `Sides and bottom in one${roll ? ', carried up the roll' : turn ? ', carried up the turned-back top' : ''}; bound or turned seams`], hidden: true, place: { view: 'back', x: 0, y: 0 } });
+      J(`${n}Front panel round the gusset`, fr(['tr', 'bm', 'tl']), [ids.gusset, ['a', 'b']], { why: 'down a side, across the bottom and up the other' });
+      J(`${n}Back panel round the gusset`, bk(['tr', 'bm', 'tl']), [ids.gusset, ['d', 'c']]);
+      if (ziptop) zipClose(['tl', 'tr'], ids.gusset, ids.top, 'Top zip', type === 'pouch' ? 5 : 8, type === 'briefcase' ? 'two-way' : 'one-way', type === 'helmet' ? 'Full width at the top, under a flap' : 'Along the top', 'along its top edge');
+    };
+    shell('', frontSh, { gusset: 'gusset', zip: 'zip-gusset', base: 'base-gusset', top: 'top-panel' });
+    shell('lining-', linSh, { panel: 'lining', gusset: 'lining-gusset', zip: 'lining-zip-gusset', base: 'lining-base', top: 'lining-top' });
+    // an open top: how the outer's top edge and the lining's meet, and what closes it
+    if (!ziptop && !curved && type !== 'backpack') {
+      const topRing = [['front', ['tl', 'tr']], ['gusset', ['b', 'c']], ['back', ['tl', 'tr']], ['gusset', ['d', 'a']]];
+      if (type === 'drawstring') { // a drawcord channel sewn round the top, the lining caught in the same seam
+        const ring = r8(2 * W + 2 * D), ch = stripOf(ring + 1, 3);
+        add('channel', 'Drawcord channel', ch, { cut: 1, notes: ['Folded to 1¼ in round the top, its ends turned ½ in at the eyelets'], hidden: true, place: { view: 'back', x: 0, y: 0 } });
+        J('Drawcord channel round the top', ['channel', ['a', 'b']], topRing, { ease: [-1.125, -.875], why: 'round the front, a gusset end, the back and the other gusset end; the channel 1 in longer, its ends turned ½ in at the eyelets' });
+        F('Drawcord channel: its other long edge and its two ends', ['channel', ['b', 'c', 'd', 'a']], 'folded down onto its own seam; the ends turned');
+        const lid = panelU(r8(W * .9), r8(D + Math.max(3, H * .2)), 1.5);
+        add('lid', 'Lid flap', lid, { cut: 2, notes: [`Outer and lining; reaches across the ${D} in top and ${r8(Math.max(3, H * .2))} in down the front`, 'A zip pocket in the outer'], shown: at0(roundRect(W * .9, D * .4 + Math.max(3, H * .2), 1.5), -W * .45, -1), place: { view: 'front', x: 0, y: 0, z: 3 } });
+        F('Lid flap: its top edge', ['lid', ['tl', 'tr']], 'stitched to the back panel 1 in below its top');
+        F('Lid flap: its sides and front edge', ['lid', ['tr', 'bm', 'tl']], 'bagged out with its lining');
+        asm.push({ name: 'Lid flap reaches across the top and down the front', reach: 'lid', over: D, min: 2.5 });
+        trims.push({ item: 'Drawcord', spec: '4 mm braided', qty: `${r8(ring + 14)} in`, where: 'Channel' }, { item: 'Cord lock', spec: 'Single-hole, spring', qty: 1, where: 'Front' }, { item: 'Eyelet', spec: '6 mm, brass', qty: 2, where: 'Channel, centre front' }, { item: 'Side-release buckle', spec: '¾ in', qty: 2, where: 'Lid to front' }, { item: 'Webbing', spec: '¾ in nylon', qty: `${r8(4 * 6)} in`, where: 'Lid buckle straps' });
+        J('Lining: its top edge into the channel seam', topRing, [['lining', ['tl', 'tr'], 0], ['lining-gusset', ['b', 'c']], ['lining', ['tl', 'tr'], 1], ['lining-gusset', ['d', 'a']]], { caught: true, why: 'the lining is caught in the channel seam' });
+      } else {
+        J('Lining to the outer round the top: front', ['front', ['tl', 'tr']], ['lining', ['tl', 'tr'], 0], { why: turn ? 'the lining sewn to the edge of the turned-back top' : 'the top edges sewn together and turned' });
+        if (type === 'messenger') { // the flap sewn along the back's top edge, the lining caught under it
+          const drop = r8(Math.max(3, H * .7)), fl = panelU(W, r8(D + drop), 1);
+          add('flap', 'Flap', fl, { cut: 2, notes: [`Outer and lining; across the ${D} in top and ${drop} in down the front`], shown: at0(roundRect(W, drop + .6, 1), -hw, -.6), place: { view: 'front', x: 0, y: 0, z: 3 } });
+          J('Flap along the back panel\'s top edge', ['back', ['tl', 'tr']], ['flap', ['tl', 'tr'], 0], { why: 'the flap hinges on the back\'s top edge' });
+          J('Lining to the outer round the top: back', ['back', ['tl', 'tr']], ['lining', ['tl', 'tr'], 1], { caught: true, why: 'caught in the flap seam' });
+          F('Flap: its sides and front edge', ['flap', ['tr', 'bm', 'tl'], 0], 'bagged out with its lining');
+          F('Flap lining', ['flap', ['tl', 'tr', 'bm', 'tl'], 1], 'sewn round the flap and turned; its top edge closed in the flap seam');
+          asm.push({ name: 'Flap reaches across the top and down the front', reach: 'flap', over: D, min: 3 });
+          trims.push({ item: 'Side-release buckle', spec: '1 in, with a webbing tongue', qty: 2, where: 'Flap to front' }, { item: 'Webbing', spec: '1 in nylon', qty: `${r8(2 * (drop + 4))} in`, where: 'Flap buckle straps' }, { item: 'Hook-and-loop', spec: '2 in', qty: `${r8(W * .6)} in`, where: 'Under the flap' });
+        } else J('Lining to the outer round the top: back', ['back', ['tl', 'tr']], ['lining', ['tl', 'tr'], 1]);
+        J('Lining to the outer round the top: one gusset end', ['gusset', ['b', 'c']], ['lining-gusset', ['b', 'c']]);
+        J('Lining to the outer round the top: the other gusset end', ['gusset', ['d', 'a']], ['lining-gusset', ['d', 'a']]);
+        if (type === 'rolltop') trims.push({ item: 'Side-release buckle', spec: '1 in, acetal', qty: 2, where: 'The roll, to the sides' }, { item: 'Webbing', spec: '1 in nylon', qty: `${r8(H + 12)} in`, where: 'Side straps for the roll' }, { item: 'Stiffener', spec: 'HDPE strip, 1 in', qty: `${W} in`, where: 'In the roll edge' });
+        if (type === 'tote') trims.push({ item: 'Magnetic snap', spec: '18 mm', qty: 1, where: 'Centre top, inside' }, { item: 'Base board', spec: 'HDPE, 1.5 mm', qty: `${r8(W - .25)} × ${r8(D - .25)} in`, where: 'Under the lining, on the bottom' });
+      }
+    }
+    if (type === 'helmet') { const fl = rect(W, r8(D / 2 + 1)); pieces.push(piece('top-flap', 'Zip flap', fl, { cut: 2, notes: ['Outer and lining; sewn into the back top seam, over the top zip'], shown: at0(rect(W, 3.5), -hw, -.5), place: { view: 'front', x: 0, y: 0, z: 3 } })); }
+    // a pocket on the front: a patch with a zip across its top, its outline inside the panel's
+    if (['backpack', 'rolltop', 'briefcase', 'waist', 'helmet', 'sling'].includes(type)) {
+      let pk, at;
+      if (curved) { const k = .56, cx = W / 2, cy = H * .6; pk = frontSh.pts.map(([x, y]) => [(x - cx) * k + cx, (y - cy) * k + cy]); const b = boundsOf(pk); at = [b.x0, b.y0]; pk = pk.map(([x, y]) => [x - b.x0, y - b.y0]); }
+      else { const pw = r8(W * .7), ph = r8(H * .38); pk = roundRect(pw, ph, .75); at = [(W - pw) / 2, H * .5]; }
+      const pb = boundsOf(pk);
+      pieces.push(piece('front-pocket', 'Front pocket', pk, { cut: 2, notes: ['Outer and its bag; zipped across the top'], shown: at0(pk, at[0] - hw, at[1]), place: { view: 'front', x: 0, y: 0, z: 2 } }));
+      ON('Front pocket on the front panel', 'front-pocket', 'front', at);
+      const pz = zipTrim(5, 'one-way', zipLen(pb.w), 'Front pocket'); asm.push({ name: 'Front pocket zip across the pocket', fits: pz, within: r8(pb.w) });
+    }
+    if (type === 'backpack' || type === 'briefcase') { const sw = r8(W - 1.5), sh = r8(H * .8), sl = rect(sw, sh);
+      pieces.push(piece('sleeve', 'Laptop sleeve', sl, { cut: 2, hidden: true, notes: ['8 mm foam between; a hook-and-loop tab'], place: { view: 'back', x: 0, y: 0 } }));
+      ON('Laptop sleeve on the back lining', 'sleeve', 'back', [.75, H * .1]);
+      trims.push({ item: 'Foam', spec: '8 mm closed-cell', qty: `${sw} × ${sh} in`, where: 'Laptop sleeve' }, { item: 'Hook-and-loop', spec: '1 in', qty: '3 in', where: 'Sleeve tab' }); }
   }
   // how it is carried
-  if (pack) { const st = [[0, 0], [3, 0], [3, 7], [2.4, 18], [.6, 18], [0, 7]];
-    push(piece('strap', 'Shoulder strap', st, { cut: 4, pair: true, notes: ['Outer and spacer mesh, 10 mm foam between; bound edges'], shown: at0(st, -hw + 1, 1), place: { view: 'back', x: 0, y: 0, z: 3 } }), { ...piece('strap-2', 'Shoulder strap', st, { cut: 0, shown: at0(st, -hw + 1, 1), place: { view: 'back', x: 0, y: 0, flip: true, z: 3 } }), twin: true });
-    trims.push({ item: 'Webbing', spec: '1 in nylon', qty: '2 × 20 in', where: 'Strap ends' }, { item: 'Ladder lock', spec: '1 in', qty: 2, where: 'Strap ends, at the base' }, { item: 'Foam', spec: '10 mm closed-cell', qty: '2 straps', where: 'Shoulder straps' }, { item: 'Webbing', spec: '1 in nylon', qty: '7 in', where: 'Grab handle' }); }
-  if (['tote', 'helmet', 'briefcase', 'duffel'].includes(type)) { const len = type === 'tote' ? 24 : type === 'briefcase' ? 14 : type === 'helmet' ? 20 : 22, hdl = [[-.5, 0], [.5, 0], [.5, -len * .3], [-.5, -len * .3]], spread = W * (type === 'briefcase' ? .18 : .25);
-    const loop = (sg) => [[sg * spread - .5, .2], [sg * spread + .5, .2], [sg * spread * .45 + .5, -len * .32], [sg * spread * .45 - .5, -len * .32]];
-    push(piece('handle', 'Handle', rect(2.5, len), { cut: 2, notes: [type === 'tote' ? 'Self, folded to 1 in and edge-stitched' : 'Webbing or self, wrapped at the grip'], shown: loop(1), place: { view: 'front', x: 0, y: 0, z: 1 } }),
-      { ...piece('handle-2', 'Handle', rect(2.5, len), { cut: 0, shown: loop(-1), place: { view: 'front', x: 0, y: 0, z: 1 } }), twin: true },
-      { ...piece('handle-top', 'Handle', hdl, { cut: 0, shown: [[-spread, -len * .3], [spread, -len * .3], [spread * .9, -len * .34], [-spread * .9, -len * .34]], place: { view: 'front', x: 0, y: 0, z: 1 } }), twin: true }); }
-  if (['sling', 'messenger', 'briefcase', 'helmet', 'duffel', 'pouch'].includes(type)) trims.push({ item: 'Webbing', spec: `${type === 'messenger' ? '1½' : '1'} in nylon`, qty: `${type === 'pouch' ? 48 : 52} in`, where: 'Shoulder strap' }, { item: type === 'sling' ? 'Side-release buckle' : 'Swivel hook', spec: type === 'messenger' ? '1½ in, metal' : '1 in, metal', qty: type === 'sling' ? 1 : 2, where: 'Strap ends' }, { item: 'Slider', spec: 'Tri-glide, matching width', qty: 1, where: 'Strap adjuster' });
-  if (type === 'waist') trims.push({ item: 'Webbing', spec: '1 in nylon', qty: '42 in', where: 'Waist belt' }, { item: 'Side-release buckle', spec: '1 in, acetal', qty: 1, where: 'Belt' }, { item: 'Ladder lock', spec: '1 in', qty: 1, where: 'Belt adjuster' });
-  trims.push({ item: 'Binding tape', spec: '1 in grosgrain or nylon', qty: `${r8((2 * W + 2 * H) * 2 + 2 * D)} in`, where: 'Inside seams' }, { item: 'Thread', spec: 'Tex 70 bonded nylon', qty: 'about 120 m', where: 'Throughout' }, { item: 'Main label', spec: 'Woven, folded', qty: 1, where: 'Inside, top centre' });
+  if (pack) { const sw = Math.min(3, r8(hw - 1.25)), L = r8(Math.min(20, Math.max(14, H))), st = [[0, 0], [sw, 0], [sw, L * .4], [sw * .8, L], [sw * .2, L], [0, L * .4]];
+    const stShown = at0(st.map(([x, y]) => [x, y * Math.min(1, Math.max(4, H - 3) / L)]), -hw + 1, 1); // on the product the strap curves away to the base: drawn no longer than the back
+    pieces.push(piece('strap', 'Shoulder strap', st, { cut: 4, pair: true, notes: ['Outer and spacer mesh, 10 mm foam between; bound edges', 'Its top sewn to the back panel under a box stitch; 1 in webbing from its foot to a ladder lock at the base'], shown: stShown, place: { view: 'back', x: 0, y: 0, z: 3 } }), { ...piece('strap-2', 'Shoulder strap', st, { cut: 0, shown: stShown, place: { view: 'back', x: 0, y: 0, flip: true, z: 3 } }), twin: true });
+    const wl = Math.max(20, r8(H - L + 16)), gx = Math.max(.75, Math.min(2, hw - 1.75)); // the webbing from each strap's foot; where the grab handle's ends sit
+    asm.push({ name: 'Shoulder strap tops on the back panel', on: 'back', boxes: [[1, 1, 1 + sw, 3], [W - 1 - sw, 1, W - 1, 3]], clear: .75 },
+      { name: 'Grab handle ends on the back panel', on: 'back', boxes: [[hw - gx - .5, .75, hw - gx + .5, 1.75], [hw + gx - .5, .75, hw + gx + .5, 1.75]], clear: .5 },
+      { name: 'Shoulder straps let out, past the back they span', straps: 'strap', webbing: wl, sewn: 2, span: r8(H - 3), min: 12 });
+    trims.push({ item: 'Webbing', spec: '1 in nylon', qty: `2 × ${wl} in`, where: 'Strap ends, to the ladder locks' }, { item: 'Webbing', spec: '1 in nylon', qty: '2 × 4 in', where: 'Ladder lock tabs, sewn into the side seams at the base' }, { item: 'Ladder lock', spec: '1 in', qty: 2, where: 'Strap ends, at the base' },
+      { item: 'Foam', spec: '10 mm closed-cell', qty: `2 × ${sw} × ${L} in`, where: 'Shoulder straps' }, { item: 'Spacer mesh', spec: '3 mm', qty: `${W} × ${H} in and the strap undersides`, where: 'Back panel and straps' }, { item: 'Foam', spec: '8 mm closed-cell', qty: `${r8(W - .5)} × ${r8(H - .5)} in`, where: 'Back panel' },
+      { item: 'Webbing', spec: '1 in nylon', qty: '9 in', where: 'Grab handle' }); }
+  if (['tote', 'helmet', 'briefcase', 'duffel'].includes(type)) {
+    // a handle: its two ends stitched down `tail` in onto the panel, `spread` each side of the centre; long enough to rise `drop` when taut
+    const drop = type === 'tote' ? 11 : type === 'briefcase' ? 5 : type === 'helmet' ? 8 : 9, spread = Math.max(1.5, Math.min(W * (type === 'briefcase' ? .18 : .25), hw - 1.75)), tail_ = 2, free = r8(2 * Math.hypot(drop, spread)), len = r8(free + 2 * tail_);
+    const loop = sg => [[sg * spread - .5, .2], [sg * spread + .5, .2], [sg * spread * .45 + .5, -free * .32], [sg * spread * .45 - .5, -free * .32]];
+    pieces.push(piece('handle', 'Handle', rect(2, len), { cut: 2, notes: [type === 'tote' ? 'Self, folded to 1 in and edge-stitched' : 'Webbing or self, folded to 1 in, wrapped at the grip', `${free} in between its two ends; each end stitched down ${tail_} in under a box stitch`], shown: loop(1), place: { view: 'front', x: 0, y: 0, z: 1 } }),
+      { ...piece('handle-2', 'Handle', rect(2, len), { cut: 0, shown: loop(-1), place: { view: 'front', x: 0, y: 0, z: 1 } }), twin: true },
+      { ...piece('handle-top', 'Handle', [[-.5, 0], [.5, 0], [.5, -free * .3], [-.5, -free * .3]], { cut: 0, shown: [[-spread, -free * .3], [spread, -free * .3], [spread * .9, -free * .34], [-spread * .9, -free * .34]], place: { view: 'front', x: 0, y: 0, z: 1 } }), twin: true });
+    // where the ends land: on the front and back panels below the top (a duffel's on its body, each side of the zip)
+    const y0 = round ? 2 : .75, bx = (sg, y) => [hw + sg * spread - .5, y, hw + sg * spread + .5, y + tail_];
+    if (round) { const C = boundsOf(pieces.find(q => q.id === 'body').sew).h; asm.push({ name: 'Handle ends on the body, each side of the zip', on: 'body', boxes: [bx(-1, y0), bx(1, y0), bx(-1, C - y0 - tail_), bx(1, C - y0 - tail_)], clear: .5 }); }
+    else asm.push({ name: 'Handle ends on the front panel', on: 'front', boxes: [bx(-1, y0), bx(1, y0)], clear: .5 }, { name: 'Handle ends on the back panel', on: 'back', boxes: [bx(-1, y0), bx(1, y0)], clear: .5 });
+    asm.push( { name: 'Handle rises when taut', handle: 'handle', tails: tail_, spread, min: type === 'tote' ? 9 : 4 }); }
+  if (['sling', 'messenger', 'briefcase', 'helmet', 'duffel', 'pouch'].includes(type)) { const wide = type === 'messenger' ? '1½' : '1', n = type === 'sling' ? 1 : 2;
+    trims.push({ item: 'Webbing', spec: `${wide} in nylon`, qty: `${type === 'pouch' ? 48 : 52} in`, where: 'Shoulder strap' }, { item: type === 'sling' ? 'Side-release buckle' : 'Swivel hook', spec: `${wide} in, ${type === 'sling' ? 'acetal' : 'metal'}`, qty: n, where: 'Strap ends' }, { item: 'Slider', spec: `Tri-glide, ${wide} in`, qty: 1, where: 'Strap adjuster' });
+    if (type === 'sling') trims.push({ item: 'Webbing', spec: '1 in nylon', qty: '2 × 4 in', where: 'Strap tabs, sewn into the gusset at each side point' });
+    else trims.push({ item: 'D-ring', spec: `${wide} in, metal`, qty: 2, where: round ? 'The top of each end panel' : 'The top of each side, on the gusset' }, { item: 'Webbing', spec: `${wide} in nylon`, qty: '2 × 3 in', where: 'D-ring tabs, bartacked' }); }
+  if (type === 'waist') trims.push({ item: 'Webbing', spec: '1 in nylon', qty: '42 in', where: 'Waist belt, sewn into the gusset at each side point' }, { item: 'Side-release buckle', spec: '1 in, acetal', qty: 1, where: 'Belt' }, { item: 'Ladder lock', spec: '1 in', qty: 1, where: 'Belt adjuster' });
+  // one puller to each slider; binding for every inside seam of the shell
+  const zips = trims.filter(t => t.item === 'Zip'); if (zips.length) trims.push({ item: 'Zip puller', spec: 'Cord or moulded, to the zip', qty: zips.reduce((s, t) => s + (/two-way/.test(t.spec) ? 2 : 1), 0), where: 'One to each slider' });
+  const byId = Object.fromEntries(pieces.filter(q => q.at).map(q => [q.id, q])), lenOf = r => (Array.isArray(r[0]) ? r : [r]).reduce((s, [id, ks]) => s + pathOf({ pts: byId[id].sew, at: byId[id].at }, ...ks), 0);
+  const bound = asm.filter(e => e.b && !e.zip && !e.caught && !/^Lining/.test(e.name)).reduce((s, e) => s + lenOf(e.a), 0);
+  trims.push({ item: 'Binding tape', spec: '1 in grosgrain or nylon', qty: `${Math.ceil(bound * 1.08)} in`, where: 'Inside seams' }, { item: 'Thread', spec: 'Tex 70 bonded nylon', qty: 'about 120 m', where: 'Throughout' }, { item: 'Main label', spec: 'Woven, folded', qty: 1, where: 'Inside, top centre' });
   const ty = { rolltop: 'Rolltop backpack', backpack: 'Zip backpack', drawstring: 'Top-loader backpack', sling: 'Sling', tote: 'Tote', helmet: 'Helmet bag', briefcase: 'Work bag', messenger: 'Messenger', duffel: 'Duffel', waist: 'Waist bag', pouch: 'Shoulder pouch' }[type];
   // a piece not seen on the product (a gusset, a lining, a sleeve) sits under the panel there, inside its outline, so only the explode shows it
   for (const q of pieces) if (q.hidden && !q.shown) { const b = boundsOf(q.sew), sw = Math.min(b.w, W * .9), sh = Math.min(b.h, H * .9); q.shown = at0(rect(sw, sh), -sw / 2, .4); q.place = { ...q.place, x: 0, y: 0, z: -3 }; }
   pieces.trims = trims;
-  return { kind: 'bag', style: type, label: ty, size: `${W} × ${H} × ${D} in`, sa, construction: {}, pieces: [...pieces], trims, notes: ['Bag: ⅜ in seam allowance, seams bound inside', 'A first block from the size: sample it, then true the panels to the drawing'] };
+  return { kind: 'bag', style: type, label: ty, size: `${W} × ${H} × ${D} in`, sa, construction: {}, pieces: [...pieces], trims, assembly: asm, up: roll + turn, shell: Object.fromEntries(pieces.filter(q => q.at && q.fabric !== 'lining').map(q => [q.id, q])),
+    notes: ['Bag: ⅜ in seam allowance, seams bound inside', 'Every gusset is as long as the panel edge it is sewn round; the Sews together panel walks each seam', 'A first block from the size: sample it, then true the panels to the drawing'] };
 }
 
 // ---- plush ----
@@ -982,130 +1141,398 @@ function earOf(kind, w) {
   if (kind === 'pointed') return [[-w / 2, w], ...tail(cubic([-w / 2, w], [-w * .45, w * .45], [-w * .1, 0], [0, 0])), ...tail(cubic([0, 0], [w * .1, 0], [w * .45, w * .45], [w / 2, w]))];
   return [[-w / 2, w * .8], ...tail(cubic([-w / 2, w * .8], [-w * .62, 0], [w * .62, 0], [w / 2, w * .8]))];
 }
+// ---- plush: the seven fixed body types, drafted with how they go together ----
+// As a bag is: every piece that is sewn to another names the ends of the edge it is sewn by (`at`, with a notch where a factory needs one);
+// every piece that depends on another is sized from the edge it is sewn to, measured off that piece's outline (a head gusset as long, tip to
+// tip, as the head side's edge; a foot pad as far round as its leg's open end; a base as far round as the bottom edges; a body's neck the
+// head's; a lining its ear); and `assembly` lists every seam as the two runs sewn together, every edge finished on its own, and the stuffing
+// opening. src/lab-pattern-check.js walks the list. The toy is drafted, measured off its outlines, and drafted again until it stands the
+// height asked for (a sea creature: its length).
+const solveUp = (f, want, lo, hi) => { for (let k = 0; k < 48; k++) { const m = (lo + hi) / 2; if (f(m) < want) lo = m; else hi = m; } return (lo + hi) / 2; };
+// an outline smoothed round its control points, the named ones kept as its corners: [x, y, name?]
+const blobAt = (ctrl, k) => ({ pts: blob(ctrl.map(c => [c[0], c[1]]), k), at: Object.fromEntries(ctrl.filter(c => c[2]).map(c => [c[2], [c[0], c[1]]])) });
+// the run of a named outline from corner a to corner b that passes none of its other corners → { pts (a first), L, step }
+function cornerRun(sh, a, b) {
+  const P = sh.pts, n = P.length, ix = p => { let j = 0, d = Infinity; P.forEach((q, i) => { const e = Math.hypot(q[0] - p[0], q[1] - p[1]); if (e < d) { d = e; j = i; } }); return j; };
+  const i = ix(sh.at[a]), j = ix(sh.at[b]), others = new Set(Object.keys(sh.at).filter(k => k !== a && k !== b).map(k => ix(sh.at[k])));
+  const walk = step => { const pts = [P[i]]; let k = i, hit = false; for (let t = 0; t < n && k !== j; t++) { k = (k + step + n) % n; pts.push(P[k]); if (k !== j && others.has(k)) hit = true; } return { pts, hit, L: lenOf(pts), step }; };
+  const f = walk(1), r = walk(-1); return !f.hit ? f : !r.hit ? r : f.L <= r.L ? f : r;
+}
+// how far along the run from a to b the outline first meets `test`, and how far along it the outline comes nearest a point
+const distWhere = (sh, a, b, test) => { const r = cornerRun(sh, a, b).pts; let d = 0; for (let i = 0; i < r.length; i++) { if (i) d += Math.hypot(r[i][0] - r[i - 1][0], r[i][1] - r[i - 1][1]); if (test(r[i])) return d; } return d; };
+const distTo = (sh, a, b, pt) => { const r = cornerRun(sh, a, b).pts; let d = 0, best = Infinity, at = 0; for (let i = 0; i < r.length; i++) { if (i) d += Math.hypot(r[i][0] - r[i - 1][0], r[i][1] - r[i - 1][1]); const e = Math.hypot(r[i][0] - pt[0], r[i][1] - pt[1]); if (e < best) { best = e; at = d; } } return at; };
+// the mean height of an outline along the runs through the corners given (where a seam that is not level sits, once it is sewn to one that is)
+const levelOf = (sh, ...ks) => { let L = 0, m = 0; for (let i = 0; i + 1 < ks.length; i++) { const r = cornerRun(sh, ks[i], ks[i + 1]).pts; for (let j = 1; j < r.length; j++) { const d = Math.hypot(r[j][0] - r[j - 1][0], r[j][1] - r[j - 1][1]); L += d; m += d * (r[j][1] + r[j - 1][1]) / 2; } } return L ? m / L : 0; };
+// corners named along the run from a to b, each so far in from a ([name, distance]): a point is put on the outline at each, so a seam can be
+// walked to it and a notch cut there; the outline itself does not change
+function markRun(sh, a, b, marks) {
+  if (!marks.length) return sh;
+  const r = cornerRun(sh, a, b), P = sh.pts, n = P.length, m = r.pts.length - 1; let i0 = 0, bd = Infinity; P.forEach((q, i) => { const e = Math.hypot(q[0] - sh.at[a][0], q[1] - sh.at[a][1]); if (e < bd) { bd = e; i0 = i; } });
+  const ring = Array.from({ length: n }, (_, t) => P[((i0 + r.step * t) % n + n) % n]), ms = marks.map(([name, d]) => [name, Math.min(r.L, Math.max(0, d))]).sort((x, y) => x[1] - y[1]), out = []; let acc = 0, q = 0;
+  for (let t = 0; t < n; t++) { const p = ring[t], nx = ring[(t + 1) % n]; out.push(p); if (t >= m) continue; const seg = Math.hypot(nx[0] - p[0], nx[1] - p[1]);
+    while (q < ms.length && ms[q][1] <= acc + seg + 1e-9) { const f = seg ? (ms[q][1] - acc) / seg : 0, pt = f < 1e-6 ? p : f > 1 - 1e-6 ? nx : [p[0] + (nx[0] - p[0]) * f, p[1] + (nx[1] - p[1]) * f]; if (pt !== p && pt !== nx) out.push(pt); sh.at[ms[q][0]] = [pt[0], pt[1]]; q++; }
+    acc += seg; }
+  sh.pts = out; return sh;
+}
+// a gusset drafted along the seam it is sewn into: S the seam's length, `prof` its half width at distances along it ([s, w], from 0 at one
+// tip to 0 at the other), `marks` the seam's notches ([name, distance]) → { pts, at }: its tips t0 and t1, and each mark on its right edge
+// (nameR) and its left (nameL). Each edge is exactly S long, and each mark as far along it as it is along the seam.
+function gussetAlong(S, prof, marks = []) {
+  const N = 48, P = prof.filter((p, i) => !i || p[0] > prof[i - 1][0] + 1e-6), lin = s => { let i = 1; while (i < P.length - 1 && P[i][0] < s) i++; const [s0, w0] = P[i - 1], [s1, w1] = P[i]; return w0 + (w1 - w0) * Math.min(1, Math.max(0, (s - s0) / ((s1 - s0) || 1))); };
+  let st = Array.from({ length: N + 1 }, (_, i) => [S * i / N, lin(S * i / N)]);
+  for (let k = 0; k < 6; k++) st = st.map((p, i) => (i === 0 || i === N ? [p[0], 0] : [p[0], (st[i - 1][1] + 2 * p[1] + st[i + 1][1]) / 4]));
+  const wAt = s => { const i = Math.min(N - 1, Math.max(0, Math.floor(s / S * N))), f = (s - st[i][0]) / (S / N); return st[i][1] + (st[i + 1][1] - st[i][1]) * f; };
+  const all = [...st.map(p => [p[0], p[1], null]), ...marks.map(([name, d]) => { const s = Math.min(S, Math.max(0, d)); return [s, wAt(s), name]; })].sort((a, b) => a[0] - b[0]);
+  const right = [], at = {}; let y = 0, ps = 0, pw = 0;
+  for (const [s, w0, name] of all) { const ds = s - ps; let w = w0; if (Math.abs(w - pw) > ds * .95) w = pw + Math.sign(w - pw) * ds * .95; y += Math.sqrt(Math.max(0, ds * ds - (w - pw) ** 2)); right.push([w, y]); if (name) { at[name + 'R'] = [w, y]; at[name + 'L'] = [-w, y]; } ps = s; pw = w; }
+  return { pts: [...right, ...right.slice(1, -1).reverse().map(([x, yy]) => [-x, yy])], at: { t0: [0, 0], t1: [0, y], ...at } };
+}
+// an oval as far round as the edges sewn to it, its ends and its sides named (a foot pad in a leg's open end, a base in a body's bottom edges)
+function ovalRound(rx, ry, round, n, names) { const k = round / lenOf([...ellipse(rx, ry, n), [rx, 0]]); return { pts: ellipse(rx * k, ry * k, n), at: { [names[0]]: [rx * k, 0], [names[1]]: [0, ry * k], [names[2]]: [-rx * k, 0], [names[3]]: [0, -ry * k] } }; }
+// an ear with the ends of the edge it is sewn in by (b0, b1) and its tip named
+function earAt(kind, w) {
+  return { pts: earOf(kind, w), at: kind === 'floppy' ? { b0: [w * .5, -w * .1], b1: [-w * .5, -w * .1], tip: [0, w * 1.75] } : kind === 'long' ? { b0: [w * .55, w * 2.5], b1: [-w * .55, w * 2.5], tip: [0, 0] }
+    : kind === 'pointed' ? { b0: [w / 2, w], b1: [-w / 2, w], tip: [0, 0] } : { b0: [w / 2, w * .8], b1: [-w / 2, w * .8], tip: [0, w * .2] } };
+}
+// a four-legged body's tail, its base (b0 to b1) and its tip named
+const tailAt = (type, h) => (type === 'bushy' ? blobAt([[0, 0, 'b0'], [h * .07, -h * .02, 'b1'], [h * .1, h * .14], [h * .05, h * .32, 'tip'], [-h * .03, h * .28], [-h * .04, h * .1]], .8)
+  : type === 'short' ? (e => ({ pts: e, at: { b0: e[4], b1: e[8], tip: e[18] } }))(ellipse(h * .05, h * .06, 24))
+  : type === 'hair' ? { pts: rect(r8(h * .1), r8(h * .3)), at: { b0: [0, 0], b1: [r8(h * .1), 0], tip: [r8(h * .1), r8(h * .3)] } }
+  : (L => blobAt([[0, 0, 'b0'], [h * .03, 0, 'b1'], [h * .028, L], [0, L, 'tip']], .4))(type === 'tuft' ? h * .22 : h * .34));
+// where a part's base goes in a seam: centred on c, kept ⅛ in (at 12 in) inside the stretch from lo to hi
+const slotAt = (c, len, lo, hi, h) => { const m = h * .01; return hi - lo < len + 2 * m ? (lo + hi) / 2 : Math.min(hi - len / 2 - m, Math.max(lo + len / 2 + m, c)); };
+// a stuffing opening `want` long, centred in the free stretch of a seam from d0 to d1, more than ⅜ in of seam sewn beyond each end
+const openIn = (d0, d1, want) => { const len = Math.max(0, Math.min(want, d1 - d0 - .85)), c = (d0 + d1) / 2; return [c - len / 2, c + len / 2, len]; };
+const SIDES = [[0, 'right', 'R'], [1, 'left', 'L']];
+const SEAM_WORDS = { nose: 'the nose', trunk: 'the tip of the trunk', brow: 'the brow', root: 'the root of the trunk', back: 'the back of the head', nape: 'the back of the neck', top: 'the top', sh: 'the neck', nb: 'the neck', nc: 'the neck', crotch: 'the crotch', seat: 'the seat', hip: 'the hip notch', ch: 'the chest', lf: 'the front leg notch', hl: 'the hind leg notch',
+  st: 'the tail stock', sb: 'the tail stock', bs: 'the base', br: 'the base', bl: 'the base', bc: 'the base', bm: 'the bottom', tm: 'the top', tl: 'the tail notch' };
+const SLOT_WORDS = { e: 'the ear', a: 'the arm', d: 'the dorsal fin', f: 'the fin', tl: 'the tail', o: 'the opening' };
+// the parts of a seam walked from mark to mark, in words: 'the nose to the ear', 'under the ear', 'the stuffing opening'
+const partsOf = ks => ks.slice(1).map((b, i) => { const a = ks[i], sa = a.replace(/[01][ABRL]?$/, ''), sb = b.replace(/[01][ABRL]?$/, ''), slot = /[01][ABRL]?$/.test(a) && /[01][ABRL]?$/.test(b) && sa === sb && a !== b;
+  const w = k => SEAM_WORDS[k.replace(/[ABRL]$/, '')] || SLOT_WORDS[k.replace(/[01][ABRL]?$/, '')] || k;
+  return slot ? (sa === 'o' ? 'the stuffing opening (closed by hand)' : `under ${SLOT_WORDS[sa] || sa}`) : `${w(a)} to ${w(b)}`; });
+
+function draftFixed(s, h) {
+  const pieces = [], notes = [], asm = [], ears = s.ears !== 'none';
+  // a piece with its corners named: each name is put on the nearest point of the outline as it is cut (tidied), so a seam is always walked
+  // between two points of the outline itself, on the smallest toy as on the largest
+  const add = (id, name, sh, o = {}) => { const q = piece(id, name, sh.pts, o), on = p => q.sew.reduce((m, v) => (Math.hypot(v[0] - p[0], v[1] - p[1]) < Math.hypot(m[0] - p[0], m[1] - p[1]) ? v : m), q.sew[0]).slice();
+    q.at = Object.fromEntries(Object.entries(sh.at).map(([k, p]) => [k, on(p)])); q.notches = (o.notch || []).filter(k => q.at[k]).map(k => q.at[k]); pieces.push(q); return q; };
+  const twin = (id, name, sh, o = {}) => pieces.push(piece(id, name, sh.pts, { ...o, cut: 0 }));
+  const J = (name, a, b, o = {}) => asm.push({ name, a, b, ...o }), F = (name, a, fin) => asm.push({ name, a, fin });
+  // one seam walked in parts, from mark to mark: the same marks along both sides
+  const walk = (name, [ia, ka, ca], [ib, kb, cb], o = {}) => { const parts = partsOf(ka); for (let i = 0; i + 1 < ka.length; i++) J(ka.length > 2 ? `${name}: ${parts[i]}` : name, [ia, [ka[i], ka[i + 1]], ca], [ib, [kb[i], kb[i + 1]], cb], i ? {} : o); };
+  // a gusset down a seam, walked each side: the host's corners along it, the gusset's marks named after them
+  const gusseted = (name, host, hc, gid) => { for (const [k, sd, X] of SIDES) walk(`${name}, ${sd} side`, [host, hc, k], [gid, hc.map((c, i) => (i === 0 ? 't0' : i === hc.length - 1 ? 't1' : c + X)), 0]); };
+  // a part in layers (an ear, an arm, a fin, a tail): sewn round from one end of its base to the other and turned, its base caught in a seam
+  // between two notches (`take`: what a pleat takes up of the base)
+  const caught = (what, id, copies, host, where, take = 0) => { if (copies.length > 1) J(`${what}: outer to inner`, [id, ['b0', 'tip', 'b1'], copies[0]], [id, ['b0', 'tip', 'b1'], copies[1]], { why: 'sewn round and turned through its base' });
+    copies.forEach((c, i) => J(`${what} caught in ${where}${copies.length > 1 ? (i ? ' (inner layer)' : ' (outer layer)') : ''}`, host, [id, ['b0', 'b1'], c], { caught: true, ...(take ? { gap: -take } : {}), why: take ? `its base, less the ${r8(take)} in its pleat takes up, lies in the seam between the two notches` : 'its base lies in the seam between the two notches' })); };
+  const open = (name, id, ks, len) => asm.push({ name, open: [id, [ks[1], ks[2]], 0], len: r3(len), ends: [[id, [ks[0], ks[1]], 0], [id, [ks[2], ks[3]], 0]] });
+  const said = v => r8(Math.max(.125, v));
+  let made = h;
+
+  if (s.shape === 'bear') {
+    const hh = h * .42 * s.head, hw = hh * 1.05, bh = h * .44, bw = bh * .78, legH = h * .26, armL = h * .3, mz = s.snout === 'long' ? 1.45 : 1;
+    // the head: two sides (the head in profile, the nose at x = 0) and a gusset from the nose over the crown to the back of the neck, as long
+    // as the head side's edge it is sewn along; the ears caught in the gusset seam
+    const head = blobAt([[0, hh * .6, 'nose'], [hw * .12, hh * .22], [hw * .42, 0], [hw * .62, hh * .28], [hw * .6, hh * .78, 'nape'], [hw * .28, hh * .98], [hw * .06, hh * .84, 'throat']], .75);
+    const ear = ears ? earAt(s.ears, hh * (s.ears === 'long' ? .22 : .32)) : null, eb = ear ? cornerRun(ear, 'b0', 'b1').L : 0, S = cornerRun(head, 'nose', 'nape').L, gm = [];
+    if (ear) { const c = slotAt(distTo(head, 'nose', 'nape', [hw * .42, 0]) + eb * .25, eb, 0, S, h); gm.push(['e0', c - eb / 2], ['e1', c + eb / 2]); markRun(head, 'nose', 'nape', gm); }
+    const gus = gussetAlong(S, [[0, 0], [S * .2, hw * .16], [S * .72, hw * .2], [S, 0]], gm), hc = ear ? ['nose', 'e0', 'e1', 'nape'] : ['nose', 'nape'];
+    add('head-side', 'Head side', head, { cut: 2, pair: true, notch: ['nose', 'e0', 'e1', 'nape', 'throat'], notes: ['Notches: the nose point (the gusset\'s tip), the back of the neck (its other tip), the throat (where the chin seam ends)' + (ear ? ', and the two ear notches' : '')], place: { view: 'front', x: -hw * .1, y: 0, flip: true, z: 2 } });
+    twin('head-side-2', 'Head side', head, { place: { view: 'front', x: hw * .1, y: 0, z: 2 } });
+    add('gusset', 'Head gusset', gus, { cut: 1, notch: ['e0R', 'e1R', 'e0L', 'e1L'], notes: [`From the nose over the crown to the back of the neck: ${said(S)} in along each edge, as the head side's edge is`], shown: blob([[0, 0], [hw * .16, hh * .25], [hw * .2, hh * .9], [0, hh * 1.25], [-hw * .2, hh * .9], [-hw * .16, hh * .25]], .9), place: { view: 'front', x: 0, y: hh * .05, z: 3 } });
+    gusseted('Head gusset to the head side', 'head-side', hc, 'gusset');
+    J('Chin seam: head side to head side, nose to throat', ['head-side', ['nose', 'throat'], 0], ['head-side', ['nose', 'throat'], 1]);
+    if (s.snout !== 'none') { const rx = hw * .2 * mz; add('muzzle', 'Muzzle', { pts: ellipse(rx, hh * .14 * mz, 32), at: { e: [rx, 0], w: [-rx, 0] } }, { cut: 1, fabric: 'contrast', notes: [s.snout === 'long' ? 'A long muzzle: darted to stand out from the face, stuffed firm' : 'Contrast fabric', 'The nose embroidered with satin stitch'], place: { view: 'front', x: 0, y: hh * .66, z: 5 } });
+      F('Muzzle: appliquéd on the face', ['muzzle', ['e', 'w', 'e']], 'its edge turned under and stitched down over the nose point, across the chin seam'); }
+    // the body: two fronts and two backs. Its neck is the head's: each quarter (sloping from the centre seam down to the shoulder) half of a
+    // head side's neck edge. The back is 6% fuller than the front, its length trued so its side seam walks the front's.
+    const nq = cornerRun(head, 'throat', 'nape').L / 2, half = (kx, ky) => { const sh = [nq * .92, nq * .392], cr = [0, bh * ky]; return { pts: [[0, 0], ...smoothThrough([sh, [bw * .52 * kx, bh * .45 * ky], [bw * .48 * kx, bh * .9 * ky], cr], 8)], at: { nc: [0, 0], sh, crotch: cr } }; };
+    const front = half(1, 1), sideL = cornerRun(front, 'sh', 'crotch').L, ky = solveUp(k => cornerRun(half(1.06, k), 'sh', 'crotch').L, sideL, .7, 1.2), back = half(1.06, ky), sm = [];
+    const arm = s.arms ? blobAt([[0, 0, 'b0'], [armL * .32, 0, 'b1'], [armL * .36, armL * .78], [armL * .18, armL, 'tip'], [-armL * .02, armL * .8]], .8) : null;
+    if (arm) { const ab = cornerRun(arm, 'b0', 'b1').L; sm.push(['a0', h * .02], ['a1', h * .02 + ab]); }
+    if (s.legs) sm.push(['hip', Math.max(distWhere(front, 'sh', 'crotch', p => p[1] >= bh * .78), (arm ? sm[1][1] : 0) + h * .02)]);
+    markRun(front, 'sh', 'crotch', sm); markRun(back, 'sh', 'crotch', sm);
+    const cb = cornerRun(back, 'nc', 'crotch').L, [o0, o1, ol] = openIn(0, cb, Math.max(2.5, h * .22)); markRun(back, 'nc', 'crotch', [['o0', o0], ['o1', o1]]);
+    const sc = ['sh', ...sm.map(x => x[0]), 'crotch'];
+    add('body-front', 'Body front', front, { cut: 2, pair: true, notch: sm.map(x => x[0]), notes: ['Centre-front seam', `The neck edge is half of a head side's neck edge (${said(nq)} in)`], place: { view: 'front', x: 0, y: hh * .92, z: 1 } });
+    twin('body-front-2', 'Body front', front, { place: { view: 'front', x: 0, y: hh * .92, flip: true, z: 1 }, hidden: true });
+    add('body-back', 'Body back', back, { cut: 2, pair: true, notch: [...sm.map(x => x[0]), 'o0', 'o1'], notes: [`Leave a ${said(ol)} in opening in the centre-back seam, between its two notches, to stuff; closed by hand with a ladder stitch`], place: { view: 'back', x: 0, y: hh * .92 } });
+    twin('body-back-2', 'Body back', back, { place: { view: 'back', x: 0, y: hh * .92, flip: true } });
+    for (const [k, sd] of SIDES) { J(`Head onto the neck, ${sd} side`, ['head-side', ['throat', 'nape'], k], [['body-front', ['nc', 'sh'], k], ['body-back', ['nc', 'sh'], k]], { why: 'a head side\'s neck edge onto a front\'s and a back\'s' });
+      walk(`Side seam, ${sd}: front to back`, ['body-front', sc, k], ['body-back', sc, k]); }
+    J('Centre-front seam', ['body-front', ['nc', 'crotch'], 0], ['body-front', ['nc', 'crotch'], 1]);
+    walk('Centre-back seam', ['body-back', ['nc', 'o0', 'o1', 'crotch'], 0], ['body-back', ['nc', 'o0', 'o1', 'crotch'], 1]);
+    open('Stuffing opening in the centre-back seam', 'body-back', ['nc', 'o0', 'o1', 'crotch'], ol);
+    if (arm) { for (const sg of [1, -1]) (sg > 0 ? add : twin)(sg > 0 ? 'arm' : 'arm-2', 'Arm', arm, { cut: 4, pair: true, notes: sg > 0 ? ['Two pairs: inner and outer', 'Its top caught in the side seam between the two arm notches'] : [], place: { view: 'front', x: sg * bw * .42, y: hh * 1.02, rot: sg * -28, flip: sg < 0, z: 4 }, hidden: sg < 0 });
+      for (const [k, sd] of SIDES) caught(`Arm, ${sd}`, 'arm', [2 * k, 2 * k + 1], ['body-front', ['a0', 'a1'], k], 'the side seam'); }
+    let leg = null;
+    if (s.legs) { leg = blobAt([[0, 0, 't0'], [legH * .45, 0, 't1'], [legH * .5, legH * .7], [legH * .75, legH, 'toe'], [0, legH, 'heel']], .8); const round = 2 * cornerRun(leg, 'toe', 'heel').L, pad = ovalRound(legH * .28, legH * .2, round, 28, ['toe', 'out', 'heel', 'in']);
+      for (const sg of [1, -1]) (sg > 0 ? add : twin)(sg > 0 ? 'leg' : 'leg-2', 'Leg', leg, { cut: 4, pair: true, notes: sg > 0 ? ['Two pairs: inner and outer, the pad set into the open foot', 'Stuffed, its top closed and ladder-stitched to the body, its two top corners level with the hip notch (its rounded top laps the body above it)'] : [], place: { view: 'front', x: sg * bw * .08 + (sg < 0 ? -legH * .75 : 0), y: hh * .92 + bh * .78, flip: sg < 0, z: 5 }, hidden: sg < 0 });
+      add('foot-pad', 'Foot pad', pad, { cut: 2, fabric: 'contrast', notch: ['toe', 'heel'], notes: [`Contrast, set into the bottom of each leg: ${said(round)} in round, as the leg's open foot is`, 'Notches: the toe and the heel, where the leg seams meet it'], place: { view: 'back', x: 0, y: h * .96, z: 3 } });
+      for (const [k, sd] of SIDES) { J(`Leg, ${sd}: front seam, inner to outer`, ['leg', ['t1', 'toe'], 2 * k], ['leg', ['t1', 'toe'], 2 * k + 1]); J(`Leg, ${sd}: back seam, inner to outer`, ['leg', ['t0', 'heel'], 2 * k], ['leg', ['t0', 'heel'], 2 * k + 1]);
+        J(`Foot pad into the ${sd} leg: outer half`, ['leg', ['toe', 'heel'], 2 * k], ['foot-pad', ['toe', 'out', 'heel'], k], { why: 'half the pad\'s round to each layer of the leg' }); J(`Foot pad into the ${sd} leg: inner half`, ['leg', ['toe', 'heel'], 2 * k + 1], ['foot-pad', ['heel', 'in', 'toe'], k]);
+        for (const c of [2 * k, 2 * k + 1]) F(`Leg, ${sd}: its top`, ['leg', ['t0', 't1'], c], 'turned in, closed after stuffing and ladder-stitched to the body at the hip notch'); } }
+    if (ear) { for (const sg of [1, -1]) (sg > 0 ? add : twin)(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: 4, pair: true, notes: sg > 0 ? ['Two outer, two inner (inner in contrast if you like)', 'Its base caught in the gusset seam between the two ear notches'] : [], place: { view: 'front', x: sg * hw * .42, y: s.ears === 'long' ? -hh * .22 * 2.5 : -hh * .16, rot: sg * 12, z: 1 }, hidden: sg < 0 });
+      for (const [k, sd] of SIDES) caught(`Ear, ${sd}`, 'ear', [2 * k, 2 * k + 1], ['head-side', ['e0', 'e1'], k], 'the gusset seam'); }
+    notes.push(`Face: ${PLUSH_EYES[s.eyes]}, about ${r8(hh * .3)} in apart, on the line ${r8(hh * .52)} in below the top of the head`);
+    // its height: the head above its neck seam, the body down to the hip notch and the leg below it, its top corners at the notch (or the
+    // body alone, with no legs)
+    made = levelOf(head, 'throat', 'nape') - boundsOf(head.pts).y0 - levelOf(front, 'nc', 'sh') + (leg ? front.at.hip[1] + boundsOf(leg.pts).y1 : boundsOf(front.pts).y1);
+  } else if (s.shape === 'quad' || s.shape === 'elephant') {
+    // sitting on its seat, four legs: the head in two sides with a gusset from the nose (an elephant's: the tip of its trunk) over the brow and
+    // the crown to the back of the head; the body in two sides with an underbody gusset from the chest to the seat; the head sits on the
+    // body's top and the top of its chest; front legs to the ground, hind legs on the haunch, every leg on a pad; a tail in the back seam
+    const el = s.shape === 'elephant', hh = el ? h * .46 : h * .42 * s.head, hw = hh, tr = h * .34, bh = h * .58, bw = h * .62, legF = h * (el ? .3 : .32), legB = h * .22, sl = el ? 0 : { none: 0, short: .14, long: .32, broad: .3 }[s.snout] * hh;
+    const head = el ? blobAt([[0, hh * .5, 'brow'], [hw * .1, hh * .16], [hw * .4, 0], [hw * .66, hh * .14], [hw * .72, hh * .5, 'back'], [hw * .5, hh * .86], [hw * .22, hh * .9, 'throat'], [hw * .1, hh * .9 + tr * .5], [hw * .06, hh * .9 + tr], [-hw * .1, hh * .9 + tr * .98, 'trunk'], [-hw * .02, hh * .9 + tr * .5], [-hw * .04, hh * .78, 'root']], .7)
+      : blobAt(sl ? [[0, hh * .42, 'brow'], [hw * .12, hh * .12], [hw * .42, 0], [hw * .68, hh * .18], [hw * .72, hh * .55, 'back'], [hw * .5, hh * .9], [hw * .2, hh * .94, 'throat'], [-sl * .7, hh * .82], [-sl, hh * .66, 'nose'], [-sl * .85, hh * .52]]
+        : [[0, hh * .42, 'nose'], [hw * .12, hh * .12], [hw * .42, 0], [hw * .68, hh * .18], [hw * .72, hh * .55, 'back'], [hw * .5, hh * .9], [hw * .2, hh * .94, 'throat'], [-hw * .02, hh * .72]], .75);
+    // the gusset seam, from the nose: the marks before the crown, then the ears
+    const nz = el ? 'trunk' : 'nose', g0 = el || sl ? 'brow' : 'nose', pre = el ? [['root', cornerRun(head, 'trunk', 'root').L], ['brow', cornerRun(head, 'trunk', 'root').L + cornerRun(head, 'root', 'brow').L]] : sl ? [['brow', cornerRun(head, 'nose', 'brow').L]] : [];
+    const S0 = pre.length ? pre[pre.length - 1][1] : 0, S1 = cornerRun(head, g0, 'back').L, S = S0 + S1, earW = hw * .9, ew = hh * (s.ears === 'long' ? .2 : s.ears === 'big' ? .5 : s.ears === 'floppy' ? .3 : .28);
+    const ear = el ? blobAt([[0, 0, 'b0'], [earW * .42, -earW * .12], [earW * .78, earW * .12], [earW * .82, earW * .62, 'tip'], [earW * .5, earW * 1.02], [earW * .12, earW * .9, 'b1'], [-earW * .04, earW * .5]], .85)
+      : ears ? earAt(s.ears, ew) : null;
+    const eb = ear ? cornerRun(ear, 'b0', 'b1').L : 0, pleat = el ? eb * .25 : 0, slot = eb - pleat, em = [];
+    if (ear) { const c = slotAt(distTo(head, g0, 'back', [hw * (el ? .4 : .42), 0]) + slot * .25, slot, 0, S1, h); em.push(['e0', c - slot / 2], ['e1', c + slot / 2]); markRun(head, g0, 'back', em); }
+    const gm = [...pre, ...em.map(([n, d]) => [n, S0 + d])], hc = [nz, ...gm.map(x => x[0]), 'back'];
+    const gus = gussetAlong(S, el ? [[0, 0], [hw * .14, hw * .07], [pre[0][1] * .55, hw * .1], [pre[0][1], hw * .14], [S0 + S1 * .12, hw * .21], [S0 + S1 * .45, hw * .22], [S0 + S1 * .8, hw * .17], [S, 0]]
+      : sl ? [[0, 0], [hw * .12, hw * .06], [S0 * .85, hw * .09], [S0 + S1 * .2, hw * .19], [S0 + S1 * .55, hw * .2], [S0 + S1 * .82, hw * .16], [S, 0]] : [[0, 0], [hw * .14, hw * .08], [S * .3, hw * .19], [S * .6, hw * .2], [S * .84, hw * .16], [S, 0]], gm);
+    const hname = el ? 'Head side and trunk' : sl ? 'Head side and snout' : 'Head side';
+    add('head-side', hname, head, { cut: 2, pair: true, notch: [nz, ...gm.map(x => x[0]), 'back', 'throat'], notes: [el ? 'Cut in one with the trunk: the two sides meet round the tip of the trunk and up its underside to the throat' : sl ? 'Cut in one with the snout: the two sides meet under the snout and the chin' : 'The two sides meet under the chin',
+      `Notches: ${el ? 'the tip of the trunk (the gusset\'s tip), the root of the trunk, the brow' : sl ? 'the nose (the gusset\'s tip), the brow' : 'the brow (the gusset\'s tip)'}${ear ? ', the two ear notches' : ''}, the back of the head (the gusset's other tip), the throat`], place: { view: 'front', x: -hw * .08, y: 0, flip: true, z: 3 } });
+    twin('head-side-2', hname, head, { place: { view: 'front', x: hw * .08, y: 0, z: 3 }, hidden: true });
+    add('gusset', el ? 'Head and trunk gusset' : 'Head gusset', gus, { cut: 1, notch: gm.flatMap(x => [x[0] + 'R', x[0] + 'L']), notes: [`${el ? 'From the tip of the trunk up its top, over the brow and the crown to the back of the head' : sl ? 'From the nose up the top of the snout, over the brow and the crown to the back of the head' : 'From the brow over the crown to the back of the head'}: ${said(S)} in along each edge, as the head side's edge is`, 'Its notches match the head side\'s'],
+      shown: el ? blob([[0, 0], [hw * .2, hh * .3], [hw * .22, hh * .8], [hw * .1, hh + tr * .6], [0, hh + tr * .95], [-hw * .1, hh + tr * .6], [-hw * .22, hh * .8], [-hw * .2, hh * .3]], .9) : blob([[0, 0], [hw * .18, hh * .3], [hw * .2, hh * .8], [hw * .08, hh + sl * .9], [0, hh + sl], [-hw * .08, hh + sl * .9], [-hw * .2, hh * .8], [-hw * .18, hh * .3]], .9), place: { view: 'front', x: 0, y: 0, z: 4 } });
+    gusseted(el ? 'Head and trunk gusset to the head side' : 'Head gusset to the head side', 'head-side', hc, 'gusset');
+    J(el ? 'Trunk seam: head side to head side, round the tip of the trunk and up its underside to the throat' : sl ? 'Chin seam: head side to head side, under the snout from the nose to the throat' : 'Chin seam: head side to head side, brow to throat', ['head-side', [nz, 'throat'], 0], ['head-side', [nz, 'throat'], 1]);
+    if (sl) { const rx = Math.max(hw * .09, .2); add('nose', 'Nose', { pts: ellipse(rx, Math.max(hw * .065, .145), 24), at: { e: [rx, 0], w: [-rx, 0] } }, // no smaller than can be cut and stitched down
+      { cut: 1, fabric: 'contrast', notes: ['Felt or leather, appliquéd on the tip of the snout before it is closed (or embroidered, satin stitch)'], place: { view: 'front', x: 0, y: hh * .62, z: 6 } });
+      F('Nose: appliquéd on the tip of the snout', ['nose', ['e', 'w', 'e']], 'stitched down over the gusset\'s tip before the snout is closed'); }
+    if (el) { for (const sg of [1, -1]) (sg > 0 ? add : twin)(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: 2, pair: true, notes: sg > 0 ? ['Two in self (the backs)', `Its base pleated (${said(pleat)} in taken up) into the gusset seam between the two ear notches`] : [], place: { view: 'front', x: sg * hw * .42 + (sg < 0 ? -earW * .8 : 0), y: hh * .12, flip: sg < 0, z: 1 }, hidden: sg < 0 });
+      add('ear-lining', 'Ear lining', { pts: ear.pts, at: ear.at }, { cut: 2, pair: true, fabric: 'contrast', notes: ['Contrast: the face of each ear, the size of the ear; sewn to the back right sides together, turned, topstitched, then pleated with it into the gusset seam'], place: { view: 'front', x: hw * .45, y: hh * .14, z: 2 }, hidden: true });
+      for (const [k, sd] of SIDES) { J(`Ear, ${sd}: back to lining`, ['ear', ['b0', 'tip', 'b1'], k], ['ear-lining', ['b0', 'tip', 'b1'], k], { why: 'sewn round and turned through its base' });
+        for (const id of ['ear', 'ear-lining']) J(`${id === 'ear' ? 'Ear' : 'Ear lining'}, ${sd}, pleated into the gusset seam`, ['head-side', ['e0', 'e1'], k], [id, ['b0', 'b1'], k], { caught: true, gap: -pleat, why: `its base, less the ${said(pleat)} in its pleat takes up, lies in the seam between the two ear notches` }); } }
+    // the body: its neck opening is the head's neck edge, along its top and down the top of its chest; the chest seam below it; then the
+    // underbody gusset, as long as the body's edge from the chest round under it to the seat
+    const body = blobAt([[0, 0, 'top0'], [bw * .3, -bh * .02, 'nb'], [bw * .62, bh * .2], [bw * .74, bh * .6], [bw * .62, bh * .96, 'seat'], [bw * .2, bh], [-bw * .02, bh * .7], [-bw * .06, bh * .3]], .8);
+    const legOf = ky => blobAt([[0, 0, 't0'], [legF * (el ? .44 : .4), 0, 't1'], [legF * (el ? .48 : .44), legF * ky, 'toe'], [-legF * .04, legF * ky, 'heel']], .6);
+    const N = cornerRun(head, 'back', 'throat').L, under0 = cornerRun(body, 'top0', 'seat').L, ground = boundsOf(body.pts).y1;
+    const dnf = Math.max(h * .02, N - cornerRun(body, 'nb', 'top0').L), dch = Math.max(distTo(body, 'top0', 'seat', [-bw * .06, bh * .3]), dnf + h * .03), dlf = Math.max(dch + h * .03, distWhere(body, 'top0', 'seat', p => p[1] >= ground - boundsOf(legOf(1).pts).y1));
+    const dB5 = distTo(body, 'top0', 'seat', [bw * .2, bh]), dhl = Math.max(dlf + h * .03, dB5 + (under0 - dB5) * .45);
+    markRun(body, 'top0', 'seat', [['nf', dnf], ['ch', dch], ['lf', dlf], ['hl', dhl]]);
+    // the front leg is as long as the drop from its notch to the ground, so its sole is level with the seat; the hind foot is made as far
+    // round as the front one, so one pad fits all four
+    const lky = solveUp(k => boundsOf(legOf(k).pts).y1, ground - body.at.lf[1], .3, 2.5), legFr = legOf(lky), foot = cornerRun(legFr, 'toe', 'heel').L;
+    const hind = kx => blobAt([[0, 0, 't0'], [legB * .6 * kx, -legB * .1, 't1'], [legB * .8 * kx, legB * .7, 'toe'], [legB * .1 * kx, legB * .8, 'heel']], .7), kx = solveUp(k => cornerRun(hind(k), 'toe', 'heel').L, foot, .5, 2.5), legHi = hind(kx);
+    const US = under0 - dch, under = gussetAlong(US, [[0, 0], [US * .18, bw * .16], [US * .55, bw * .2], [US * .82, bw * .18], [US, 0]], [['lf', dlf - dch], ['hl', dhl - dch]]);
+    const tail = !s.tail ? null : el ? blobAt([[0, 0, 'b0'], [h * .03, 0, 'b1'], [h * .025, h * .16], [0, h * .16, 'tip']], .4) : tailAt(s.tailType, h), tb = tail ? cornerRun(tail, 'b0', 'b1').L : 0;
+    const backL = cornerRun(body, 'nb', 'seat').L, bmk = []; let free = backL;
+    if (tail) { const c = slotAt(distWhere(body, 'nb', 'seat', p => p[1] >= bh * .74), tb, 0, backL, h); bmk.push(['tl0', c - tb / 2], ['tl1', c + tb / 2]); free = c - tb / 2; }
+    const [o0, o1, ol] = openIn(0, free, Math.max(2.5, h * .2)); bmk.unshift(['o0', o0], ['o1', o1]); markRun(body, 'nb', 'seat', bmk);
+    const bc = ['nb', ...bmk.map(x => x[0]), 'seat'];
+    add('body-side', 'Body side', body, { cut: 2, pair: true, notch: ['nb', 'nf', 'ch', 'lf', 'hl', 'seat', ...bmk.map(x => x[0])], notes: [`Leave a ${said(ol)} in opening in the back seam, between its two notches, to stuff; closed by hand with a ladder stitch`,
+      'Notches, from the neck down the front: the front of the neck, the chest (the underbody gusset\'s tip), the front leg, the hind leg, the seat (the gusset\'s other tip)' + (tail ? '; on the back seam, the opening and the tail' : '; on the back seam, the opening')], place: { view: 'back', x: -bw * .36, y: hh * .74, z: 1 } });
+    add('underbody', 'Underbody gusset', under, { cut: 1, notch: ['lfR', 'lfL', 'hlR', 'hlL'], notes: [`From the chest between the front legs to the seat: ${said(US)} in along each edge, as the body side's edge is`, 'Its notches match the body side\'s leg notches'], shown: blob([[0, 0], [bw * .16, bh * .08], [bw * .2, bh * .7], [0, bh * .82], [-bw * .2, bh * .7], [-bw * .16, bh * .08]], .9), place: { view: 'front', x: 0, y: hh * .82, z: 1 } });
+    for (const [k, sd] of SIDES) J(`Head onto the neck, ${sd} side`, ['head-side', ['back', 'throat'], k], ['body-side', ['nb', 'top0', 'nf'], k], { why: 'the head side\'s neck edge along the body side\'s top and down the top of its chest' });
+    J('Chest seam: body side to body side, neck to chest', ['body-side', ['nf', 'ch'], 0], ['body-side', ['nf', 'ch'], 1]);
+    gusseted('Underbody gusset to the body side', 'body-side', ['ch', 'lf', 'hl', 'seat'], 'underbody');
+    walk('Back seam: body side to body side', ['body-side', bc, 0], ['body-side', bc, 1]);
+    open('Stuffing opening in the back seam', 'body-side', bc.slice(0, 4), ol);
+    // the legs: each in two, on a pad as far round as its open foot
+    const pad = ovalRound(legF * (el ? .2 : .18), legF * (el ? .17 : .15), 2 * foot, 28, ['toe', 'out', 'heel', 'in']);
+    for (const sg of [1, -1]) (sg > 0 ? add : twin)(sg > 0 ? 'leg-front' : 'leg-front-2', 'Front leg', legFr, { cut: 4, pair: true, notes: sg > 0 ? ['Two pairs: inner and outer, the pad set into the open foot', 'Stuffed, its top closed and ladder-stitched to the body, its two top corners level with the front leg notch, so its sole is level with the seat'] : [], place: { view: 'front', x: sg * bw * .14 + (sg < 0 ? -legF * (el ? .44 : .4) : 0), y: h - legF * lky, flip: sg < 0, z: 5 }, hidden: sg < 0 });
+    for (const sg of [1, -1]) (sg > 0 ? add : twin)(sg > 0 ? 'leg-hind' : 'leg-hind-2', 'Hind leg', legHi, { cut: 4, pair: true, notes: sg > 0 ? ['Two pairs, the pad set into the open foot; stuffed, closed and sewn to the body side at the haunch, above the hind leg notch, the foot turned forward'] : [], place: { view: 'front', x: sg * bw * .36 + (sg < 0 ? -legB * .8 * kx : 0), y: h - legB * .8, flip: sg < 0, z: 4 }, hidden: sg < 0 });
+    add('foot-pad', 'Foot pad', pad, { cut: 4, fabric: 'contrast', notch: ['toe', 'heel'], notes: [`Contrast, one in the bottom of each leg: ${said(2 * foot)} in round, as each leg's open foot is`, 'Notches: the toe and the heel, where the leg seams meet it'], place: { view: 'back', x: 0, y: h * .96, z: 3 } });
+    for (const [li, id, word] of [[0, 'leg-front', 'Front leg'], [1, 'leg-hind', 'Hind leg']]) for (const [k, sd] of SIDES) { const o = 2 * k, i = 2 * k + 1, p = 2 * li + k;
+      J(`${word}, ${sd}: front seam, inner to outer`, [id, ['t1', 'toe'], o], [id, ['t1', 'toe'], i]); J(`${word}, ${sd}: back seam, inner to outer`, [id, ['t0', 'heel'], o], [id, ['t0', 'heel'], i]);
+      J(`Foot pad into the ${sd} ${word.toLowerCase()}: outer half`, [id, ['toe', 'heel'], o], ['foot-pad', ['toe', 'out', 'heel'], p], { why: 'half the pad\'s round to each layer of the leg' }); J(`Foot pad into the ${sd} ${word.toLowerCase()}: inner half`, [id, ['toe', 'heel'], i], ['foot-pad', ['heel', 'in', 'toe'], p]);
+      for (const c of [o, i]) F(`${word}, ${sd}: its top`, [id, ['t0', 't1'], c], li ? 'turned in, closed after stuffing and ladder-stitched to the body side at the haunch' : 'turned in, closed after stuffing and ladder-stitched to the body at the front leg notch'); }
+    if (ear && !el) { for (const sg of [1, -1]) (sg > 0 ? add : twin)(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: 4, pair: true, notes: sg > 0 ? ['Two outer in self, two inner in contrast', 'Its base caught in the gusset seam between the two ear notches'] : [], place: { view: 'front', x: sg * hw * .38, y: s.ears === 'floppy' ? hh * .2 : -ew * .6, rot: sg * 10, flip: sg < 0, z: 2 }, hidden: sg < 0 });
+      for (const [k, sd] of SIDES) caught(`Ear, ${sd}`, 'ear', [2 * k, 2 * k + 1], ['head-side', ['e0', 'e1'], k], 'the gusset seam'); }
+    if (tail) { const hair = !el && s.tailType === 'hair', tuft = el || s.tailType === 'tuft';
+      add('tail', 'Tail', tail, { cut: hair ? 1 : 2, ...(hair ? { fabric: 'contrast' } : {}), notes: [el ? 'Two strips, sewn and turned; the tuft is yarn knotted into the tip' : hair ? 'Long-pile faux fur (or yarn), in the mane\'s colour: rolled, brushed out' : s.tailType === 'bushy' ? 'Two pieces, the pile brushed long; the tip in contrast if you like' : tuft ? 'Two strips, sewn and turned; the tuft is yarn knotted into the tip' : s.tailType === 'short' ? 'A stub: two pieces, sewn, turned, stuffed' : 'Two strips, sewn and turned, a pipe of fill down it',
+        'Its base caught in the back seam between the two tail notches'], place: { view: 'back', x: 0, y: el ? hh * .74 + bh * .72 : h * .75, z: 2 } });
+      caught('Tail', 'tail', hair ? [0] : [0, 1], ['body-side', ['tl0', 'tl1'], 0], 'the back seam');
+      if (hair) F('Tail: its long edges and its end', ['tail', ['b1', 'tip', 'b0']], 'rolled along its length and whipped; the pile covers the edge'); }
+    notes.push(el ? `Face: ${PLUSH_EYES[s.eyes]}, about ${r8(hw * .44)} in apart, ${r8(hh * .45)} in below the top of the head, either side of the trunk` : `Face: ${PLUSH_EYES[s.eyes]}, about ${r8(hw * .42)} in apart, ${r8(hh * .4)} in below the top of the head${sl ? ', above the snout' : ''}`);
+    if (el) notes.push('The ears are the character: interfacing in the ear backs keeps them standing out from the head');
+    // its height, sitting: the head above its neck seam, the body below it down to the seat
+    made = levelOf(head, 'back', 'throat') - boundsOf(head.pts).y0 + ground - levelOf(body, 'nb', 'top0', 'nf');
+  } else if (s.shape === 'sea') {
+    // a sea creature, its length the size: two body sides from the nose to the tail stock, a belly gusset in contrast as long as the body
+    // side's belly edge, the side fins caught in the belly seam and the dorsal fin in the top seam, the tail's root as wide as the tail stock
+    const L = h, bh = L * .42, bw = L * .36;
+    const side = blobAt([[0, bh * .52, 'nose'], [L * .12, bh * .1], [L * .4, 0], [L * .66, bh * .14], [L * .82, bh * .36, 'st'], [L * .84, bh * .55, 'sb'], [L * .66, bh * .78], [L * .4, bh * .9], [L * .14, bh * .86]], .8);
+    const topL = cornerRun(side, 'nose', 'st').L, bel = cornerRun(side, 'nose', 'sb').L, stock = cornerRun(side, 'st', 'sb').L, tm = []; let f0 = 0, f1 = topL;
+    const dors = s.dorsal ? blobAt([[0, 0, 'b0'], [L * .14, 0, 'b1'], [L * .1, -L * .1, 'tip'], [L * .02, -L * .12]], .6) : null;
+    if (dors) { const db = cornerRun(dors, 'b0', 'b1').L, c = slotAt(distWhere(side, 'nose', 'st', p => p[0] >= L * .47), db, 0, topL, h); tm.push(['d0', c - db / 2], ['d1', c + db / 2]); if (topL - c - db / 2 >= Math.max(2.5, L * .16) + .85 || topL - c - db / 2 > c - db / 2) f0 = c + db / 2; else f1 = c - db / 2; } // behind the dorsal fin when it fits there
+    const [o0, o1, ol] = openIn(f0, f1, Math.max(2.5, L * .16)); tm.push(['o0', o0], ['o1', o1]); tm.sort((a, b) => a[1] - b[1]); markRun(side, 'nose', 'st', tm);
+    const fin = blobAt([[0, 0, 'b0'], [L * .1, L * .02], [L * .2, L * .1, 'tip'], [L * .06, L * .1, 'b1']], .7), fb = cornerRun(fin, 'b0', 'b1').L, fc = slotAt(distWhere(side, 'nose', 'sb', p => p[0] >= L * .3), fb, 0, bel, h), fm = [['f0', fc - fb / 2], ['f1', fc + fb / 2]];
+    markRun(side, 'nose', 'sb', fm);
+    const belly = gussetAlong(bel, [[0, 0], [bel * .14, bw * .26], [bel * .5, bw * .36], [bel * .88, bw * .2], [bel, 0]], fm), tc = ['nose', ...tm.map(x => x[0]), 'st'];
+    add('body-side', 'Body side', side, { cut: 2, pair: true, notch: ['nose', 'st', 'sb', 'f0', 'f1', ...tm.map(x => x[0])], notes: [`Leave a ${said(ol)} in opening in the top seam, between its two notches, to stuff; closed by hand with a ladder stitch`, `Notches: the nose and the tail stock (the belly gusset's tips), the side fin${dors ? ', the dorsal fin' : ''}, the opening`], place: { view: 'front', x: -L * .42, y: 0, z: 2 } });
+    add('belly', 'Belly gusset', belly, { cut: 1, fabric: 'contrast', notch: ['f0R', 'f1R', 'f0L', 'f1L'], notes: [`Contrast: the pale underside, from under the chin to the tail stock: ${said(bel)} in along each edge, as the body side's belly edge is`, 'Its notches match the body side\'s fin notches'], place: { view: 'back', x: 0, y: 0, z: 1 } });
+    walk('Top seam: body side to body side', ['body-side', tc, 0], ['body-side', tc, 1]);
+    open('Stuffing opening in the top seam', 'body-side', (i => tc.slice(i - 1, i + 3))(tc.indexOf('o0')), ol);
+    gusseted('Belly gusset to the body side', 'body-side', ['nose', 'f0', 'f1', 'sb'], 'belly');
+    for (const sg of [1, -1]) (sg > 0 ? add : twin)(sg > 0 ? 'fin' : 'fin-2', 'Side fin', fin, { cut: 4, pair: true, notes: sg > 0 ? ['Two pairs, sewn, turned, topstitched', 'Its base caught in the belly seam between the two fin notches'] : [], place: { view: 'front', x: sg * bw * .5 + (sg < 0 ? -L * .2 : 0), y: bh * .7, flip: sg < 0, z: 4 }, hidden: sg < 0 });
+    for (const [k, sd] of SIDES) caught(`Side fin, ${sd}`, 'fin', [2 * k, 2 * k + 1], ['body-side', ['f0', 'f1'], k], 'the belly seam');
+    if (dors) { add('dorsal', 'Dorsal fin', dors, { cut: 2, notes: ['Sewn, turned and stuffed lightly', 'Its base caught in the top seam between the two dorsal notches'], place: { view: 'front', x: -L * .02, y: 0, z: 1 } }); caught('Dorsal fin', 'dorsal', [0, 1], ['body-side', ['d0', 'd1'], 0], 'the top seam'); }
+    let tail = null;
+    if (s.tail) { const b = stock, upright = s.tailType === 'fin', mid = upright ? [[L * .14, -L * .12], [L * .1, 0], [L * .14, L * .12]] : [[L * .1, -L * .16], [L * .14, -L * .14], [L * .06, 0], [L * .14, L * .14], [L * .1, L * .16]];
+      tail = { pts: smoothThrough([[0, -b / 2], ...mid, [0, b / 2]], 6), at: { b0: [0, -b / 2], b1: [0, b / 2], tip: mid[upright ? 0 : 1] } };
+      add('tail', upright ? 'Tail fin' : 'Tail fluke', tail, { cut: 2, notes: [upright ? 'Upright, as a fish\'s or a shark\'s: sewn, turned, stuffed lightly' : 'Flat, as a whale\'s or a dolphin\'s: sewn, turned, topstitched', `Its root is as wide as the tail stock's end (${said(b)} in) and is caught in the seam across it`], place: { view: 'front', x: L * .41, y: bh * .455, z: 1 } });
+      caught(upright ? 'Tail fin' : 'Tail fluke', 'tail', [0, 1], ['body-side', ['st', 'sb'], 0], 'the seam across the tail stock'); }
+    J('Tail stock: body side to body side, across its end', ['body-side', ['st', 'sb'], 0], ['body-side', ['st', 'sb'], 1], { why: tail ? 'the tail\'s root lies between them' : 'closed across the end' });
+    // its length: the body side from the nose to the tail stock's end, and the tail beyond it
+    made = (side.at.st[0] + side.at.sb[0]) / 2 - boundsOf(side.pts).x0 + (tail ? boundsOf(tail.pts).x1 : 0);
+    notes.push(`Face: ${PLUSH_EYES[s.eyes]}, one either side of the head, ${r8(L * .14)} in back from the nose`, `The size is its length: ${r8(made)} in from the nose to the ${tail ? 'tail' : 'tail stock'}`);
+  } else if (s.shape === 'pillow') {
+    // a pillow character: a front and a back the size asked for, and a side gusset as long as the front is round, joined at the bottom
+    const w = h * .82, raw = blob([[0, 0], [w * .45, h * .05], [w * .5, h * .55], [w * .3, h], [-w * .3, h], [-w * .5, h * .55], [-w * .45, h * .05]], .85), rb = boundsOf(raw), fit = ([x, y]) => [(x - (rb.x0 + rb.x1) / 2) * w / rb.w, (y - rb.y0) * h / rb.h];
+    const fpts = raw.map(fit), bm = fpts.reduce((m, q) => (q[1] > m[1] + 1e-9 || (Math.abs(q[1] - m[1]) <= 1e-9 && Math.abs(q[0]) < Math.abs(m[0])) ? q : m), fpts[0]), panel = () => ({ pts: fpts.map(q => q.slice()), at: { tm: fit([0, 0]), bm: bm.slice() } });
+    const front = panel(), back = panel(), P = lenOf([...fpts, fpts[0]]), PA = cornerRun(front, 'tm', 'bm').L, ear = ears ? earAt(s.ears, h * .22) : null, eb = ear ? cornerRun(ear, 'b0', 'b1').L : 0, gm = [['ftm', PA]];
+    if (ear) for (const X of ['A', 'B']) { const c = slotAt(distWhere(front, 'tm', 'bm', p => Math.abs(p[0]) >= w * .3), eb, 0, cornerRun(front, 'tm', 'bm').L, h); markRun(front, 'tm', 'bm', [['e0' + X, c - eb / 2], ['e1' + X, c + eb / 2]]);
+      gm.push(...(X === 'A' ? [['fe1A', PA - c - eb / 2], ['fe0A', PA - c + eb / 2]] : [['fe0B', PA + c - eb / 2], ['fe1B', PA + c + eb / 2]])); }
+    const ol = Math.max(0, Math.min(Math.max(3, h * .25), PA - 1.6)), om = [['o0', .75], ['o1', .75 + ol]]; markRun(back, 'bm', 'tm', om);
+    const strip = stripOf(P, s.depth); markRun(strip, 'a', 'b', gm); markRun(strip, 'd', 'c', [['bo0', .75], ['bo1', .75 + ol], ['btm', cornerRun(back, 'bm', 'tm').L]]);
+    add('front', 'Front', front, { cut: 1, notch: ['tm', 'bm', 'e0A', 'e1A', 'e0B', 'e1B'], notes: ['The face is embroidered before sewing', `${said(w)} in wide and ${said(h)} in tall`, 'Notches: the top and the bottom centre (where the gusset is joined)' + (ear ? ', and the two ear notches each side' : '')], place: { view: 'front', x: 0, y: 0, z: 2 } });
+    add('back', 'Back', back, { cut: 1, notch: ['tm', 'bm', 'o0', 'o1'], notes: [`Opening of ${said(ol)} in in the bottom seam, between its two notches, to stuff`], place: { view: 'back', x: 0, y: 0 } });
+    add('gusset', 'Side gusset', strip, { cut: 1, notch: [...gm.map(x => x[0]), 'bo0', 'bo1', 'btm'], notes: [`${s.depth} in deep and ${said(P)} in long, as the front is round; its two ends joined at the bottom centre`, 'Its notches match the front\'s and the back\'s'], place: { view: 'front', x: -w * .5, y: h + .5, z: 0 } });
+    const fc = ear ? ['bm', 'e1A', 'e0A', 'tm', 'e0B', 'e1B', 'bm'] : ['bm', 'tm', 'bm'], gc = ear ? ['a', 'fe1A', 'fe0A', 'ftm', 'fe0B', 'fe1B', 'b'] : ['a', 'ftm', 'b'];
+    walk('Front round the side gusset', ['front', fc, 0], ['gusset', gc, 0]);
+    walk('Back round the side gusset', ['back', ['bm', 'o0', 'o1', 'tm', 'bm'], 0], ['gusset', ['d', 'bo0', 'bo1', 'btm', 'c'], 0]);
+    open('Stuffing opening in the bottom seam, back to gusset', 'back', ['bm', 'o0', 'o1', 'tm'], ol);
+    J('Side gusset: its two ends joined at the bottom', ['gusset', ['b', 'c']], ['gusset', ['a', 'd']]);
+    if (ear) { for (const sg of [1, -1]) (sg > 0 ? add : twin)(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: 4, pair: true, notes: sg > 0 ? ['Two outer, two inner', 'Its base caught in the seam between the front and the gusset, between the two ear notches'] : [], place: { view: 'front', x: sg * w * .3, y: -h * .22 * .55, rot: sg * 10, z: 1 }, hidden: sg < 0 });
+      for (const [k, sd, , X] of [[0, 'right', 'R', 'A'], [1, 'left', 'L', 'B']]) caught(`Ear, ${sd}`, 'ear', [2 * k, 2 * k + 1], ['front', ['e0' + X, 'e1' + X], 0], 'the front seam'); }
+    notes.push(`Face: ${PLUSH_EYES[s.eyes]}`);
+    made = boundsOf(fpts).h;
+  } else {
+    // bean and bunny: one front, a back in two halves (the centre-back seam takes the opening), and an oval base as far round as the bottom
+    // edges it is sewn to; the ears and the arm nubs caught in the side seams
+    const w = h * .7, front = blobAt([[0, 0, 'top'], [w * .34, h * .04], [w * .5, h * .4], [w * .46, h * .86, 'br'], [w * .2, h], [-w * .2, h], [-w * .46, h * .86, 'bl'], [-w * .5, h * .4], [-w * .34, h * .04]], .85);
+    const hp = front.pts.filter(q => q[0] >= -1e-6), bcp = hp.reduce((m, q) => (Math.abs(q[0]) < 1e-6 && q[1] > m[1] ? q : m), [0, 0]), back = { pts: hp.map(q => q.slice()), at: { top: [0, 0], bs: [w * .46, h * .86], bc: [0, bcp[1]] } };
+    const sideL = cornerRun(front, 'top', 'br').L, sm = [], ear = ears ? earAt(s.ears, h * (s.ears === 'long' ? .13 : .2)) : null, arm = s.arms ? blobAt([[0, 0, 'b0'], [h * .1, h * .02], [h * .12, h * .16, 'tip'], [0, h * .2, 'b1'], [-h * .04, h * .1]], .9) : null;
+    if (ear) { const eb = cornerRun(ear, 'b0', 'b1').L, c = slotAt(distWhere(front, 'top', 'br', p => p[0] >= w * .22), eb, 0, sideL, h); sm.push(['e0', c - eb / 2], ['e1', c + eb / 2]); }
+    if (arm) { const ab = cornerRun(arm, 'b0', 'b1').L, c = slotAt(distWhere(front, 'top', 'br', p => p[1] >= h * .58), ab, ear ? sm[1][1] : 0, sideL, h); sm.push(['a0', c - ab / 2], ['a1', c + ab / 2]); }
+    markRun(front, 'top', 'br', sm.map(([n, d]) => [n + 'R', d])); markRun(front, 'top', 'bl', sm.map(([n, d]) => [n + 'L', d])); markRun(back, 'top', 'bs', sm);
+    const fb = cornerRun(front, 'bl', 'br').L, bb = cornerRun(back, 'bs', 'bc').L, base = ovalRound(w * .4, w * .26, fb + 2 * bb, 40, ['e', 'f', 'w', 'b']); delete base.at.e; delete base.at.w;
+    markRun(base, 'f', 'b', [['r', fb / 2]]); markRun(base, 'f', 'b', [['l', fb / 2]]);
+    const cbL = cornerRun(back, 'top', 'bc').L, tl = s.tail ? h * .85 : 0, [o0, o1, ol] = openIn(0, tl ? tl - h * .03 : cbL, Math.max(2.5, h * .22)), cm = [['o0', o0], ['o1', o1], ...(tl ? [['tl', tl]] : [])]; markRun(back, 'top', 'bc', cm);
+    const cc = ['top', ...cm.map(x => x[0]), 'bc'], pellets = s.age !== '0+';
+    add('front', 'Front', front, { cut: 1, notch: ['top', 'br', 'bl', ...sm.flatMap(x => [x[0] + 'R', x[0] + 'L'])], notes: ['The face is embroidered before sewing', 'Notches: the top, and each side where the side seam stops and the base starts' + (sm.length ? `; the ${[ear && 'ear', arm && 'arm'].filter(Boolean).join(' and the ')} notches` : '')], place: { view: 'front', x: 0, y: 0, z: 2 } });
+    add('back', 'Back', back, { cut: 2, pair: true, notch: ['bs', ...sm.map(x => x[0]), ...cm.map(x => x[0])], notes: [`Opening of ${said(ol)} in in the centre-back seam, between its two notches, to stuff`], place: { view: 'back', x: 0, y: 0 } });
+    twin('back-2', 'Back', back, { place: { view: 'back', x: 0, y: 0, flip: true } });
+    add('base', 'Base', base, { cut: 1, notch: ['f', 'b', 'l', 'r'], notes: [`${said(fb + 2 * bb)} in round, as the bottom edges it is sewn to are`, 'Notches: the centre front, the centre back, and the two side seams', pellets ? 'A pouch of polypellets, double-stitched shut, is tacked to the base inside (3 years and up only)' : 'No pellets in a toy for under-3s: fibre fill only'], place: { view: 'back', x: 0, y: h, z: 1 } });
+    for (const [k, sd, X] of SIDES) walk(`Side seam, ${sd}: front to back`, ['front', ['top', ...sm.map(x => x[0] + X), k ? 'bl' : 'br'], 0], ['back', ['top', ...sm.map(x => x[0]), 'bs'], k]);
+    walk('Centre-back seam', ['back', cc, 0], ['back', cc, 1]);
+    open('Stuffing opening in the centre-back seam', 'back', cc.slice(0, 4), ol);
+    J('Base into the front\'s bottom edge', ['front', ['bl', 'br'], 0], ['base', ['l', 'f', 'r'], 0], { why: 'from one side seam round the front to the other' });
+    J('Base into the right back\'s bottom edge', ['back', ['bs', 'bc'], 0], ['base', ['r', 'b'], 0]); J('Base into the left back\'s bottom edge', ['back', ['bs', 'bc'], 1], ['base', ['b', 'l'], 0]);
+    if (arm) { for (const sg of [1, -1]) (sg > 0 ? add : twin)(sg > 0 ? 'arm' : 'arm-2', 'Arm nub', arm, { cut: 4, pair: true, notes: sg > 0 ? ['Two pairs: sewn, turned, stuffed lightly', 'Its base caught in the side seam between the two arm notches'] : [], place: { view: 'front', x: sg * w * .5 + (sg < 0 ? -h * .1 : 0), y: h * .48, rot: sg * -20, flip: sg < 0, z: 3 }, hidden: sg < 0 });
+      for (const [k, sd, X] of SIDES) caught(`Arm nub, ${sd}`, 'arm', [2 * k, 2 * k + 1], ['front', ['a0' + X, 'a1' + X], 0], 'the side seam'); }
+    if (ear) { for (const sg of [1, -1]) (sg > 0 ? add : twin)(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: 4, pair: true, notes: sg > 0 ? ['Outer in self, inner in contrast', 'Its base caught in the side seam between the two ear notches'] : [], place: { view: 'front', x: sg * w * .22, y: s.ears === 'long' ? -h * .13 * 2.6 : -h * .2 * .6, rot: sg * 8, z: 1 }, hidden: sg < 0 });
+      for (const [k, sd, X] of SIDES) caught(`Ear, ${sd}`, 'ear', [2 * k, 2 * k + 1], ['front', ['e0' + X, 'e1' + X], 0], 'the side seam'); }
+    if (s.tail) { const r = h * .07; add('tail', 'Tail', { pts: ellipse(r, r, 24), at: { e: [r, 0], w: [-r, 0] } }, { cut: 1, fabric: 'contrast', notes: ['A gathered circle, stuffed; sewn on by hand over the centre-back seam at the tail notch'], place: { view: 'back', x: 0, y: h * .78, z: 2 } });
+      F('Tail: its edge', ['tail', ['e', 'w', 'e']], 'gathered, stuffed and ladder-stitched to the back at the tail notch'); }
+    notes.push(`Face: ${PLUSH_EYES[s.eyes]}, about ${r8(w * .28)} in apart, ${r8(h * .38)} in below the top`);
+    made = boundsOf(front.pts).h;
+  }
+  return { pieces, notes, asm, made, h };
+}
+// a fixed body type at the size asked for: drafted, its height measured off its outlines, and drafted again until it stands that height
+function fixedPlush(s) { let d = draftFixed(s, s.height); for (let k = 0; k < 2 && Math.abs(d.made - s.height) > 1e-4; k++) d = draftFixed(s, d.h * s.height / d.made); return d; }
 export function plushPattern(input = {}) {
-  const s = cleanPlush(input), h = s.height, pieces = [], notes = [], ears = s.ears !== 'none';
-  let built = null;
+  const s = cleanPlush(input), h = s.height, pieces = [], notes = [];
+  let built = null, fixed = null;
   if (s.shape === 'build') {
     // bolted together from the parts library (src/lab-plush-parts.js): every part drafted to where it is sewn, each join recorded
     built = buildPlush(s);
     for (const q of built.pieces) pieces.push(piece(q.id, q.name, q.sew, q));
     notes.push(...built.notes, `Face: ${PLUSH_EYES[s.eyes]}`);
-  } else if (s.shape === 'bear') {
-    const hh = h * .42 * s.head, hw = hh * 1.05, bh = h * .44, bw = bh * .78, legH = h * .26, armL = h * .3, mz = s.snout === 'long' ? 1.45 : 1;
-    // the head: two sides and a centre gusset from the nose over the crown to the back of the neck
-    // a head side is the head in profile, the nose at x = 0: the two sides meet at the nose, either side of the gusset
-    const headSide = blob([[0, hh * .6], [hw * .12, hh * .22], [hw * .42, 0], [hw * .62, hh * .28], [hw * .6, hh * .78], [hw * .28, hh * .98], [hw * .06, hh * .84]], .75);
-    pieces.push(piece('head-side', 'Head side', headSide, { cut: 2, pair: true, notches: [[0, hh * .6]], notes: ['The nose point meets the gusset'], place: { view: 'front', x: -hw * .1, y: 0, flip: true, z: 2 } }));
-    pieces.push(piece('head-side-2', 'Head side', headSide, { cut: 0, place: { view: 'front', x: hw * .1, y: 0, z: 2 } }));
-    pieces.push(piece('gusset', 'Head gusset', blob([[0, 0], [hw * .16, hh * .25], [hw * .2, hh * .9], [0, hh * 1.25], [-hw * .2, hh * .9], [-hw * .16, hh * .25]], .9), { cut: 1, notes: ['From the nose over the crown to the back of the neck'], place: { view: 'front', x: 0, y: hh * .05, z: 3 } }));
-    if (s.snout !== 'none') pieces.push(piece('muzzle', 'Muzzle', ellipse(hw * .2 * mz, hh * .14 * mz, 32), { cut: 1, fabric: 'contrast', notes: [s.snout === 'long' ? 'A long muzzle: darted to stand out from the face, stuffed firm' : 'Contrast fabric', 'The nose embroidered with satin stitch'], place: { view: 'front', x: 0, y: hh * .66, z: 5 } }));
-    const bodyFront = blob([[0, 0], [bw * .32, 0], [bw * .52, bh * .45], [bw * .48, bh * .9], [0, bh]], .7).filter(q => q[0] >= -1e-6);
-    pieces.push(piece('body-front', 'Body front', [...bodyFront], { cut: 2, pair: true, notes: ['Centre-front seam'], place: { view: 'front', x: 0, y: hh * .92, z: 1 } }), piece('body-front-2', 'Body front', bodyFront, { cut: 0, place: { view: 'front', x: 0, y: hh * .92, flip: true, z: 1 }, hidden: true }));
-    const bodyBack = bodyFront.map(([x, y]) => [x * 1.06, y]);
-    pieces.push(piece('body-back', 'Body back', bodyBack, { cut: 2, pair: true, notes: [`Leave a ${r8(Math.max(2.5, h * .22))} in opening in the centre-back seam to stuff, closed by hand with a ladder stitch`], place: { view: 'back', x: 0, y: hh * .92 } }), piece('body-back-2', 'Body back', bodyBack, { cut: 0, place: { view: 'back', x: 0, y: hh * .92, flip: true } }));
-    if (s.arms) { const arm = blob([[0, 0], [armL * .32, 0], [armL * .36, armL * .78], [armL * .18, armL], [-armL * .02, armL * .8]], .8); for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'arm' : 'arm-2', 'Arm', arm, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two pairs: inner and outer'] : [], place: { view: 'front', x: sg * bw * .42, y: hh * 1.02, rot: sg * -28, flip: sg < 0, z: 4 }, hidden: sg < 0 })); }
-    if (s.legs) { const leg = blob([[0, 0], [legH * .45, 0], [legH * .5, legH * .7], [legH * .75, legH], [0, legH]], .8); for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'leg' : 'leg-2', 'Leg', leg, { cut: sg > 0 ? 4 : 0, pair: true, place: { view: 'front', x: sg * bw * .08 + (sg < 0 ? -legH * .75 : 0), y: hh * .92 + bh * .78, flip: sg < 0, z: 5 }, hidden: sg < 0 }));
-      pieces.push(piece('foot-pad', 'Foot pad', ellipse(legH * .28, legH * .2, 28), { cut: 2, fabric: 'contrast', notes: ['Contrast, set into the bottom of each leg'], place: { view: 'back', x: 0, y: h * .96, z: 3 } })); }
-    if (ears) { const ew = hh * (s.ears === 'long' ? .22 : .32), ear = earOf(s.ears, ew); for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two outer, two inner (inner in contrast if you like)', 'Set into a slit in the head side, or sewn on by hand'] : [], place: { view: 'front', x: sg * hw * .42, y: s.ears === 'long' ? -ew * 2.5 : -ew * .5, rot: sg * 12, z: 1 }, hidden: sg < 0 })); }
-    notes.push(`Face: ${PLUSH_EYES[s.eyes]}, about ${r8(hh * .3)} in apart, on the line ${r8(hh * .52)} in below the top of the head`);
-  } else if (s.shape === 'elephant') {
-    // a sitting elephant: the head in two sides with a gusset from the brow over the crown, the trunk cut in one with the head sides (their
-    // front edges join down its underside, the gusset runs down its top); big ears in self, lined in contrast; a body in two sides and an
-    // underbody gusset; four legs, each in two, on contrast foot pads; a tail with a tuft
-    const hh = h * .46, hw = hh, tr = h * .34, bh = h * .58, bw = h * .62, legF = h * .3, legH = h * .22;
-    const headSide = blob([[0, hh * .5], [hw * .1, hh * .16], [hw * .4, 0], [hw * .66, hh * .14], [hw * .72, hh * .5], [hw * .5, hh * .86], [hw * .22, hh * .9], [hw * .1, hh * .9 + tr * .5], [hw * .06, hh * .9 + tr], [-hw * .1, hh * .9 + tr * .98], [-hw * .02, hh * .9 + tr * .5], [-hw * .04, hh * .78]], .7);
-    pieces.push(piece('head-side', 'Head side and trunk', headSide, { cut: 2, pair: true, notches: [[0, hh * .5], [-hw * .04, hh * .78]], notes: ['Cut in one with the trunk: the two sides meet down the underside of the trunk', 'Notches: where the gusset starts, where the trunk leaves the face'], place: { view: 'front', x: -hw * .08, y: 0, flip: true, z: 3 } }));
-    pieces.push(piece('head-side-2', 'Head side and trunk', headSide, { cut: 0, place: { view: 'front', x: hw * .08, y: 0, z: 3 }, hidden: true }));
-    pieces.push(piece('gusset', 'Head and trunk gusset', blob([[0, 0], [hw * .2, hh * .3], [hw * .22, hh * .8], [hw * .1, hh + tr * .6], [0, hh + tr * .95], [-hw * .1, hh + tr * .6], [-hw * .22, hh * .8], [-hw * .2, hh * .3]], .9), { cut: 1, notes: ['From the back of the head over the crown, down the brow and the top of the trunk to its tip'], place: { view: 'front', x: 0, y: 0, z: 4 } }));
-    const earW = hw * .9, ear = blob([[0, 0], [earW * .42, -earW * .12], [earW * .78, earW * .12], [earW * .82, earW * .62], [earW * .5, earW * 1.02], [earW * .12, earW * .9], [-earW * .04, earW * .5]], .85);
-    for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: sg > 0 ? 2 : 0, pair: true, notes: sg > 0 ? ['Two in self (the backs)'] : [], place: { view: 'front', x: sg * hw * .42 + (sg < 0 ? -earW * .8 : 0), y: hh * .12, flip: sg < 0, z: 1 }, hidden: sg < 0 }));
-    pieces.push(piece('ear-lining', 'Ear lining', ear.map(([x, y]) => [x * .96, y * .96]), { cut: 2, pair: true, fabric: 'contrast', notes: ['Contrast: the face of each ear; sewn to the back right sides together, turned, topstitched, then pleated into the head side seam'], place: { view: 'front', x: hw * .45, y: hh * .14, z: 2 }, hidden: true }));
-    const bodySide = blob([[0, 0], [bw * .3, -bh * .02], [bw * .62, bh * .2], [bw * .74, bh * .6], [bw * .62, bh * .96], [bw * .2, bh], [-bw * .02, bh * .7], [-bw * .06, bh * .3]], .8);
-    pieces.push(piece('body-side', 'Body side', bodySide, { cut: 2, pair: true, notes: [`Leave a ${r8(Math.max(2.5, h * .2))} in opening in the back seam to stuff, closed by hand with a ladder stitch`], place: { view: 'back', x: -bw * .36, y: hh * .74, z: 1 } }));
-    pieces.push(piece('underbody', 'Underbody gusset', blob([[0, 0], [bw * .16, bh * .08], [bw * .2, bh * .7], [0, bh * .82], [-bw * .2, bh * .7], [-bw * .16, bh * .08]], .9), { cut: 1, notes: ['From the chest between the front legs to the seat'], place: { view: 'front', x: 0, y: hh * .82, z: 1 } }));
-    const legFr = blob([[0, 0], [legF * .44, 0], [legF * .48, legF], [-legF * .04, legF]], .6), legHi = blob([[0, 0], [legH * .6, -legH * .1], [legH * .8, legH * .7], [legH * .1, legH * .8]], .7);
-    for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'leg-front' : 'leg-front-2', 'Front leg', legFr, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two pairs: inner and outer, the pad set in at the bottom'] : [], place: { view: 'front', x: sg * bw * .14 + (sg < 0 ? -legF * .44 : 0), y: h - legF, flip: sg < 0, z: 5 }, hidden: sg < 0 }));
-    for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'leg-hind' : 'leg-hind-2', 'Hind leg', legHi, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two pairs; sewn to the body side at the haunch, the foot turned forward'] : [], place: { view: 'front', x: sg * bw * .36 + (sg < 0 ? -legH * .8 : 0), y: h - legH * .8, flip: sg < 0, z: 4 }, hidden: sg < 0 }));
-    pieces.push(piece('foot-pad', 'Foot pad', ellipse(legF * .2, legF * .17, 28), { cut: 4, fabric: 'contrast', notes: ['Contrast, one in the bottom of each leg'], place: { view: 'back', x: 0, y: h * .96, z: 3 } }));
-    if (s.tail) pieces.push(piece('tail', 'Tail', blob([[0, 0], [h * .03, 0], [h * .025, h * .16], [0, h * .16]], .4), { cut: 2, notes: ['Two strips, sewn and turned; the tuft is yarn knotted into the tip, sewn into the back seam'], place: { view: 'back', x: 0, y: hh * .74 + bh * .72, z: 2 } }));
-    notes.push(`Face: ${PLUSH_EYES[s.eyes]}, about ${r8(hw * .44)} in apart, ${r8(hh * .45)} in below the top of the head, either side of the trunk`, 'The ears are the character: interfacing in the ear backs keeps them standing out from the head');
-  } else if (s.shape === 'quad') {
-    // four-legged, sitting (src/lab-plush-views.js draws it): the head in two sides and a gusset, the snout cut in one with the sides (their
-    // front edges join under the chin), a nose in contrast; the body, legs and pads as the elephant's; the ears, tail and parts the kit asks for
-    const hh = h * .42 * s.head, hw = hh, bh = h * .58, bw = h * .62, legF = h * .32, legH = h * .22, sl = { none: 0, short: .14, long: .32, broad: .3 }[s.snout] * hh;
-    const headSide = blob(sl ? [[0, hh * .42], [hw * .12, hh * .12], [hw * .42, 0], [hw * .68, hh * .18], [hw * .72, hh * .55], [hw * .5, hh * .9], [hw * .2, hh * .94], [-sl * .7, hh * .82], [-sl, hh * .66], [-sl * .85, hh * .52]]
-      : [[0, hh * .42], [hw * .12, hh * .12], [hw * .42, 0], [hw * .68, hh * .18], [hw * .72, hh * .55], [hw * .5, hh * .9], [hw * .2, hh * .94], [-hw * .02, hh * .72]], .75);
-    pieces.push(piece('head-side', sl ? 'Head side and snout' : 'Head side', headSide, { cut: 2, pair: true, notches: [[0, hh * .42]], notes: [sl ? 'Cut in one with the snout: the two sides meet under the chin and the snout' : 'The two sides meet under the chin', 'Notch: where the gusset starts'], place: { view: 'front', x: -hw * .08, y: 0, flip: true, z: 3 } }));
-    pieces.push(piece('head-side-2', sl ? 'Head side and snout' : 'Head side', headSide, { cut: 0, place: { view: 'front', x: hw * .08, y: 0, z: 3 }, hidden: true }));
-    pieces.push(piece('gusset', 'Head gusset', blob([[0, 0], [hw * .18, hh * .3], [hw * .2, hh * .8], [hw * .08, hh + sl * .9], [0, hh + sl], [-hw * .08, hh + sl * .9], [-hw * .2, hh * .8], [-hw * .18, hh * .3]], .9), { cut: 1, notes: [`From the back of the head over the crown${sl ? ' and down the top of the snout to the nose' : ' to the brow'}`], place: { view: 'front', x: 0, y: 0, z: 4 } }));
-    if (sl) pieces.push(piece('nose', 'Nose', ellipse(hw * .09, hw * .065, 24), { cut: 1, fabric: 'contrast', notes: ['Felt or leather, appliquéd on the tip of the snout before it is closed (or embroidered, satin stitch)'], place: { view: 'front', x: 0, y: hh * .62, z: 6 } }));
-    const bodySide = blob([[0, 0], [bw * .3, -bh * .02], [bw * .62, bh * .2], [bw * .74, bh * .6], [bw * .62, bh * .96], [bw * .2, bh], [-bw * .02, bh * .7], [-bw * .06, bh * .3]], .8);
-    pieces.push(piece('body-side', 'Body side', bodySide, { cut: 2, pair: true, notes: [`Leave a ${r8(Math.max(2.5, h * .2))} in opening in the back seam to stuff, closed by hand with a ladder stitch`], place: { view: 'back', x: -bw * .36, y: hh * .74, z: 1 } }));
-    pieces.push(piece('underbody', 'Underbody gusset', blob([[0, 0], [bw * .16, bh * .08], [bw * .2, bh * .7], [0, bh * .82], [-bw * .2, bh * .7], [-bw * .16, bh * .08]], .9), { cut: 1, notes: ['From the chest between the front legs to the seat'], place: { view: 'front', x: 0, y: hh * .82, z: 1 } }));
-    const legFr = blob([[0, 0], [legF * .4, 0], [legF * .44, legF], [-legF * .04, legF]], .6), legHi = blob([[0, 0], [legH * .6, -legH * .1], [legH * .8, legH * .7], [legH * .1, legH * .8]], .7);
-    for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'leg-front' : 'leg-front-2', 'Front leg', legFr, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two pairs: inner and outer, the pad set in at the bottom'] : [], place: { view: 'front', x: sg * bw * .14 + (sg < 0 ? -legF * .4 : 0), y: h - legF, flip: sg < 0, z: 5 }, hidden: sg < 0 }));
-    for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'leg-hind' : 'leg-hind-2', 'Hind leg', legHi, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two pairs; sewn to the body side at the haunch, the foot turned forward'] : [], place: { view: 'front', x: sg * bw * .36 + (sg < 0 ? -legH * .8 : 0), y: h - legH * .8, flip: sg < 0, z: 4 }, hidden: sg < 0 }));
-    pieces.push(piece('foot-pad', 'Foot pad', ellipse(legF * .18, legF * .15, 28), { cut: 4, fabric: 'contrast', notes: ['Contrast, one in the bottom of each leg'], place: { view: 'back', x: 0, y: h * .96, z: 3 } }));
-    if (ears) { const ew = hh * (s.ears === 'long' ? .2 : s.ears === 'big' ? .5 : s.ears === 'floppy' ? .3 : .28), ear = earOf(s.ears, ew); for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two outer in self, two inner in contrast', 'Set into the head side seam either side of the gusset'] : [], place: { view: 'front', x: sg * hw * .38, y: s.ears === 'floppy' ? hh * .2 : -ew * .6, rot: sg * 10, flip: sg < 0, z: 2 }, hidden: sg < 0 })); }
-    notes.push(`Face: ${PLUSH_EYES[s.eyes]}, about ${r8(hw * .42)} in apart, ${r8(hh * .4)} in below the top of the head${sl ? ', above the snout' : ''}`);
-  } else if (s.shape === 'sea') {
-    // a sea creature, its length the size: two body sides from the nose to the tail stock, a belly gusset in contrast, the fins and tail in two
-    // each (stitched, turned and topstitched so they stand flat); the size given is its length, nose to tail
-    const L = h, bh = L * .42, bw = L * .36;
-    const side = blob([[0, bh * .52], [L * .12, bh * .1], [L * .4, 0], [L * .66, bh * .14], [L * .82, bh * .36], [L * .84, bh * .55], [L * .66, bh * .78], [L * .4, bh * .9], [L * .14, bh * .86]], .8);
-    pieces.push(piece('body-side', 'Body side', side, { cut: 2, pair: true, notes: [`Leave a ${r8(Math.max(2.5, L * .16))} in opening in the top seam to stuff, closed by hand with a ladder stitch`], place: { view: 'front', x: -L * .42, y: 0, z: 2 } }));
-    pieces.push(piece('belly', 'Belly gusset', blob([[0, 0], [bw * .3, L * .06], [bw * .36, L * .4], [bw * .2, L * .72], [0, L * .8], [-bw * .2, L * .72], [-bw * .36, L * .4], [-bw * .3, L * .06]], .9), { cut: 1, fabric: 'contrast', notes: ['Contrast: the pale underside, from under the chin to the tail stock'], place: { view: 'back', x: 0, y: 0, z: 1 } }));
-    const fin = blob([[0, 0], [L * .1, L * .02], [L * .2, L * .1], [L * .06, L * .1]], .7);
-    for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'fin' : 'fin-2', 'Side fin', fin, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two pairs, sewn, turned, topstitched; set into the body side seam'] : [], place: { view: 'front', x: sg * bw * .5 + (sg < 0 ? -L * .2 : 0), y: bh * .7, flip: sg < 0, z: 4 }, hidden: sg < 0 }));
-    if (s.dorsal) pieces.push(piece('dorsal', 'Dorsal fin', blob([[0, 0], [L * .14, 0], [L * .1, -L * .1], [L * .02, -L * .12]], .6), { cut: 2, notes: ['Sewn, turned and stuffed lightly; set into the top seam'], place: { view: 'front', x: -L * .02, y: 0, z: 1 } }));
-    if (s.tail) pieces.push(piece('tail', s.tailType === 'fin' ? 'Tail fin' : 'Tail fluke', s.tailType === 'fin' ? blob([[0, 0], [L * .14, -L * .12], [L * .1, 0], [L * .14, L * .12]], .5) : blob([[0, 0], [L * .1, -L * .16], [L * .14, -L * .14], [L * .06, 0], [L * .14, L * .14], [L * .1, L * .16]], .5), { cut: 2, notes: [s.tailType === 'fin' ? 'Upright, as a fish\'s or a shark\'s: sewn, turned, stuffed lightly, set into the tail stock' : 'Flat, as a whale\'s or a dolphin\'s: sewn, turned, topstitched, set across the tail stock'], place: { view: 'front', x: L * .4, y: bh * .36, z: 1 } }));
-    notes.push(`Face: ${PLUSH_EYES[s.eyes]}, one either side of the head, ${r8(L * .14)} in back from the nose`, `The size is its length: ${r8(L)} in from the nose to the tail`);
-  } else if (s.shape === 'pillow') {
-    const w = h * .82, front = blob([[0, 0], [w * .45, h * .05], [w * .5, h * .55], [w * .3, h], [-w * .3, h], [-w * .5, h * .55], [-w * .45, h * .05]], .85);
-    pieces.push(piece('front', 'Front', front, { cut: 1, notes: ['The face is embroidered before sewing'], place: { view: 'front', x: 0, y: 0, z: 2 } }));
-    pieces.push(piece('back', 'Back', front, { cut: 1, notes: [`Opening of ${r8(Math.max(3, h * .25))} in in the bottom seam to stuff`], place: { view: 'back', x: 0, y: 0 } }));
-    pieces.push(piece('gusset', 'Side gusset', rect(r8(lenOf([...tidy(front), tidy(front)[0]]) + .5), s.depth), { cut: 1, notes: [`${s.depth} in deep, joined at the bottom`], place: { view: 'front', x: -w * .5, y: h + .5, z: 0 } }));
-    if (ears) { const ew = h * .22, ear = earOf(s.ears, ew); for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: sg > 0 ? 4 : 0, pair: true, place: { view: 'front', x: sg * w * .3, y: -ew * .55, rot: sg * 10, z: 1 }, hidden: sg < 0 })); }
-    notes.push(`Face: ${PLUSH_EYES[s.eyes]}`);
   } else {
-    // bean and bunny: one front, a back in two halves (the seam takes the opening), an oval base
-    const w = h * .7, front = blob([[0, 0], [w * .34, h * .04], [w * .5, h * .4], [w * .46, h * .86], [w * .2, h], [-w * .2, h], [-w * .46, h * .86], [-w * .5, h * .4], [-w * .34, h * .04]], .85);
-    pieces.push(piece('front', 'Front', front, { cut: 1, notes: ['The face is embroidered before sewing'], place: { view: 'front', x: 0, y: 0, z: 2 } }));
-    const backHalf = front.filter(q => q[0] >= -1e-6);
-    pieces.push(piece('back', 'Back', backHalf, { cut: 2, pair: true, notes: [`Opening of ${r8(Math.max(2.5, h * .22))} in in the centre-back seam to stuff`], place: { view: 'back', x: 0, y: 0 } }), piece('back-2', 'Back', backHalf, { cut: 0, place: { view: 'back', x: 0, y: 0, flip: true } }));
-    pieces.push(piece('base', 'Base', ellipse(w * .4, w * .26, 40), { cut: 1, notes: ['Optionally a weighted pouch of polypellets sewn inside (3 years and up only)'], place: { view: 'back', x: 0, y: h, z: 1 } }));
-    if (s.arms) { const arm = blob([[0, 0], [h * .1, h * .02], [h * .12, h * .16], [0, h * .2], [-h * .04, h * .1]], .9); for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'arm' : 'arm-2', 'Arm nub', arm, { cut: sg > 0 ? 4 : 0, pair: true, place: { view: 'front', x: sg * w * .5 + (sg < 0 ? -h * .1 : 0), y: h * .48, rot: sg * -20, flip: sg < 0, z: 3 }, hidden: sg < 0 })); }
-    if (ears) { const ew = h * (s.ears === 'long' ? .13 : .2), ear = earOf(s.ears, ew); for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'ear' : 'ear-2', 'Ear', ear, { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Outer in self, inner in contrast'] : [], place: { view: 'front', x: sg * w * .22, y: s.ears === 'long' ? -ew * 2.6 : -ew * .6, rot: sg * 8, z: 1 }, hidden: sg < 0 })); }
-    if (s.tail) pieces.push(piece('tail', 'Tail', ellipse(h * .07, h * .07, 24), { cut: 1, fabric: 'contrast', notes: ['A gathered circle, stuffed'], place: { view: 'back', x: 0, y: h * .78, z: 2 } }));
-    notes.push(`Face: ${PLUSH_EYES[s.eyes]}, about ${r8(w * .28)} in apart, ${r8(h * .38)} in below the top`);
+    // one of the seven fixed body types: drafted with how it goes together (draftFixed), to the size asked for
+    fixed = fixedPlush(s);
+    pieces.push(...fixed.pieces); notes.push(...fixed.notes);
   }
-  // the kit's parts on the body types that take them (PLUSH_PARTS)
-  const takes = k => PLUSH_PARTS[k].includes(s.shape), top = s.shape === 'sea' ? 0 : 0;
-  if (takes('horn') && s.horn === 'one') pieces.push(piece('horn', 'Horn', blob([[0, 0], [h * .05, h * .16], [-h * .05, h * .16]], .3).map(([x, y]) => [x, y - h * .16]), { cut: 1, fabric: 'contrast', notes: ['Rolled into a cone and stuffed firm; a spiral of stitching wound up it; sewn into the gusset seam at the brow'], place: { view: 'front', x: 0, y: top - h * .02, z: 7 } }));
-  if (takes('horn') && s.horn === 'two') for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'horn' : 'horn-2', 'Horn', blob([[0, 0], [h * .04, h * .1], [-h * .03, h * .1]], .4).map(([x, y]) => [x, y - h * .1]), { cut: sg > 0 ? 4 : 0, pair: true, fabric: 'contrast', notes: sg > 0 ? ['Two pairs: sewn, turned, stuffed firm; set into the head side seams'] : [], place: { view: 'front', x: sg * h * .08, y: top, rot: sg * 15, flip: sg < 0, z: 7 }, hidden: sg < 0 }));
-  if (takes('horn') && s.horn === 'antlers') for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'antler' : 'antler-2', 'Antler', blob([[0, 0], [h * .03, 0], [h * .04, -h * .1], [h * .1, -h * .14], [h * .09, -h * .17], [h * .03, -h * .13], [h * .01, -h * .22], [-h * .02, -h * .21], [-h * .01, -h * .1]], .3), { cut: sg > 0 ? 4 : 0, pair: true, fabric: 'contrast', notes: sg > 0 ? ['Two pairs, interfaced so they stand: sewn, turned, stuffed with a pipe-cleaner-free firm fill, set into the head side seams'] : [], place: { view: 'front', x: sg * h * .1, y: top, flip: sg < 0, z: 7 }, hidden: sg < 0 }));
-  if (takes('mane') && s.mane !== 'none') pieces.push(piece('mane', 'Mane', rect(r8(s.mane === 'ruff' ? h * .9 : h * .55), r8(h * .14)), { cut: 1, fabric: 'contrast', notes: [s.mane === 'ruff' ? 'Long-pile faux fur, the pile running away from the face: folded in half along its length and sewn into the seam round the face; brushed out after turning' : 'Long-pile faux fur (or yarn loops), folded in half along its length and sewn into the gusset seam from between the ears down the back of the neck; brushed out after turning'], place: { view: 'back', x: -h * .35, y: h * .05, z: 0 } }));
-  if (takes('wings') && s.wings) for (const sg of [1, -1]) pieces.push(piece(sg > 0 ? 'wing' : 'wing-2', 'Wing', blob([[0, 0], [h * .22, -h * .1], [h * .3, h * .02], [h * .22, h * .1], [h * .12, h * .12], [h * .04, h * .1]], .6), { cut: sg > 0 ? 4 : 0, pair: true, notes: sg > 0 ? ['Two in self, two lined in contrast: sewn, turned, the feathers topstitched; interfaced so they stand; sewn to the back by hand'] : [], place: { view: 'back', x: sg * h * .12 + (sg < 0 ? -h * .3 : 0), y: h * .48, flip: sg < 0, z: 3 }, hidden: sg < 0 }));
-  if (takes('spikes') && s.spikes) pieces.push(piece('spikes', 'Spikes', [[0, 0], ...Array.from({ length: 7 }, (_, i) => [[(i + .5) * h * .1, -h * .07], [(i + 1) * h * .1, 0]]).flat(), [h * .7, h * .03], [0, h * .03]], { cut: 2, fabric: 'contrast', notes: ['Sewn, turned and stuffed lightly, then set into the back seam (or the top of the gusset) from the head to the tail'], place: { view: 'back', x: -h * .35, y: h * .1, z: 4 } }));
-  if (takes('tailType') && s.shape === 'quad' && s.tail) {
-    const t = s.tailType === 'bushy' ? blob([[0, 0], [h * .07, -h * .02], [h * .1, h * .14], [h * .05, h * .32], [-h * .03, h * .28], [-h * .04, h * .1]], .8)
-      : s.tailType === 'short' ? ellipse(h * .05, h * .06, 24) : s.tailType === 'hair' ? rect(r8(h * .1), r8(h * .3)) : blob([[0, 0], [h * .03, 0], [h * .028, s.tailType === 'tuft' ? h * .22 : h * .34], [0, s.tailType === 'tuft' ? h * .22 : h * .34]], .4);
-    pieces.push(piece('tail', 'Tail', t, { cut: s.tailType === 'hair' ? 1 : 2, ...(s.tailType === 'hair' ? { fabric: 'contrast' } : {}), notes: [s.tailType === 'hair' ? 'Long-pile faux fur (or yarn), in the mane\'s colour: rolled and sewn into the back seam, brushed out' : s.tailType === 'bushy' ? 'Two pieces, the pile brushed long; the tip in contrast if you like; sewn into the back seam' : s.tailType === 'tuft' ? 'Two strips, sewn and turned; the tuft is yarn knotted into the tip; sewn into the back seam' : s.tailType === 'short' ? 'A stub: two pieces, sewn, turned, stuffed' : 'Two strips, sewn and turned, a pipe of fill down it; sewn into the back seam'], place: { view: 'back', x: 0, y: h * .75, z: 2 } }));
+  // the kit's parts on the body types that take them (PLUSH_PARTS). Each is sized from the seam it is sewn into, measured off the pieces it
+  // joins, and says how it goes on in the assembly as the body's own parts do: a row of spikes or a mane longer than its seam cannot be sewn in
+  const takes = k => PLUSH_PARTS[k].includes(s.shape), top = 0, asm = fixed?.asm || [], host = id => pieces.find(q => q.id === id && q.at);
+  const runOf = r => (Array.isArray(r[0]) ? r : [r]).reduce((t, [id, ks]) => { const q = host(id); return t + (q ? pathOf({ pts: q.sew, at: q.at }, ...ks) : 0); }, 0);
+  // an added piece with its corners named, as draftFixed names them: each name on the nearest point of the outline as it is cut
+  const part = (id, name, pts, at, o) => { const q = piece(id, name, pts, o), on = pt => q.sew.reduce((m, v) => (Math.hypot(v[0] - pt[0], v[1] - pt[1]) < Math.hypot(m[0] - pt[0], m[1] - pt[1]) ? v : m), q.sew[0]).slice(); q.at = Object.fromEntries(Object.entries(at).map(([k, pt]) => [k, on(pt)])); pieces.push(q); return q; };
+  const J = (name, a, b, o = {}) => asm.push({ name, a, b, ...o }), F = (name, a, fin) => asm.push({ name, a, fin });
+  // a part in layers sewn on by hand (a horn, an antler, a wing), one each side: each pair sewn round from one end of its base to the other,
+  // turned and stuffed, its base turned in and ladder-stitched to the toy
+  const byHand = (what, id, where) => { for (const [sd, c] of [['right', 0], ['left', 2]]) J(`${what}, ${sd}: outer to inner`, [id, ['b0', 'tip', 'b1'], c], [id, ['b0', 'tip', 'b1'], c + 1], { why: 'sewn round and turned through its base' });
+    F(`${what} bases: turned in and sewn on by hand ${where}`, [0, 1, 2, 3].map(c => [id, ['b0', 'b1'], c]), 'sewn on by hand'); };
+  if (takes('horn') && s.horn === 'one') {
+    // a cone: a sector of a circle, its two straight edges sewn together, its round edge the base. The base is no wider than four fifths of
+    // the head gusset where it sits (at the brow; between the ears on a head with no brow), and sits ⅛ in inside each of the gusset's seams (a tenth of its width on a small toy)
+    const g = host('gusset'), ends = g ? (g.at.browR ? ['browR', 'browL'] : ['e0R', 'e0L']) : null, wide = ends ? Math.hypot(g.at[ends[0]][0] - g.at[ends[1]][0], g.at[ends[0]][1] - g.at[ends[1]][1]) : Infinity;
+    const r = Math.min(h * .05, (wide - 2 * Math.min(.125, wide * .1)) / 2 - .005), R = Math.hypot(h * .16, r), th = 2 * Math.PI * r / R, n = 12, arc = Array.from({ length: n + 1 }, (_, i) => { const a = -th / 2 + th * i / n; return [R * Math.sin(a), R * Math.cos(a) - R]; });
+    part('horn', 'Horn', [[0, -R], ...arc.slice().reverse()], { apex: [0, -R], a: arc[0], b: arc[n] }, { cut: 1, fabric: 'contrast', notes: ['A cone: its two straight edges sewn together, turned, stuffed firm; a spiral of stitching wound up it', `Its base (${r8(2 * r)} in across) turned in and sewn on by hand on the centre of the head, at the brow`], place: { view: 'front', x: 0, y: top - h * .02, z: 7 } });
+    J('Horn: its side seam, the tip to the base', ['horn', ['apex', 'a']], ['horn', ['b', 'apex']], { why: 'rolled into a cone: the two straight edges are the same length' });
+    F('Horn: its base, turned in and sewn on by hand at the brow', ['horn', ['a', 'b']], 'sewn on by hand');
+    if (ends) asm.push({ name: 'Horn on the head gusset: room left each side of its base', round: ['horn', ['a', 'b']], between: ['gusset', ...ends], rule: 'the base is a circle as wide as its edge is long over π; it sits on the gusset ⅛ in or more inside each of its seams (a tenth of the gusset\'s width on a toy whose gusset is under 1¼ in wide)' });
+  }
+  if (takes('horn') && s.horn === 'two') { const sh = blob([[0, 0], [h * .04, h * .1], [-h * .03, h * .1]], .4).map(([x, y]) => [x, y - h * .1]);
+    part('horn', 'Horn', sh, { tip: [0, -h * .1], b0: [h * .04, 0], b1: [-h * .03, 0] }, { cut: 4, pair: true, fabric: 'contrast', notes: ['Two pairs: sewn round, turned, stuffed firm', 'Its base turned in and sewn on by hand, one each side of the head behind the brow'], place: { view: 'front', x: h * .08, y: top, rot: 15, z: 7 } });
+    pieces.push(piece('horn-2', 'Horn', sh, { cut: 0, pair: true, fabric: 'contrast', place: { view: 'front', x: -h * .08, y: top, rot: -15, flip: true, z: 7 }, hidden: true })); byHand('Horn', 'horn', 'one each side of the head, behind the brow'); }
+  if (takes('horn') && s.horn === 'antlers') { const sh = blob([[0, 0], [h * .03, 0], [h * .04, -h * .1], [h * .1, -h * .14], [h * .09, -h * .17], [h * .03, -h * .13], [h * .01, -h * .22], [-h * .02, -h * .21], [-h * .01, -h * .1]], .3);
+    part('antler', 'Antler', sh, { b0: [0, 0], b1: [h * .03, 0], tip: [h * .01, -h * .22] }, { cut: 4, pair: true, fabric: 'contrast', notes: ['Two pairs, interfaced so they stand: sewn round, turned, stuffed firm', 'Its base turned in and sewn on by hand, one each side of the head between the ears'], place: { view: 'front', x: h * .1, y: top, z: 7 } });
+    pieces.push(piece('antler-2', 'Antler', sh, { cut: 0, pair: true, fabric: 'contrast', place: { view: 'front', x: -h * .1, y: top, flip: true, z: 7 }, hidden: true })); byHand('Antler', 'antler', 'one each side of the head, between the ears'); }
+  if (takes('mane') && s.mane !== 'none') {
+    // a strip folded in half along its length, its two long edges laid together in a seam. A ruff lies in the seam that joins the head to the
+    // neck, all the way round, its ends joined; a crest is stitched down the centre of the head gusset from between the ears to its back end
+    // before the gusset is sewn in, and carries on in the back seam from the neck to the stuffing opening
+    const ruff = s.mane === 'ruff', g = host('gusset'), neck = asm.filter(e => /^Head onto the neck/.test(e.name)).map(e => e.a), back = asm.find(e => /^Back seam.*the neck to the opening/.test(e.name))?.a;
+    const onHead = !ruff && g ? Math.hypot((g.at.e0R[0] + g.at.e0L[0]) / 2 - g.at.t1[0], (g.at.e0R[1] + g.at.e0L[1]) / 2 - g.at.t1[1]) : 0, runs = ruff ? neck : back ? [back] : [], L = r3(runOf(runs) + onHead), W = r8(h * .14);
+    if (L > .5) { part('mane', 'Mane', rect(L, W), { a: [0, 0], b: [L, 0], c: [L, W], d: [0, W] }, { cut: 1, fabric: 'contrast', notes: [ruff ? `Long-pile faux fur, the pile running away from the face: folded in half along its length and sewn into the seam that joins the head to the neck, all the way round (${r8(L)} in); its two ends joined; brushed out after turning`
+        : `Long-pile faux fur (or yarn loops), folded in half along its length: ${r8(onHead)} in of it stitched down the centre of the head gusset from between the ears, the rest (${r8(L - onHead)} in) sewn into the back seam from the neck to the stuffing opening; brushed out after turning`], place: { view: 'back', x: -h * .35, y: h * .05, z: 0 } });
+      const why = ruff ? 'the strip is as long as the seam round the neck' : `${r8(onHead)} in of the strip lies on the head gusset's centre line; the rest is the back seam's length from the neck to the opening`;
+      for (const [ks, which] of [[['a', 'b'], 'one long edge'], [['d', 'c'], 'the other long edge, the strip folded in half']]) J(`Mane caught in ${ruff ? 'the neck seam, all round' : 'the back seam, the neck to the opening'} (${which})`, runs, ['mane', ks], { caught: true, ...(onHead ? { gap: -onHead } : {}), why });
+      if (ruff) J('Mane: its two ends joined, a ring', ['mane', ['b', 'c']], ['mane', ['d', 'a']], { why: 'the strip closes round the neck' }); else F('Mane: its two ends, turned in', [['mane', ['b', 'c']], ['mane', ['d', 'a']]], 'turned in'); }
+  }
+  if (takes('wings') && s.wings) { const sh = blob([[0, 0], [h * .22, -h * .1], [h * .3, h * .02], [h * .22, h * .1], [h * .12, h * .12], [h * .04, h * .1]], .6);
+    part('wing', 'Wing', sh, { b0: [0, 0], b1: [h * .04, h * .1], tip: [h * .3, h * .02] }, { cut: 4, pair: true, notes: ['Two in self, two lined in contrast: sewn round, turned, the feathers topstitched; interfaced so they stand', 'Its base turned in and sewn to the back by hand, one each side of the centre'], place: { view: 'back', x: h * .12, y: h * .48, z: 3 } });
+    pieces.push(piece('wing-2', 'Wing', sh, { cut: 0, pair: true, place: { view: 'back', x: -h * .12 - h * .3, y: h * .48, flip: true, z: 3 }, hidden: true })); byHand('Wing', 'wing', 'to the back, one each side of the centre'); }
+  if (takes('spikes') && s.spikes) {
+    // a row of spikes: two layers sewn round their points, turned and stuffed lightly, the base caught in the seam along the back. It is as
+    // long as that seam: on a four-legged toy from the neck to the tail (across the stuffing opening its base is closed in by hand with the
+    // opening); on a sea creature from the nose to the dorsal fin, which has the seam behind it (to the opening on one with no fin)
+    const sea = s.shape === 'sea', runs = (sea ? asm.filter(e => /^Top seam.*: the nose to/.test(e.name)) : asm.filter(e => /^Back seam.*: (the neck to the opening|the stuffing opening|the opening to the tail)/.test(e.name))).map(e => e.a);
+    const L = r3(runOf(runs)), n = Math.max(3, Math.round(L / (h * .1))), w = L / n, where = sea ? `the top seam, from the nose to ${s.dorsal ? 'the dorsal fin' : 'the stuffing opening'}` : 'the back seam, from the neck to the tail';
+    if (L > 1) { part('spikes', 'Spikes', [[0, 0], ...Array.from({ length: n }, (_, i) => [[(i + .5) * w, -h * .07], [(i + 1) * w, 0]]).flat(), [L, h * .03], [0, h * .03]], { b0: [0, h * .03], b1: [L, h * .03], tip: [(Math.floor(n / 2) + .5) * w, -h * .07] },
+        { cut: 2, fabric: 'contrast', notes: [`${n} spikes in a row ${r8(L)} in long: two layers sewn round the points, turned and stuffed lightly`, `Its base caught in ${where}${sea ? '' : '; across the stuffing opening it is closed in by hand with the opening'}`], place: { view: 'back', x: -h * .35, y: h * .1, z: 4 } });
+      J('Spikes: outer to inner', ['spikes', ['b0', 'tip', 'b1'], 0], ['spikes', ['b0', 'tip', 'b1'], 1], { why: 'sewn round the points and turned through the base' });
+      for (const c of [0, 1]) J(`Spikes caught in ${where} (${c ? 'inner' : 'outer'} layer)`, runs, ['spikes', ['b0', 'b1'], c], { caught: true, why: 'the row is as long as the seam it lies in' }); }
   }
   const firm = PLUSH_FIRM.includes(s.fabric);
   for (const q of pieces) if (q.fabric === 'self') q.fabric = firm ? 'leather' : 'pile';
   notes.push(...(firm ? [`${PLUSH_FABRICS[s.fabric]}: it does not stretch, so the pieces are eased and the curves notched; cut each piece from sound skin, the grain running down the toy`, '⅜ in seam allowance, sewn at 8–9 stitches an inch with a leather needle and bonded nylon thread; seams pressed open with a roller, not an iron', 'Stuffed firm and slowly: leather shows every lump']
     : [`${PLUSH_FABRICS[s.fabric]}: the pile runs down the grain arrow`, '¼ in seam allowance, sewn at 10–12 stitches an inch, backstitched at the opening']));
-  return { kind: 'plush', spec: s, label: s.animal && !PLUSH_TYPE[s.shape].toLowerCase().startsWith(s.animal) ? `${s.animal[0].toUpperCase()}${s.animal.slice(1)} · ${PLUSH_TYPE[s.shape].toLowerCase()} body` : PLUSH_TYPE[s.shape], size: s.shape === 'sea' || built?.horizontal ? `${s.height} in long` : `${s.height} in tall`, sa: firm ? .375 : .25, pieces, notes, checks: plushChecks(s, pieces), ...(built ? { build: { joints: built.joints, views: built.views, lines: built.lines, face: built.face, opening: built.opening, horizontal: built.horizontal, parts: built.build }, trims: plushTrims(s, pieces) } : {}) };
+  return { kind: 'plush', spec: s, label: s.animal && !PLUSH_TYPE[s.shape].toLowerCase().startsWith(s.animal) ? `${s.animal[0].toUpperCase()}${s.animal.slice(1)} · ${PLUSH_TYPE[s.shape].toLowerCase()} body` : PLUSH_TYPE[s.shape], size: s.shape === 'sea' || built?.horizontal ? `${s.height} in long` : `${s.height} in tall`, sa: firm ? .375 : .25, pieces, notes, checks: plushChecks(s, pieces), ...(built ? { build: { joints: built.joints, views: built.views, lines: built.lines, face: built.face, opening: built.opening, horizontal: built.horizontal, parts: built.build } }
+      // a fixed body type: how it goes together (every seam as its two runs, every edge finished on its own, the stuffing opening), and the pieces the seams are walked on
+      : { assembly: fixed.asm, shell: Object.fromEntries(pieces.filter(q => q.at && q.cut).map(q => [q.id, q])) }), trims: plushTrims(s, pieces) };
 }
-// what a plush built from parts is made with besides its cloth: its fill, thread, eyes and nose, and the sewn-in law label
+// what a plush is made with besides its cloth: its fill, thread, eyes and nose, the sewn-in law label, and what its parts call for (a pouch
+// of pellets on a bean's base, yarn for a tufted tail, interfacing behind what has to stand)
 function plushTrims(s, pieces) {
-  const g = fillGrams({ kind: 'plush', spec: s, pieces }), out = [{ item: 'Polyester fibre fill', spec: 'Siliconised hollow fibre, 7 denier, to EN 71-2 / ASTM F963', qty: `about ${g} g`, where: 'Stuffed through the opening' },
+  const g = fillGrams({ kind: 'plush', spec: s, pieces }), fixed = s.shape !== 'build', out = [{ item: 'Polyester fibre fill', spec: 'Siliconised hollow fibre, 7 denier, to EN 71-2 / ASTM F963', qty: `about ${g} g`, where: 'Stuffed through the opening' },
     { item: 'Thread', spec: 'Tex 40 core-spun polyester; Tex 70 bonded nylon for closing by hand', qty: `about ${Math.max(20, Math.round(pieces.reduce((a, q) => a + (q.cut || 0) * lenOf([...q.sew, q.sew[0]]), 0) * .0254 * 3 / 10) * 10)} m`, where: 'Throughout' },
     { item: 'Law label', spec: 'Printed satin: the fill content, the registration number, the age it is for', qty: 1, where: 'Sewn into a side or bottom seam' },
     s.eyes === 'safety' ? { item: 'Safety eyes', spec: '12 mm, with locking washers', qty: '1 pair', where: 'Set before the face is closed' } : { item: 'Embroidery floss', spec: s.eyes === 'felt' ? 'Felt circles for the eyes, appliquéd; 6-strand floss for the nose and mouth' : '6-strand cotton floss for the eyes, the nose and the mouth', qty: '1 skein', where: 'The face' }];
   if (pieces.some(q => q.id === 'curly-tail' || /pipe cleaner/.test((q.notes || []).join(' ')))) out.push({ item: 'Pipe cleaner', spec: 'Chenille stem, the ends turned in (3 years and up only)', qty: 1, where: 'In the curly tail' });
   if (pieces.some(q => /antenna/.test(q.id))) out.push({ item: 'Cord', spec: '3 mm cotton cord', qty: '2 × 6 in', where: 'Inside the antennae' });
+  if (fixed) { const said = re => pieces.some(q => q.cut && (q.notes || []).some(n => re.test(n)));
+    if (s.eyes === 'safety' && said(/embroidered/i)) out.push({ item: 'Embroidery floss', spec: '6-strand cotton floss for the nose and the mouth', qty: '1 skein', where: 'The face' });
+    if (said(/pouch of polypellets/i)) out.push({ item: 'Polypellets', spec: 'PE pellets, 3 mm (3 years and up only)', qty: `about ${Math.max(20, Math.round(g * .25 / 5) * 5)} g`, where: 'In their pouch, on the base' }, { item: 'Pellet pouch', spec: 'Non-woven inner bag, double-stitched shut', qty: 1, where: 'Holds the pellets; tacked to the base inside' });
+    if (said(/tuft is yarn/i)) out.push({ item: 'Yarn', spec: 'Acrylic or wool, in the body\'s colour', qty: '1 yd', where: 'The tail\'s tuft, knotted into its tip' });
+    if (s.shape === 'elephant' || said(/interfaced/i)) out.push({ item: 'Interfacing', spec: 'Fusible non-woven, medium weight', qty: s.shape === 'elephant' ? '2 pieces, cut as the ear' : 'Cut as the pieces it backs', where: [s.shape === 'elephant' && 'The ear backs', said(/interfaced/i) && 'The antlers or the wings'].filter(Boolean).join('; ') }); }
   return out;
 }
 // the safety a plush is tested against (ASTM F963 and EN 71): what the choices mean for the age it is for
@@ -1113,6 +1540,7 @@ export function plushChecks(s, pieces = []) {
   const out = [], under3 = s.age === '0+';
   if (under3 && s.eyes === 'safety') out.push({ level: 'fail', msg: 'Safety eyes are a small part for under-3s: embroider the eyes (and the nose), or mark it 3 years and up.' });
   if (under3) out.push({ level: 'info', msg: 'Under 3: every part passes the small-parts cylinder (1¼ in), seams take a 15 lbf pull, nothing comes off in the torque and tension tests (ASTM F963 / EN 71-1).' });
+  if (under3 && pieces.some(q => q.cut && /^(horn|antler|wing)$/.test(q.id) && (q.notes || []).some(n => /by hand/.test(n)))) out.push({ level: 'warn', msg: 'Horns, antlers and wings are sewn on by hand: for under-3s each has to take the 15 lbf pull (ASTM F963 / EN 71-1). Stitch each base twice round in bonded nylon and test it, or leave them off.' });
   if (under3 && pieces.some(q => /tail/.test(q.id))) out.push({ level: 'warn', msg: 'The tail is small: sew it into a seam, not on by hand, so it passes the tension test.' });
   if (PLUSH_FIRM.includes(s.fabric) && under3) out.push({ level: 'warn', msg: 'Leather on a toy for under-3s: check it is chrome-free and passes the restricted-substances tests (azo dyes, chromium VI); most baby toys are made in pile instead.' });
   if (s.fabric === 'fur') out.push({ level: 'warn', msg: 'Long-pile fur sheds at the seams: brush the pile out of every seam after turning, and test for fibre loss.' });
@@ -1124,7 +1552,9 @@ export function plushChecks(s, pieces = []) {
 // how much a plush takes to fill: its volume as a solid of its front outline, about two thirds of the bounding depth, at toy-firm fill
 export function fillGrams(pat) {
   if (pat.kind !== 'plush') return 0; const front = pat.pieces.filter(q => !q.hidden && q.place.view === 'front' && q.cut > 0);
-  const area = front.reduce((s, q) => s + areaOf(q.sew) * (q.pair && !q.fold ? 2 : 1), 0) * .78, depth = pat.spec.shape === 'pillow' ? pat.spec.depth : pat.spec.height * .42;
+  // a sea creature's two body sides are the two faces of one body (counted once), as deep as its belly gusset is wide
+  const sea = pat.spec.shape === 'sea', belly = sea && pat.pieces.find(q => q.id === 'belly');
+  const area = front.reduce((s, q) => s + areaOf(q.sew) * (q.pair && !q.fold && !(sea && q.id === 'body-side') ? 2 : 1), 0) * .78, depth = pat.spec.shape === 'pillow' ? pat.spec.depth : belly ? boundsOf(belly.sew).w : pat.spec.height * .42;
   return Math.round(area * depth * .66 * .55); // ~0.55 g a cubic inch, firmly stuffed polyester fibre
 }
 

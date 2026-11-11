@@ -4,7 +4,7 @@
 // rim of a housing as planes with the opening cut through. Elliptical sections are written as many flat facets, a ball as a faceted
 // ellipsoid; both are still closed solids. (The detailed parts the 3D view draws, src/lab-parts3d.js, are pictures; these are the bodies.)
 //   stepOf(spec, { t, only, title }) → text: one solid per part (qty drawn once), pulled apart by t (0 = assembled), or one part only
-import { cleanAssembly, explodeOffsets } from './lab-assembly.js';
+import { cleanAssembly, explodeOffsets, featuresOf } from './lab-assembly.js';
 
 const fmt = v => { const r = Math.round(v * 1e6) / 1e6; return Number.isInteger(r) ? `${r}.` : String(r); }; // STEP reals carry a point
 const esc = s => String(s ?? '').replace(/[\\']/g, c => (c === "'" ? "''" : '\\\\')).replace(/[^\x20-\x7e]/g, '?').slice(0, 120);
@@ -47,8 +47,8 @@ export function stepOf(s0, { t = 0, only = null, title = '' } = {}) {
     if (p.shape === 'ball') return polyhedron(p, W, R);
     const [w, d, L] = localDims(p), z0 = -L / 2, z1 = L / 2, tk = shellLike(p) ? Math.min(p.wall, Math.min(w, d) / 2 - .2) : 0;
     const outP = ROUND.has(p.shape) ? round(w, d) : roundedRect(w, d, p.r ?? 0), innP = tk ? (ROUND.has(p.shape) ? round(w - 2 * tk, d - 2 * tk) : roundedRect(w - 2 * tk, d - 2 * tk, Math.max((p.r ?? 0) - tk, 0))) : null;
-    const levels = new Map();
-    const level = (P, z) => { const k = `${P === outP ? 'o' : 'i'}${z}`; if (levels.has(k)) return levels.get(k); const V = P.map(sg => put(`VERTEX_POINT('',${pt(W([sg.a[0], sg.a[1], z]))})`));
+    const levels = new Map(); let keys = 0;
+    const level = (P, z) => { const k = `${P.key ??= ++keys}:${z}`; if (levels.has(k)) return levels.get(k); const V = P.map(sg => put(`VERTEX_POINT('',${pt(W([sg.a[0], sg.a[1], z]))})`));
       const E = P.map((sg, i) => { const curve = sg.line ? put(`LINE('',${pt(W([sg.a[0], sg.a[1], z]))},${put(`VECTOR('',${dir(R([sg.b[0] - sg.a[0], sg.b[1] - sg.a[1], 0]))},${fmt(Math.hypot(sg.b[0] - sg.a[0], sg.b[1] - sg.a[1]))})`)})`) : put(`CIRCLE('',${place(W([sg.c[0], sg.c[1], z]), R([0, 0, 1]), R([1, 0, 0]))},${fmt(sg.r)})`); return put(`EDGE_CURVE('',${V[i]},${V[(i + 1) % P.length]},${curve},.T.)`); });
       const L2 = { V, E, P, z }; levels.set(k, L2); return L2; };
     const oe = (e, sense) => put(`ORIENTED_EDGE('',*,*,${e},${sense ? '.T.' : '.F.'})`);
@@ -59,14 +59,22 @@ export function stepOf(s0, { t = 0, only = null, title = '' } = {}) {
         const surf = sg.line ? put(`PLANE('',${place(W([sg.a[0], sg.a[1], za]), R(inward ? [-(sg.b[1] - sg.a[1]), sg.b[0] - sg.a[0], 0] : [sg.b[1] - sg.a[1], -(sg.b[0] - sg.a[0]), 0]), R([sg.b[0] - sg.a[0], sg.b[1] - sg.a[1], 0]))})`) : put(`CYLINDRICAL_SURFACE('',${place(W([sg.c[0], sg.c[1], za]), R([0, 0, 1]), R([1, 0, 0]))},${fmt(sg.r)})`);
         faces.push(put(`ADVANCED_FACE('',(${put(`FACE_OUTER_BOUND('',${put(`EDGE_LOOP('',(${loop.join(',')}))`)},.T.)`)}),${surf},${sg.line ? '.T.' : inward ? '.F.' : '.T.'})`)); }); };
     // a flat face at z, looking up or down, bounded by a profile, with a hole through it when there is an inner profile
-    const cap = (P, z, upward, hole = null) => { const A = level(P, z), bounds = [put(`FACE_OUTER_BOUND('',${loopOf(A, upward)},.T.)`)]; if (hole) bounds.push(put(`FACE_BOUND('',${loopOf(level(hole, z), !upward)},.T.)`));
+    const cap = (P, z, upward, hole = null) => { const A = level(P, z), bounds = [put(`FACE_OUTER_BOUND('',${loopOf(A, upward)},.T.)`)]; for (const h of !hole || !hole.length ? [] : Array.isArray(hole[0]) ? hole : [hole]) bounds.push(put(`FACE_BOUND('',${loopOf(level(h, z), !upward)},.T.)`));
       faces.push(put(`ADVANCED_FACE('',(${bounds.join(',')}),${put(`PLANE('',${place(W([0, 0, z]), R([0, 0, upward ? 1 : -1]), R([1, 0, 0]))})`)},.T.)`)); };
+    // the openings through the part along its axis and the screw bosses on a housing's floor (featuresOf, src/lab-assembly.js): a round one is
+    // a true circle, a square one four lines; a boss is a cylinder with its pilot bore, which runs out through the floor when a screw
+    // comes up through it. (Windows in a housing's side walls are in the part's STL; they are not written here yet.)
+    const F = featuresOf(p), circ = (cx, cy, r) => [{ arc: true, c: [cx, cy], r, a: [cx + r, cy], b: [cx - r, cy] }, { arc: true, c: [cx, cy], r, a: [cx - r, cy], b: [cx + r, cy] }];
+    const holeP = h => { if (h.round && Math.abs(h.hw - h.hd) < 1e-6) return circ(h.cx, h.cy, h.hw); const P = h.round ? Array.from({ length: ELL_SEG }, (_, i) => { const a = i / ELL_SEG * Math.PI * 2; return [h.cx + h.hw * Math.cos(a), h.cy + h.hd * Math.sin(a)]; }) : [[h.cx + h.hw, h.cy - h.hd], [h.cx + h.hw, h.cy + h.hd], [h.cx - h.hw, h.cy + h.hd], [h.cx - h.hw, h.cy - h.hd]]; return P.map((a, i) => ({ line: true, a, b: P[(i + 1) % P.length] })); };
+    const bossP = F.bosses.map(b => ({ b, ring: circ(b.cx, b.cy, b.R), bore: circ(b.cx, b.cy, b.rp) })), own = F.holes.filter(h => !h.boss).map(holeP), through = [...own, ...bossP.filter(q => q.b.bore).map(q => q.bore)];
     wall(outP, z0, z1, false);
-    if (!innP) { cap(outP, z0, false); cap(outP, z1, true); }
+    if (!innP) { cap(outP, z0, false, own); cap(outP, z1, true, own); for (const h of own) wall(h, z0, z1, true); }
     else { const o = p.shape === 'ring' ? 'both' : p.open === '-' ? '-' : '+';
       if (o === 'both') { wall(innP, z0, z1, true); cap(outP, z0, false, innP); cap(outP, z1, true, innP); }
-      else if (o === '+') { wall(innP, z0 + tk, z1, true); cap(outP, z0, false); cap(innP, z0 + tk, true); cap(outP, z1, true, innP); }
-      else { wall(innP, z0, z1 - tk, true); cap(outP, z1, true); cap(innP, z1 - tk, false); cap(outP, z0, false, innP); } }
+      else { const up = o === '+', zo = up ? z0 : z1, zi = up ? z0 + tk : z1 - tk, lo = (a, b) => Math.min(a, b), hi = (a, b) => Math.max(a, b);
+        if (up) { wall(innP, zi, z1, true); cap(outP, z1, true, innP); } else { wall(innP, z0, zi, true); cap(outP, z0, false, innP); }
+        cap(outP, zo, !up, through); cap(innP, zi, up, [...own, ...bossP.map(q => q.ring)]); for (const h of own) wall(h, lo(zo, zi), hi(zo, zi), true);
+        for (const { b, ring, bore } of bossP) { const ze = F.sgn * b.ue, zb = b.bore ? zo : zi; wall(ring, lo(zi, ze), hi(zi, ze), false); cap(ring, ze, up, [bore]); wall(bore, lo(zb, ze), hi(zb, ze), true); if (!b.bore) cap(bore, zi, up); } } }
     return put(`MANIFOLD_SOLID_BREP('${esc(p.name)}',${put(`CLOSED_SHELL('',(${faces.join(',')}))`)})`);
   }
   // a ball: an ellipsoid of flat facets (latitude bands, triangles at the poles), every edge shared by two faces

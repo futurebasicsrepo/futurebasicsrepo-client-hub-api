@@ -7,7 +7,11 @@
 //   3. the cut table: every piece laid on its cloth at the cloth's width, the yardage and how much of the cloth is used, nothing wider than it.
 // It walks the block a garment is built from (pat.block: one side of the front and the back, the sleeve, each leg, before a yoke, a panel or
 // a pocket divides them; dividing a piece does not change a seam's length or the garment's size), and the rib, cuff and band pieces as cut.
-// A bag is checked the same way: its gusset against the panel edges it is sewn round, its body against its size.
+// A bag is checked by its assembly (the list of every seam, zip and finished edge its drafting gives): each seam's two sides, each zip in
+// its opening, that no edge is left unsewn or sewn twice, that what is sewn on a panel lies on it, and its body against its size.
+// A plush drafted on one of the fixed body types is checked by its assembly too: each seam's two sides (a head gusset along its head side, a
+// foot pad round its leg's open end, a base round the bottom edges, an ear, a fin or a tail in the seam it is caught in), that no edge of any
+// piece is left unsewn or sewn twice, its stuffing opening, and the toy's height (a sea creature's length) measured off its pieces.
 // The same file runs in the page and on the service: no DOM, no Node.
 import { layoutOf, boundsOf } from './lab-pattern.js';
 
@@ -172,7 +176,12 @@ function checkHeadwear(pat, m) {
     seams.push(seam('Crown seams: panel to panel', edge(P, 'tl', 'bl'), edge(P, 'tr', 'br'), { why: 'the six panels are sewn side to side from the button to the band; every side the same length' }));
     if (B.brim) { const inner = edge(B.brim, 'i0', 'i1');
       seams.push(seam('Brim onto the crown', 2 * base, inner, { ease: [0, base], why: 'across the two front panels and up to half of each side panel' }));
-      const sb = piece(pat, 'sweatband'); if (sb) seams.push(seam('Sweatband round the head opening', head - 2.25 + 1, lengthOf(sb), { ease: [-.25, .25], why: 'the head opening less the 2¼ in back opening, ½ in turned back at each end' }));
+      // the head opening, measured: the foot of every panel as cut (the two back panels' feet are short by the back opening)
+      const footOf = id => { const q = piece(pat, id); if (!q) return null; const y1 = boundsOf(q.sew).y1; return q.sew.reduce((a, pt, i) => { const nx = q.sew[(i + 1) % q.sew.length]; return a + (Math.abs(pt[1] - y1) < .01 && Math.abs(nx[1] - y1) < .01 ? dist(pt, nx) : 0); }, 0); };
+      const feet = ['panel-front', 'panel-side', 'panel-back'].map(footOf), sb = piece(pat, 'sweatband');
+      if (sb && feet.every(f => f != null)) { const open = 2 * (feet[0] + feet[1] + feet[2]);
+        seams.push(seam('Sweatband round the head opening', open + 1, lengthOf(sb), { ease: [-.25, .25], why: 'the feet of the six panels as cut (the back two short by the back opening), ½ in turned back at each end' }));
+        meas.push(measure('Back opening, across the two back panels', 2 * (feet[0] - feet[2]), 2.25, .25)); }
       const bd = piece(pat, 'brim-board'), bs = piece(pat, 'brim'); if (bd && bs) { const n = bd.sew.filter(q => inside(bs.sew, q)).length; seams.push({ name: 'Brim board inside the brim', ok: n === bd.sew.length, a: bd.sew.length, b: n, diff: n - bd.sew.length, range: [0, 0], why: 'every point of the board inside the brim it is sewn into' }); }
       // the brim's length at the centre front, from the seam (the inner edge, bowed toward the crown) to its edge; its width side to side
       const bb = boundsOf(B.brim.sew); meas.push(measure('Brim length at the centre front', B.brim.at.tip[1] - (B.brim.bow || 0), m.brimLength, .125)); meas.push(measure('Brim width', bb.w, m.brimWidth, .25)); }
@@ -180,25 +189,42 @@ function checkHeadwear(pat, m) {
     // the crown's height back off the panel: the panel runs a quarter of the dome round, a quarter-ellipse of the head's radius and the height
     const a = head / (2 * Math.PI), q = b => Math.PI / 4 * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b))); let lo = .5, hi = 12; for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (q(mid) < ph) lo = mid; else hi = mid; }
     meas.push(measure('Crown height', lo, m.crownHeight, .25));
+    // the six panels round the dome: at a quarter, half and three quarters of the way down, together as wide as the crown is round there
+    if (m.crownHeight) { const N = 200, tab = [[0, 0]]; for (let i = 1; i <= N; i++) { const t0 = (i - 1) / N * Math.PI / 2, t1 = i / N * Math.PI / 2; tab.push([t1, tab[i - 1][1] + Math.hypot(a * (Math.sin(t1) - Math.sin(t0)), m.crownHeight * (Math.cos(t0) - Math.cos(t1)))]); }
+      const y0 = P.at.tl[1], total = tab[N][1];
+      for (const [f, word] of [[.25, 'a quarter'], [.5, 'half'], [.75, 'three quarters']]) { const t = tab.find(([, sl]) => sl >= f * total)[0], sp = spanAt(P.sew, y0 + f * ph);
+        seams.push(seam(`Six panels round the dome, ${word} of the way down`, 2 * Math.PI * a * Math.sin(t), sp ? 6 * (sp[1] - sp[0]) : null, { ease: [-.25, .25], why: 'together the six panels are as wide as the crown is round there, so they lie round it' })); } }
+    const tape = (pat.trims || []).find(t => /seam tape/i.test(t.item)), tapeIn = tape ? Number(String(tape.qty).match(/[\d.]+/)?.[0]) : null;
+    if (tapeIn != null) { const side = edge(P, 'tl', 'bl'); meas.push({ ...measure('Crown seam tape, against the six crown seams', tapeIn, 6 * side, 0), tol: 0, rule: 'at least', ok: tapeIn >= 6 * side - 1e-6 }); }
   } else if (B.band) { // a bucket hat: the crown oval onto the band's top, the brim onto the band's foot
-    const band = B.band, brim = B.brim, foot = 2 * dist(band.at.b0, band.at.b1); /* the band's foot is straight; each seam's edges walked inside its own call */
+    const band = B.band, brim = B.brim; /* the band and the brim are parts of rings: every edge is walked along its curve */
     seams.push(seam('Crown top onto the side band', perimeter(B.crown.sew), 2 * edge(band, 't0', 't1'), { ease: [-.25, .25], why: 'the oval crown eased into the band, within ¼ in' }));
     seams.push(seam('Side band seams', edge(band, 't0', 'b0'), edge(band, 't1', 'b1'), { why: 'the two halves of the band sewn at the sides' }));
     seams.push(seam('Brim onto the side band', 2 * edge(band, 'b0', 'b1'), 2 * edge(brim, 'i0', 'i1'), { why: 'the brim\'s inner edge is the band\'s foot' }));
     seams.push(seam('Brim seams', edge(brim, 'i0', 'o0'), edge(brim, 'i1', 'o1'), { why: 'the two halves of the brim sewn at the sides' }));
-    meas.push(measure('Head size (at the brim seam)', foot, HEAD, .5)); meas.push(measure('Crown height', boundsOf(band.sew).h, m.crownHeight, .25)); meas.push(measure('Brim length', boundsOf(brim.sew).h, m.brimLength, .125));
+    meas.push(measure('Head size (at the brim seam)', 2 * edge(band, 'b0', 'b1'), HEAD, .5)); meas.push(measure('Crown height, up the band', edge(band, 't0', 'b0'), m.crownHeight, .25));
+    meas.push(measure('Brim length at the side seams', edge(brim, 'i0', 'o0'), m.brimLength, .125));
+    // the brim is the same length all round: its outer edge is a constant distance from its inner edge (measured at the middle of the half)
+    const mid = brim.sew[near(brim.sew, brim.at.i0) === 0 ? Math.floor((near(brim.sew, brim.at.i1)) / 2) : 0], outer = brim.sew.slice(near(brim.sew, brim.at.o1), near(brim.sew, brim.at.o0) + 1);
+    if (mid && outer.length > 1) meas.push(measure('Brim length at the centre', Math.min(...outer.map((q, i) => i ? toSeg(mid, outer[i - 1], q) : Infinity)), m.brimLength, .125));
   }
   return { seams, meas };
 }
+// the width of one petal of a beanie's crown: between the first two points where its top edge comes down to the petals' feet
+const spanOfTop = (P, y) => { const xs = P.filter(q => Math.abs(q[1] - y) < .01).map(q => q[0]).sort((u, v) => u - v); return xs.length > 1 ? xs[1] - xs[0] : null; };
 function checkBeanie(pat, m) {
   const b = piece(pat, 'body'), bb = boundsOf(b.sew), circ = bb.w;
   return { seams: [seam('Stretched onto the head', HEAD, circ, { ease: [-HEAD * .25, -HEAD * .1], why: 'a rib beanie is knitted 10 to 25% smaller round than the head it stretches onto' })],
-    meas: [measure('Flat width', circ / 2, m.width, .25), measure('Length, the cuff turned up', bb.h - m.cuff, m.height, .25), measure('Cuff', m.cuff, m.cuff, .125)] };
+    meas: [measure('Flat width', circ / 2, m.width, .25), measure('Length, the cuff turned up', b.at ? b.at.foldL[1] - bb.y0 : null, m.height, .25), measure('Cuff, from its fold to the edge', b.at ? b.at.hemL[1] - b.at.foldL[1] : null, m.cuff, .125),
+      // the crown: four petals, their feet making the whole round, each no taller than it is wide (so they close flat into the crown)
+      measure('Crown petals, across their feet', b.at ? 4 * (spanOfTop(b.sew, b.at.tipL[1]) || 0) : null, circ, .25)] };
 }
 function checkTote(pat, m) {
   const b = piece(pat, 'body'), h = piece(pat, 'handle'), bb = boundsOf(b.sew), hb = h ? boundsOf(h.sew) : null, seams = [], meas = [];
-  seams.push(seam('Side seams: front to back', bb.h / 2, bb.h / 2, { why: 'one piece folded at the bottom, the two sides of each side seam the same length' }));
-  meas.push(measure('Width', bb.w, m.width, .25), measure('Height, the top turned back', bb.h / 2 - 1.5, m.height, .25));
+  // one piece folded at the bottom: each side seam is the edge above the fold sewn to the edge below it (walked off the outline)
+  seams.push(seam('Side seam: front to back, one side', b.at ? edge(b, 'tl', 'fl') : null, b.at ? edge(b, 'fl', 'bl') : null, { why: 'folded at the bottom, the front edge of the side seam against the back edge' }));
+  seams.push(seam('Side seam: front to back, the other side', b.at ? edge(b, 'tr', 'fr') : null, b.at ? edge(b, 'fr', 'br') : null));
+  meas.push(measure('Width', bb.w, m.width, .25), measure('Height, the top turned back', b.at ? edge(b, 'tl', 'fl') - 1.5 : null, m.height, .25));
   if (hb) meas.push(measure('Handle drop', (hb.w - 3) / 2, m.handleDrop, .5), measure('Handle width, folded in four', hb.h / 4, m.handleWidth, .125));
   return { seams, meas };
 }
@@ -210,18 +236,91 @@ function checkPlush(pat) {
   if (pts.length) { const b = boundsOf(pts), got = B.horizontal ? b.w : b.h, want = s.height; meas.push(measure(B.horizontal ? 'Length, nose to tail, stuffed' : 'Height, stuffed', got, want, Math.max(.5, want * .1))); }
   return { seams, meas };
 }
+// ---- a bag: its assembly walked (src/lab-pattern.js bagPattern lists it) ----
+// a run: [piece id, the labelled corners it passes, which copy]; several runs end to end are a list of them
+const runLen = (pat, [id, ks]) => { const q = piece(pat, id); if (!q?.at) return null; let L = 0; for (let i = 0; i < ks.length - 1; i++) { const e = edge(q, ks[i], ks[i + 1]); if (e == null) return null; L += e; } return L; };
+const runsLen = (pat, r) => (Array.isArray(r[0]) ? r : [r]).reduce((s, x) => { const l = runLen(pat, x); return s == null || l == null ? null : s + l; }, 0);
+const insideOf = (P, [x, y]) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+const toSeg = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1))); return dist(p, [a[0] + t * dx, a[1] + t * dy]); };
+// how far inside an outline a point is: its distance to the nearest edge, negative when it is outside
+const depthIn = (P, p) => (insideOf(P, p) ? 1 : -1) * Math.min(...P.map((a, i) => toSeg(p, a, P[(i + 1) % P.length])));
+const perimOf = q => q.sew.reduce((s, p, i) => s + dist(p, q.sew[(i + 1) % q.sew.length]), 0);
+// a measurement that has to reach a least value (a clearance, a reach, a length that must cover another)
+function atLeast(name, got, min, why = '') { if (RUNS) RUNS.length = 0; if (got == null || !Number.isFinite(got)) return { name, ok: null, why: 'not measurable on the pattern yet' };
+  return { name, got: r8(got), want: r8(min), diff: r2(got - min), tol: 0, rule: 'at least', ok: got >= min - 1e-6, ...(why ? { why } : {}) }; }
 function checkBag(pat) {
-  const seams = [], meas = [], [W, H, D] = String(pat.size).match(/[\d.]+/g).map(Number), front = piece(pat, 'front') || piece(pat, 'body');
-  const perim = q => q.sew.reduce((s, p, i) => s + dist(p, q.sew[(i + 1) % q.sew.length]), 0);
-  const g = piece(pat, 'gusset'), zg = piece(pat, 'zip-gusset'), bg = piece(pat, 'base-gusset');
-  if (front && pat.style !== 'duffel') {
-    const b = boundsOf(front.sew), round = perim(front) - b.w; // the sides and the bottom (and its corners), the top left open
-    if (g) seams.push(seam('Gusset round the panel (sides and bottom)', round, lengthOf(g), { ease: [-.25, .25], why: 'the gusset runs down a side, across the bottom and up the other' }));
-    if (zg && bg) seams.push(seam('Zip gusset and base round the panel', perim(front), lengthOf(zg) + lengthOf(bg), { ease: [-.25, .25], why: 'the zip gusset over the top and down the sides meets the base gusset' }));
-    meas.push(measure('Width', b.w, W, .25)); meas.push(measure('Height', pat.style === 'rolltop' ? b.h - 8 : b.h, H, .25));
-    if (g || bg) meas.push(measure('Depth', boundsOf((g || bg).sew).h, D, .25));
+  const seams = [], meas = [], [W, H, D] = String(pat.size).match(/[\d.]+/g).map(Number), A = pat.assembly || [];
+  // every run a seam, a zip or a finish uses, by piece (and copy): at the end each piece's outline must be used once, all of it
+  const used = new Map(), quiet = f => { const keep = RUNS; RUNS = null; try { return f(); } finally { RUNS = keep; } };
+  const use = r => { for (const [id, ks, k = 0] of (Array.isArray(r[0]) ? r : [r])) { const l = quiet(() => runLen(pat, [id, ks])); if (l != null) used.set(`${id}#${k}`, (used.get(`${id}#${k}`) || 0) + l); } };
+  let sewn = 0;
+  for (const e of A) {
+    if (e.zip != null) { const a = runsLen(pat, e.a), b = runsLen(pat, e.b);
+      seams.push(seam(`${e.name}: the two edges it joins`, a, b, { why: e.why }));
+      seams.push(seam(`${e.name}: the zip in its opening`, quiet(() => runsLen(pat, e.a)), e.zip, { ease: [-2.5, 0], why: 'the zip stops short of each end of its opening, under a tab' }));
+      use(e.a); use(e.b); }
+    else if (e.b) { const a = runsLen(pat, e.a), b0 = runsLen(pat, e.b); seams.push(seam(e.name, a, b0 == null ? null : b0 + (e.gap || 0), { ease: e.ease, why: e.why }));
+      if (!e.caught) { use(e.a); if (!/^Lining/.test(e.name) && a != null) sewn += a; } use(e.b); }
+    else if (e.fin) use(e.a);
+    else if (e.id && e.on) { const panel = piece(pat, e.on), q = piece(pat, e.id); meas.push(atLeast(`${e.name}, inside its edges`, panel && q ? Math.min(...q.sew.map(([x, y]) => depthIn(panel.sew, [x + e.at[0], y + e.at[1]]))) : null, .25)); }
+    else if (e.boxes) { const panel = piece(pat, e.on); meas.push(atLeast(`${e.name}, clear of its edges`, panel ? Math.min(...e.boxes.flatMap(([x0, y0, x1, y1]) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]).map(p => depthIn(panel.sew, p))) : null, e.clear)); }
+    else if (e.fits != null) seams.push(seam(e.name, e.within, e.fits, { ease: [-2.5, 0], why: 'the zip stops short of each end' }));
+    else if (e.reach) { const q = piece(pat, e.reach); meas.push(atLeast(`${e.name} (how far down the front)`, q ? boundsOf(q.sew).h - e.over : null, e.min)); }
+    else if (e.handle) { const q = piece(pat, e.handle), free = q ? boundsOf(q.sew).h - 2 * e.tails : null; meas.push(atLeast(`${e.name} (its rise over the top)`, free == null ? null : Math.sqrt(Math.max(0, (free / 2) ** 2 - e.spread ** 2)), e.min)); }
+    else if (e.straps) { const q = piece(pat, e.straps); meas.push(atLeast(e.name, q ? boundsOf(q.sew).h + e.webbing - e.sewn - e.span : null, e.min)); }
   }
-  if (pat.style === 'duffel') { const body = piece(pat, 'body'), end = piece(pat, 'end'); seams.push(seam('Body round the end panel', perim(end), boundsOf(body.sew).h, { ease: [-.25, .5], why: 'the body is eased round each round end' })); meas.push(measure('Length', boundsOf(body.sew).w, W, .25)); meas.push(measure('Diameter', boundsOf(end.sew).w, H, .25)); }
+  let worst = 0, who = ''; for (const [key, l] of used) { const q = piece(pat, key.split('#')[0]), d = Math.abs(l - perimOf(q)); if (d > worst) { worst = d; who = q.name; } }
+  if (used.size) meas.push(measure(`No edge left unsewn, none sewn twice${worst > .125 ? ` (out on the ${who.toLowerCase()})` : ''}`, worst, 0, .125));
+  // its size, measured off the pieces
+  const front = piece(pat, 'front'), body = piece(pat, 'body'), g = piece(pat, 'gusset') || piece(pat, 'base-gusset');
+  if (front) { const b = boundsOf(front.sew); meas.push(measure('Width', b.w, W, .25)); meas.push(measure('Height', b.h - (pat.up || 0), H, .25)); if (g) meas.push(measure('Depth', boundsOf(g.sew).h, D, .25)); }
+  if (body) { const end = piece(pat, 'end'); meas.push(measure('Length', boundsOf(body.sew).w, W, .25)); if (end) meas.push(measure('Diameter', boundsOf(end.sew).w, H, .25)); }
+  // binding enough for the inside seams
+  const tape = (pat.trims || []).find(t => t.item === 'Binding tape'), tapeIn = tape ? Number(String(tape.qty).match(/[\d.]+/)?.[0]) : null;
+  if (sewn && tapeIn != null) meas.push(atLeast('Binding tape, against the inside seams it binds', tapeIn, sewn));
+  return { seams, meas };
+}
+
+// ---- a plush on one of the fixed body types: its assembly walked (src/lab-pattern.js draftFixed lists it) ----
+// the points of the run between two labelled corners, and where a seam that is not level sits once it is sewn (its mean height)
+const runPts = (q, a, b) => { const keep = RUNS; RUNS = []; let pts = null; try { if (edge(q, a, b) != null) pts = RUNS[0].pts; } finally { RUNS = keep; } return pts; };
+const levelOf = (q, ...ks) => { let L = 0, m = 0; for (let i = 0; i + 1 < ks.length; i++) { const r = q?.at ? runPts(q, ks[i], ks[i + 1]) : null; if (!r) return null; for (let j = 1; j < r.length; j++) { const d = dist(r[j], r[j - 1]); L += d; m += d * (r[j][1] + r[j - 1][1]) / 2; } } return L ? m / L : null; };
+// the made toy's size, off its pieces as they are sewn: a standing bear's head above its neck seam, its body below that seam down to the hip notch and its leg
+// below that (the leg's two top corners sit at the notch); a sitting animal's head above its neck seam and its body below it down to the seat; a sea creature from its nose to the end of
+// its tail stock and its tail beyond; a bean's, a bunny's or a pillow's front, top to bottom
+function plushSize(pat) {
+  const P = id => piece(pat, id), sh = pat.spec.shape, has = (q, ...ks) => q?.at && ks.every(k => q.at[k]), sum = (...v) => (v.every(x => x != null && Number.isFinite(x)) ? v.reduce((a, x) => a + x, 0) : null);
+  if (sh === 'sea') { const b = P('body-side'), t = P('tail'); return has(b, 'st', 'sb') ? sum((b.at.st[0] + b.at.sb[0]) / 2 - boundsOf(b.sew).x0, t?.cut ? (has(t, 'b0', 'b1') ? boundsOf(t.sew).x1 - (t.at.b0[0] + t.at.b1[0]) / 2 : null) : 0) : null; }
+  if (sh === 'bear') { const hd = P('head-side'), f = P('body-front'), leg = P('leg'); if (!hd || !has(f, 'nc', 'sh')) return null; const head = sum(levelOf(hd, 'throat', 'nape'), -boundsOf(hd.sew).y0);
+    const neck = levelOf(f, 'nc', 'sh'); if (neck == null) return null;
+    return leg?.cut ? (has(f, 'hip') && has(leg, 't0', 't1') ? sum(head, f.at.hip[1] - neck, boundsOf(leg.sew).y1 - (leg.at.t0[1] + leg.at.t1[1]) / 2) : null) : sum(head, boundsOf(f.sew).y1 - neck); }
+  if (sh === 'quad' || sh === 'elephant') { const hd = P('head-side'), b = P('body-side'); return hd && b ? sum(levelOf(hd, 'back', 'throat'), -boundsOf(hd.sew).y0, boundsOf(b.sew).y1, -levelOf(b, 'nb', 'top0', 'nf')) : null; }
+  const f = P('front'); return f ? boundsOf(f.sew).h : null;
+}
+function checkPlushShape(pat) {
+  const seams = [], meas = [], A = pat.assembly || [], s = pat.spec, long = s.shape === 'sea';
+  // every run a seam or a finish uses, by piece and copy: at the end every cut of every labelled piece must be used once, all of it
+  const used = new Map(), quiet = f => { const keep = RUNS; RUNS = null; try { return f(); } finally { RUNS = keep; } };
+  const use = r => { for (const [id, ks, k = 0] of (Array.isArray(r[0]) ? r : [r])) { const l = quiet(() => runLen(pat, [id, ks])); if (l != null) used.set(`${id}#${k}`, (used.get(`${id}#${k}`) || 0) + l); } };
+  let opens = 0;
+  for (const e of A) {
+    if (e.open) { opens++; const l = quiet(() => runsLen(pat, e.open)), ends = (e.ends || []).map(r => quiet(() => runsLen(pat, r)));
+      meas.push(measure(`${e.name}: between its two notches`, l, e.len, .125));
+      meas.push(atLeast(`${e.name}: seam sewn beyond each end`, ends.length === 2 && ends.every(v => v != null) ? Math.min(...ends) : null, .375, 'the seam is backstitched at least ⅜ in beyond each end of the opening'));
+      meas.push(atLeast(`${e.name}: wide enough to turn and stuff through`, l, Math.min(1.5, s.height * .15), 'at least 1½ in (on a toy under 10 in, 15% of its height)')); }
+    else if (e.b) { const a = runsLen(pat, e.a), b0 = runsLen(pat, e.b); seams.push(seam(e.name, a, b0 == null ? null : b0 + (e.gap || 0), { ease: e.ease, why: e.why })); if (!e.caught) use(e.a); use(e.b); }
+    else if (e.fin) use(e.a);
+    // a round base sewn on a piece (a horn on the head gusset): as wide as its edge is long over π, against the piece's width between two of its marks
+    else if (e.round) { const q = piece(pat, e.between[0]), c = quiet(() => runLen(pat, e.round)), p0 = q?.at?.[e.between[1]], p1 = q?.at?.[e.between[2]]; const wide = p0 && p1 ? Math.hypot(p0[0] - p1[0], p0[1] - p1[1]) : null; meas.push(atLeast(e.name, c != null && wide != null ? (wide - c / Math.PI) / 2 : null, wide == null ? .125 : Math.min(.125, wide * .1), e.rule || 'a round base sits ⅛ in inside the seams of the piece it is sewn on (a tenth of that piece\'s width where it is under 1¼ in wide)')); }
+  }
+  meas.push(atLeast('A stuffing opening left in a seam', opens, 1));
+  let worst = 0, who = '';
+  for (const q of pat.pieces) { if (!q.cut || !q.at) continue; for (let k = 0; k < q.cut; k++) { const d = Math.abs((used.get(`${q.id}#${k}`) || 0) - perimOf(q)); if (d > worst) { worst = d; who = q.name; } } }
+  meas.push(measure(`No edge left unsewn, none sewn twice${worst > .125 ? ` (out on the ${who.toLowerCase()})` : ''}`, worst, 0, .125));
+  // its size: a stuffed toy's height is held to ½ in, or 5% on one over 10 in (how firmly it is filled moves it that much, no more)
+  meas.push(measure(long ? 'Length, nose to tail' : s.shape === 'quad' || s.shape === 'elephant' ? 'Height, sitting, crown to seat' : s.shape === 'bear' ? 'Height, standing, crown to sole' : 'Height', plushSize(pat), s.height, Math.max(.5, s.height * .05)));
+  if (s.shape === 'pillow') meas.push(measure('Depth, the side gusset', piece(pat, 'gusset') ? boundsOf(piece(pat, 'gusset').sew).h : null, s.depth, .125));
+  if (s.shape === 'quad' || s.shape === 'elephant') { const b = piece(pat, 'body-side'), l = piece(pat, 'leg-front'); meas.push(measure('Front legs reach the ground: their soles level with the seat', b?.at?.lf && l?.at?.t0 && l.at.t1 ? b.at.lf[1] + boundsOf(l.sew).y1 - (l.at.t0[1] + l.at.t1[1]) / 2 : null, b ? boundsOf(b.sew).y1 : null, .25)); }
   return { seams, meas };
 }
 
@@ -240,10 +339,28 @@ export function outlineFaults(pat) {
 // what every garment is made with, beyond its pieces: each feature the pattern has calls for the parts and trims a factory needs to make it
 // (a fly calls for its zip and a waist button, a woven collar for its fusing, a hood for its lining); → [{ need, for }] for the ones missing
 export function missingComponents(pat) {
-  if (pat.kind === 'plush') { if (!pat.build) return []; const T = (pat.trims || []).map(t => t.item), out = [], need = (ok, what, why) => { if (!ok) out.push({ need: what, for: why }); };
+  if (pat.kind === 'plush') { const T = (pat.trims || []).map(t => t.item), out = [], need = (ok, what, why) => { if (!ok) out.push({ need: what, for: why }); }; // built from parts or on a fixed body type: the same list
     need(T.some(t => /fill/i.test(t)), 'Fibre fill', 'a stuffed toy'); need(T.includes('Thread'), 'Thread', 'every plush'); need(T.includes('Law label'), 'Law label', 'every stuffed toy sold (the fill content and registration)');
     need(T.some(t => /safety eyes|floss/i.test(t)), 'Eyes (safety eyes or floss)', 'the face');
+    need(!T.includes('Polypellets') || T.includes('Pellet pouch'), 'A pellet pouch', 'pellets are sewn into an inner bag, never loose in the toy');
+    if (pat.pieces.some(q => q.cut && (q.notes || []).some(n => /tuft is yarn/i.test(n)))) need(T.includes('Yarn'), 'Yarn', 'the tail\'s tuft');
+    if (pat.pieces.some(q => q.cut && (q.notes || []).some(n => /pouch of polypellets/i.test(n)))) need(T.includes('Polypellets'), 'Polypellets', 'the weighted base');
     for (const c of pat.checks || []) if (c.level === 'fail') out.push({ need: 'A safe build for its age', for: c.msg });
+    return out; }
+  if (pat.kind === 'bag') { // a bag: what each of its zips, straps, pads and linings calls for
+    const T = pat.trims || [], has = re => T.some(t => re.test(t.item)), count = re => T.filter(t => re.test(t.item)).reduce((n, t) => n + (Number(t.qty) || 0), 0), ids = new Set(pat.pieces.filter(q => q.cut).map(q => q.id)), out = [], need = (ok, what, why) => { if (!ok) out.push({ need: what, for: why }); };
+    const pad = re => T.some(t => t.item === 'Foam' && re.test(t.where));
+    need(has(/^Thread$/), 'Thread', 'every bag'); need(has(/^Main label$/), 'Main label', 'every bag'); need(has(/^Binding tape$/), 'Binding tape', 'the inside seams');
+    const sliders = T.filter(t => t.item === 'Zip').reduce((n, t) => n + (/two-way/.test(t.spec) ? 2 : 1), 0); if (sliders) need(count(/^Zip puller$/) >= sliders, `${sliders} zip puller${sliders > 1 ? 's' : ''}`, 'one to each zip slider');
+    const hooks = count(/^Swivel hook$/); if (hooks) need(count(/^D-ring$/) >= hooks, `${hooks} D-rings`, 'the swivel hooks of a detachable strap clip to them');
+    if (T.some(t => t.item === 'Webbing' && /^Shoulder strap$/.test(t.where))) need(has(/^Slider$/), 'A strap slider', 'an adjustable shoulder strap');
+    if (ids.has('strap')) { need(pad(/strap/i), 'Strap foam', 'padded shoulder straps'); need(pad(/back panel/i), 'Back panel foam', 'a padded back'); need(has(/^Ladder lock$/), 'Ladder locks', 'the shoulder straps adjust at the base'); need(has(/^Spacer mesh$/), 'Spacer mesh', 'the back panel and the strap undersides'); }
+    if (ids.has('sleeve')) need(pad(/sleeve/i), 'Sleeve foam', 'a padded laptop sleeve');
+    if (ids.has('lining')) need(['lining-gusset', 'lining-base', 'lining-end'].some(i => ids.has(i)), "The lining's gusset", 'a lining is its panels and the gusset between them');
+    if (ids.has('channel')) { need(has(/^Drawcord$/), 'Drawcord', 'the channel'); need(has(/^Cord lock$/), 'Cord lock', 'the drawcord'); need(has(/^Eyelet$/), 'Eyelets', 'where the drawcord leaves the channel'); }
+    if (['tote', 'helmet', 'briefcase', 'duffel'].includes(pat.style)) need(ids.has('handle'), 'Handles', 'how it is carried');
+    if (pat.style === 'tote') need(has(/^Base board$/), 'Base board', 'a structured tote stands on its base');
+    if (pat.style === 'duffel') need(has(/^Piping$/), 'Piping', 'the end panels are piped');
     return out; }
   if (pat.kind !== 'garment') return [];
   const ids = new Set(pat.pieces.filter(q => q.cut).map(q => q.id)), T = pat.trims.map(t => t.item), has = re => T.some(t => re.test(t)), out = [], need = (ok, what, why) => { if (!ok) out.push({ need: what, for: why }); };
@@ -273,7 +390,7 @@ export function constructionCheck(pat, { m = null, style = '', width = 58, edges
   if (!pat) return null;
   const knit = (pat.sa || 0) < .45, K = pat.construction || {};
   RUNS = edges ? [] : null;
-  let r; try { r = pat.kind === 'plush' && pat.build ? checkPlush(pat) : pat.kind === 'bag' ? checkBag(pat) : ['cap', 'bucket'].includes(pat.style) ? checkHeadwear(pat, m || {}) : pat.style === 'beanie' ? checkBeanie(pat, m || {}) : pat.style === 'tote' ? checkTote(pat, m || {}) : pat.block?.front?.at?.crotch || pat.block?.front?.skirt || (m && ('inseam' in m || 'sweep' in m)) ? checkBottom(pat, m || {}, K) : checkTop(pat, m || {}, style || pat.style, knit); } finally { RUNS = null; }
+  let r; try { r = pat.kind === 'plush' && pat.build ? checkPlush(pat) : pat.kind === 'plush' ? checkPlushShape(pat) : pat.kind === 'bag' ? checkBag(pat) : ['cap', 'bucket'].includes(pat.style) ? checkHeadwear(pat, m || {}) : pat.style === 'beanie' ? checkBeanie(pat, m || {}) : pat.style === 'tote' ? checkTote(pat, m || {}) : pat.block?.front?.at?.crotch || pat.block?.front?.skirt || (m && ('inseam' in m || 'sweep' in m)) ? checkBottom(pat, m || {}, K) : checkTop(pat, m || {}, style || pat.style, knit); } finally { RUNS = null; }
   const lay = layoutOf(pat, { width }), table = lay.map(g => ({ fabric: g.name, width: g.width, length: g.length, yards: g.yards, efficiency: g.efficiency, pieces: g.items.length, fits: g.items.every(it => it.b.w <= g.width + 1e-6) }));
   const all = [...r.seams, ...r.meas], made = all.filter(x => x.ok !== null), cuts = outlineFaults(pat), missing = missingComponents(pat);
   return { ...r, table, cuts, missing, ok: made.length > 0 && made.every(x => x.ok) && table.every(t => t.fits) && !cuts.length && !missing.length, passed: made.filter(x => x.ok).length, made: made.length, total: all.length };

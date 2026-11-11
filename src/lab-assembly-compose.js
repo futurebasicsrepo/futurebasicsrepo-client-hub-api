@@ -17,7 +17,9 @@ const PART = {
     wall: { type: 'number', description: 'mm, for a shell, cup or ring' }, open: { type: 'string', enum: ['+', '-'], description: 'which end of a shell or cup is open along its axis' }, r: { type: 'number', description: 'corner radius, mm' },
     resin: { type: 'string', enum: Object.keys(RESINS) }, process: { type: 'string', enum: Object.keys(PROCESSES) }, finish: { type: 'string', enum: FINISHES }, colour: { type: 'string', description: '#rrggbb' },
     draft: { type: 'number' }, undercuts: { type: 'integer' }, qty: { type: 'integer' }, fix: { type: 'string', enum: Object.keys(FIXES) }, fixQty: { type: 'integer' },
-    parent: { type: 'string', description: 'the id of the part it sits inside or on, if any' }, order: { type: 'integer', description: 'assembly order, 1 first' },
+    parent: { type: 'string', description: 'the id of the part it sits inside or on, if any' },
+    through: { type: 'array', items: { type: 'string' }, description: 'ids of the parts it passes through (a key through its cover, a shaft through a panel, a screw through a board): the engine cuts the opening there. Sockets and clear windows get theirs without this' },
+    spots: { type: 'array', items: { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 }, description: 'for qty over 1: where the other pieces are, each as [dx, dy, dz] from the one at `at`' }, order: { type: 'integer', description: 'assembly order, 1 first' },
     dir: { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3, description: 'the direction it comes away in the exploded view, a unit vector' }, lvl: { type: 'number', description: 'how far it comes away, 0 to 6' },
     elec: { type: 'object', required: ['kind'], properties: { kind: { type: 'string', enum: Object.keys(ELEC) }, mah: { type: 'integer' } }, description: 'for an electronic part: its kind (resin and process are then "bought in")' },
     cost: { type: 'number', description: 'unit cost in $, for a bought-in part that is not electronic' }
@@ -38,6 +40,8 @@ Rules the engine checks:
 - A shell (a housing open on one side) or a cup (a round one) has a wall and an open end along its axis ('+' or '-'); two halves meet at a parting line. A ring is a tube open both ends. A pcb is a circuit board (1–1.6 mm thick). Round parts (cyl, cup, ring) are round across their axis.
 - A part with a parent sits inside the parent's inner space with at least 0.5 mm all round (a housing and the half that closes it count as one space). No two solid parts may take the same space. Electronic parts on a board sit on its surface with the board as parent. Sockets (USB-C, jacks, DC input, mains) reach the outside wall.
 - Walls the moulder can fill: about 1–3.5 mm for PC/ABS and ABS, 0.8–3 mm PP, 1–2.5 mm die-cast zinc or aluminium; 1° of draft or more (3° for a texture); clear parts need a polish.
+- Nothing floats: every part touches the part that holds it (within 0.5 mm), and no part is in another part's material. A part that goes through a wall, a cover or a plate lists that part in "through" and the engine cuts its opening; a part that only meets a wall stops at its face.
+- A screw is a part of its own (a cyl named "Screw, M2 × 6", qty the number of them, "spots" for the others), lying through the part it holds and into the part that takes its thread; a part fixed by screws says how many (fixQty), and the two numbers agree.
 - Each part comes away in the exploded view along dir by lvl; give housings 0 or small, what is inside more, covers most.
 Use only the shapes, materials, processes, finishes and electronic kinds given. Prefer fewer, well-made parts; do not invent electronics the product does not need.`;
 
@@ -52,7 +56,7 @@ export async function composeAssembly({ concept = {}, photo = null, ask, rounds 
   const specOf = r => cleanAssembly({ arch: 'custom', kind: r.kind === 'electronics' ? 'electronics' : 'goods', age: r.age, name: concept.name, parts: (r.parts || []).map(p => (p.elec && ELEC[p.elec.kind] ? { ...p, resin: 'bought in', process: 'bought in', cost: priceOf(p) } : p)) });
   let spec = specOf(res), E = engineer(spec); const log = [{ n: 1, parts: spec.parts.length, bad: bads(E).map(c => c.text) }];
   for (let n = 2; n <= rounds + 1 && bads(E).length; n++) {
-    const fixed = await ask(COMPOSE_SYSTEM, [...intro, { type: 'text', text: `Your layout:\n${JSON.stringify(spec.parts.map(({ id, name, shape, axis, size, at, wall, open, r, resin, process, finish, draft, undercuts, qty, fix, parent, dir, lvl, elec }) => ({ id, name, shape, axis, size, at, wall, open, r, resin, process, finish, draft, undercuts, qty, fix, parent, dir, lvl, elec })))}\n\nThe engine found these problems:\n${bads(E).map(c => `- ${c.text}`).join('\n')}\n\nGive the whole layout again with them fixed; keep everything else as it was.` }], COMPOSE_SCHEMA);
+    const fixed = await ask(COMPOSE_SYSTEM, [...intro, { type: 'text', text: `Your layout:\n${JSON.stringify(spec.parts.map(({ id, name, shape, axis, size, at, wall, open, r, resin, process, finish, draft, undercuts, qty, fix, fixQty, parent, through, spots, dir, lvl, elec }) => ({ id, name, shape, axis, size, at, wall, open, r, resin, process, finish, draft, undercuts, qty, fix, fixQty, parent, through, spots, dir, lvl, elec })))}\n\nThe engine found these problems:\n${bads(E).map(c => `- ${c.text}`).join('\n')}\n\nGive the whole layout again with them fixed; keep everything else as it was.` }], COMPOSE_SCHEMA);
     if (!fixed?.parts?.length) break;
     const next = specOf(fixed), En = engineer(next); if (bads(En).length > bads(E).length) break; // a repair that makes it worse is not taken
     spec = next; E = En; res = fixed; log.push({ n, parts: spec.parts.length, bad: bads(E).map(c => c.text) });

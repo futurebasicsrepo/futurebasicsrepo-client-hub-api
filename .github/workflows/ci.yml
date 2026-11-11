@@ -79,9 +79,20 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Browser for the journeys
+        # The browser's extra system packages (fonts, mostly) come from Ubuntu's package servers. When those cannot be reached (their name
+        # servers stopped answering for over an hour on 11 Nov, and both suites died here four times before any journey ran), the browser
+        # is installed on its own and has to prove it starts; the run carries a warning saying so. With the servers up, nothing changes.
         run: |
           npm install --no-save playwright@1.63.0
-          npx playwright install --with-deps chromium
+          for attempt in 1 2; do
+            if getent hosts azure.archive.ubuntu.com >/dev/null || getent hosts archive.ubuntu.com >/dev/null; then
+              npx playwright install --with-deps chromium && exit 0
+            fi
+            echo "browser install with its system packages did not work (attempt $attempt of 2)"; [ "$attempt" = 2 ] || sleep 45
+          done
+          echo "::warning::Ubuntu's package servers could not be reached, so the browser was installed without its extra system packages (fonts). The journeys ran on what the runner already has."
+          npx playwright install chromium
+          node -e "require('playwright').chromium.launch().then(async b => { const p = await b.newPage(); await p.setContent('<p>the browser starts</p>'); console.log(await p.textContent('p')); await b.close(); })"
       - name: psql, which the journeys use to make their database
         run: command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
       - name: Customer journeys

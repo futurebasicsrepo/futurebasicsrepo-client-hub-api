@@ -103,6 +103,11 @@ already has show as "on the sketch".
 open it in the Studio with your material and colour already applied. The cloth is ranked for the sketch you picked: for a tee, the best tee jerseys come first, then what also suits it,
 then what works with changes, with the cloth that does not suit it folded away. Type to filter by any word or weight ("organic", "180").
 
+**The Catalogue** (a tab on the same page). Every product our supplier makes, as something to start a design from: **1,846 products**. Search
+("tumbler", "hoodie", "Nike"), pick a group, and each card shows the drawing the product opens on. **Open in the Studio** starts the design on
+that drawing: a library sketch for clothes, a library bag or shoe, or one of **70 product types** drawn for it (below). It works on a phone. It
+shows no prices, and none should appear in a video: a price is quoted on a product, not in the catalogue.
+
 ### Graphics, prints and decoration
 - Graphics as real artwork, placed in inches on the garment and drawn on both the picture and the flats.
 - **Graphics studio, three engines at once:** type what it is, tap a season (12, each with its own palette) and a style (10), choose
@@ -164,6 +169,10 @@ Labels chosen on a garment are drawn on its flats where they are sewn, with thei
 - **Bags:** backpacks, slings, totes, helmet bags, work bags, messengers, duffels and waist bags, designed as a bag designer would and rendered on a set that suits each; a design sheet; drawn in panels a designer recolours and reshapes with the Studio's own tools (fill, liquify, brush, shapes, words, graphics from the library); a library of eleven original bag flats to start from; and a pattern for every kind on the Pattern page (panels, gussets, straps and handles, pockets, linings, and the zips, webbing and buckles in the trims), exploded from the bag into its pieces like a garment's.
 - **Footwear:** concepts drawn as designer-grade three-quarter renders on a set that suits the shoe, a design sheet (side, top, outsole, heel and four colourways on one board), the shoe drawn as a technical flat in five views and traced into panels a designer recolours and reshapes in the Studio with its own tools (fill, liquify, brush, shapes, words, graphics), a parametric shoe last, the upper flattened off the last into pattern pieces (and sandals, clogs, slides and mules patterned too: straps measured over the foot and tucked under a footbed, or one injection mould), a size run, and a tech flat from four sides; and a library of original footwear flats by type (38 drawn, from a catalogue of 91 styles in 13 types) to start from, at no charge.
 - **Plush:** photo-real concepts, patterned like clothing; and a parts library to bolt a plush together: eight bodies, four heads, and ears, faces, arms, legs, tails, horns, wings and manes, starting from any of twenty plush (a teddy bear, a dragon, an octopus, a whale…). Every part is drafted to where it is sewn on, so the pattern is ready the moment a part is picked. AI plush concepts are built from the same parts, so the toy in the picture is the toy the pattern makes.
+- **Products that are not sewn:** 70 product types drawn as measured flats with their print area, to place artwork on: drinkware (mugs, tumblers,
+  bottles, glasses), wall art (posters, canvas, metal signs, tapestries, flags), home textiles (pillows, blankets, towels, rugs, curtains, aprons),
+  tech (phone cases, mouse pads, desk mats, laptop sleeves), paper goods (stickers, notebooks, puzzles), pet, sports and car products, socks,
+  scarves and sandals. Start one from the Catalogue. These have no pattern and one size; say "place your artwork", not "design the pattern".
 - **Patterns:** the product shown exploded into the pieces it is cut from, with an AAMA/ASTM DXF export.
 - **Engineering:** hard goods, toys, home objects and electronics as 3D parts in an exploded view, with tooling and cost, a bill of materials,
   and STL and STEP files. Starting points include a CD player, turntable, headphones, a smart speaker, a power bank and a lamp.

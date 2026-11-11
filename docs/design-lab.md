@@ -84,7 +84,7 @@ keeps what to show, Explode it and the size, and folds editing and the files the
 
 The launcher lives in `src/lab-nav.js` (`FBLabNav.openNew()`); anything marked `data-new-design` opens it.
 
-**The sketch pack** (`/lab/sketches`): every flat sketch we draw from, searchable and filtered by range (men's, women's, accessories) and style. Picking a sketch opens it in a sheet over the gallery (from the side on a wide screen, from the bottom on a phone), so nobody scrolls to find what to do next. In the sheet:
+**The sketch pack** (`/lab/sketches`): every flat sketch we draw from, searchable and filtered by range (men's, women's, accessories) and style. Its **Catalogue** tab lists the supplier's 1,846 products to start from, with no prices (see "The Catalogue" below). Picking a sketch opens it in a sheet over the gallery (from the side on a wide screen, from the bottom on a phone), so nobody scrolls to find what to do next. In the sheet:
 
 1. **Cloth.** The room's fabrics as swatches, or **Decide later**. A cloth starts in its own first colour.
 2. **Colour.** The cloth's own colours first, then a house set, then any colour from the wheel. The sketch is redrawn in the colour as it is picked (its white cloth swapped for it).
@@ -931,6 +931,52 @@ Routes: `POST /v1/lab/library/prints {mode: style|blend, art, subject?, mix?, fi
 
 A room's graphics stay its own: a new print, and an all-over repeat, can only be made from the room's own graphics, and are kept in that room.
 
+## The Catalogue: start from any product our supplier makes
+
+The sketch pack (`/lab/sketches`) has a third tab beside Sketches and Parts: **Catalogue**. It lists every product in our supplier's catalogue (the OpenWav Enterprise Catalogue, Fall 2026: 1,846 products) as something to start a design from. A client's room with the Lab sees it; a room without the Lab does not.
+
+- **No prices.** What we pay the supplier never reaches the Lab. The Lab reads the catalogue through `src/lab-catalog.js`, which keeps a product's id, name and brand and the base it opens on, and nothing else. The costs stay in `src/price-catalog.js`, which only staff routes read (the pricing card in the work console). `test/lab-catalog.test.js` and `test/lab-catalog-routes.test.js` hold every Lab answer to no `costCents`, no price status and no dollar amount.
+- **Browsing.** A search box (every word typed must match, and a word stands for its like, as in the staff search; the products that say the very word come first), a group filter with counts, and the number of products. Cards load 48 at a time. Each card shows the drawing the product opens on, its name, its brand and **Open in the Studio**.
+- **What a product opens on.** Each product is sent, by its name, to one base. The catalogue's own sections are not used, because they are noisy ("Accessories / Bags" holds tees and polos). The rules are an ordered list in `src/lab-catalog.js` (`RULES`), and the sketch within a style is picked by words in the name (`SKETCH`): crop, oversized, raglan, zip, jogger, cargo and so on, else the style's plainest sketch.
+
+| Opens on | Products |
+|---|---|
+| A style and its closest library sketch (tee, hoodie, polo, pants…) | 1,105 |
+| A style drawn from its measurements (a beanie, a flat tote) | 53 |
+| A library bag (backpack, duffel, sling, pouch, messenger, waist bag, structured tote) | 113 |
+| A library shoe (court low and mid, basketball high-top, daily runner…) | 30 |
+| A product type added for the catalogue (below) | 491 |
+| A plain 12 in panel, for what the Studio has no drawing for (a massage gun, a folding chair, a surfboard) | 54 |
+
+- **Opening one.** `POST /v1/lab/concepts/from-catalog { item, colour? }` makes a concept named after the product on its base and opens the Studio. A product on a library sketch, bag or shoe is started by the route that already does that (`from-sketch`, `from-library-bag`, `from-library-footwear`), so each kind of concept is made one way. The concept remembers its product (`spec.catalog`: id, name, brand), and keeps it when its words are edited.
+- **For staff.** When that concept becomes a product, the pricing card's "Closest to this product" lists the catalogue item the design was started from first, marked as such.
+- `GET /v1/lab/catalog?q=&group=&limit=&offset=` is the list. Both routes sit behind the Lab's gate (`src/lab-catalog-routes.js`).
+
+## Product types beyond clothes: mugs, posters, pillows and the rest
+
+The catalogue sells things the Studio had no drawing for. Each is now a style of the flats, of kind `goods` (`src/lab-goods.js`): 70 product types and a plain panel.
+
+| Group | Product types |
+|---|---|
+| Drinkware | mug, tumbler, tumbler with handle, water bottle, can glass, pint glass, stemless wine glass, rocks glass, can cooler |
+| Wall art and decor | poster, canvas print, metal sign, wall tapestry, flag, wall clock |
+| Home textiles | pillow, pillowcase, blanket, towel, tea towel, rug, door or bath mat, shower curtain, window curtain, placemat, napkin, table runner, tablecloth, duvet cover or comforter, apron, Christmas stocking |
+| Tech | phone case, mouse pad, desk mat, laptop sleeve, power bank, speaker, earbuds case, wireless charging pad |
+| Paper and small goods | sticker, notebook, jigsaw puzzle, coaster, playing cards, wall calendar |
+| Pets | pet bed, pet bowl, pet collar or leash, pet feeding mat, pet tee |
+| Sports and outdoor | yoga mat, ball, skateboard deck, paddle, umbrella |
+| Automotive | car mat, car seat cover, steering wheel cover, licence plate |
+| Socks, scarves and sandals | socks, scarf, bandana, flip-flop, slide sandal, clog, face mask, web belt |
+| Kids and baby, Bags, Music | bandana bib, lunch bag or cooler, record sleeve |
+
+- **The flat.** Each is drawn at true proportion from its measurements, in inches, with its **print area** named, and a back where the product has two sides (a mug's other side, a pillow's back; a poster has none). A graphic starts in the middle of the print area, clear of what cannot be printed (a clock's spindle, a zip, a phone case's camera opening).
+- **Sizes.** Each type says where its size came from (`from` in `src/lab-goods.js`): a size in a catalogue item's own name (a 50 × 60 in blanket, a 12 × 8 in metal sign, a 28 × 18 in pet bed), a published standard (an 11 oz mug, a 12 × 6 in US plate, a 12.375 in LP jacket, a 24 × 68 in yoga mat), or a typical size chosen here and marked "chosen here". They are starting sizes, not a supplier's spec: type the real ones in the measurements. They are kept to the eighth of an inch the flats work in (a mug is 3¼ in across).
+- **Drinkware is drawn from the side.** The print area on a side is the part of the wrap that shows there; the full wrap is in the measurements ("Wrap print area, around"). A graphic that runs right round the cup is not laid out on the flat: place it on each side, and send the wrap artwork at the wrap's size.
+- **One size, no pattern.** These are printed or bought in, not cut and sewn by the Lab. The Pattern page says so plainly ("A mug is printed or bought in, not cut and sewn, so it has no pattern and no size run"), and the size menu shows One size.
+- **The check.** The edge of a print area is an edge, not a seam: a graphic within an eighth of it is flagged. A graphic put on the back of a one-sided product is told that side is not printed.
+- **What is still garment-shaped.** The flats' side panels were written for garments: the technique list is the garment decoration library (screen print, embroidery, transfers), with no sublimation, UV print or engraving yet; the Cloth, wash and label sections still show; and the help line under the drawing speaks of the HPS and the centre front. They do no harm on a mug, but they do not apply.
+- The concept's category is Accessories (what is worn or carried, and tech accessories) or Other. Home, Toys and Electronics concepts open the 3D engineer instead of flats, so a printed mug is not put there.
+
 ## Starting from scratch
 
 **Design** (`/lab/studio`, with no concept chosen) offers **Start from scratch**: name it (optional), choose what it is and, for clothes, the style
@@ -974,7 +1020,8 @@ the page and the service).
   Each piece has its sew line, the cutting line (the seam allowance: ⅜ in for knits, ½ in for wovens, or as chosen), a grain line, notches, and
   how many to cut and from which cloth.
 - **Plush** is drafted from a kit: a **body type** and the **parts** that go on it (see *The plush kit* below). The pieces carry a ¼ in
-  allowance, the pile direction, and the stuffing opening.
+  allowance, the pile direction, their notches and the stuffing opening. Each body type is drafted with how it goes together (see *How a
+  fixed body type goes together* below).
 - **The exploded view shows every piece cut, at every step.** A piece cut 4 (two pairs, inner and outer) is four outlines; a lining under an
   ear and the pads under the feet lift off with the rest. The inner layers come off beside the outer ones, and once spread no two pieces
   cover each other. Each one is labelled with its count (Front leg 3/4), and the bar says how many there are to cut. A unit test holds this
@@ -1082,6 +1129,24 @@ maker, in any size (`GET /v1/lab/concepts/:id/last.svg?size=`).
   - **Under the foot** (`lastingOf`): board-lasted styles fold a ⅝ in lasting allowance onto an insole board; runners and hikers are strobel-lasted, their upper's edge (3/16 in) stitched to a strobel sock.
   - **Warm and waterproof:** an insulated lining (200 g) adds an insulation layer cut as the linings, and shearling is a lining choice; a membrane (on by default for a hiking boot) adds a sewn, seam-taped bootie between the upper and the lining. All of these reach the bill of materials.
 - **Allowances:** each piece carries the ⅝ in lasting allowance and ⅜ in overlaps.
+- **How many to cut** is for a pair of shoes: 2 of a piece there is one of on a shoe, 4 of a piece drawn for one side that goes on both.
+- **The lines agree before the shoe is drafted.** The collar, the vamp line, where the lacing starts and the eyelets are each set on their own (dragged, or read off a picture), so `footwearPattern` reconciles them and says in the notes what it moved:
+  - on a low shoe the lacing (a slip-on's throat) starts ½ in or more in front of the ankle bone
+  - a laced low shoe keeps 1⅛ in of lace edge behind the vamp line; the vamp line moves forward when there is no room
+  - on a boot or a high-top the front of the leg stays a fifth of the foot's length behind the vamp line
+  - eyelets are never closer than ⅜ in: a short lace edge takes fewer than were asked for
+  - a Chelsea's gore is 3⅜ in on a 6 in collar and the same share of a lower one
+- **Does it go together** (`footwearAssembly`, on every pattern as `assembly`; what fails is a finding on the Pattern page):
+  - every piece cut whole (vamp, toe cap, saddle, vamp lining, toe puff) is measured along sections marked across it against a tape over the last there: its allowance is left each side, never 1/16 in short, and at the tip of the toe
+  - the vamp's fold against the last's centre line; the lining and the toe puff inside the vamp
+  - the back seam's two sides; each quarter's allowance; the quarters' (a Chelsea's front shaft's) front edge against the line it laps to on the vamp
+  - a boot's or a high-top's leg as high as cut as it is drawn, from the back seam to the front of the leg
+  - a Chelsea's gore into the back quarter and the front shaft, level across the collar
+  - a strobel upper's edge against the sock's, notch to notch along each side and round the heel and the toe
+  - the tongue as long as the lace edge (measured off the eyestay), ⅜ in under the vamp and 2 in above the collar; its lining and foam
+  - the counter below the topline and short of the upper's edge; the insole, sock and sockliner against the bottom of the last
+  - what a shoe cannot be made without (counter, toe puff, insole or sock, tongue and eyestays on a laced shoe, a Chelsea's gores)
+  `test/lab-footwear-assembly.test.js` holds every style and variant to it at three sizes and across the choices that used to break, and breaks twelve shoes on purpose. `npm run pattern:proof` counts footwear too.
 - **The sole unit** (cupsole, EVA midsole, or a stitched outsole and heel) is shown as a moulded component: it is never cut.
 
 **Sandals, clogs, slides and mules** (`openPattern` in `src/lab-footwear.js`). Four more styles, each with the ways it is made (`VARIANTS`, the
@@ -1278,14 +1343,25 @@ What the picture sets can also be set by hand, and every value is bounded:
 
 A bag concept opens on the Pattern page as kind `bag` (`bagPattern` in `src/lab-pattern.js`; `cleanBagSpec` in `src/lab-pattern-routes.js`), drafted from its kind and body size (width × height × depth; from the concept's bag choices, else the kind its name says, else a tote):
 
-- **Zip backpack:** front and padded back panels, a clamshell zip gusset in two halves and a base gusset, padded shoulder straps, a front zip pocket, a laptop sleeve.
-- **Rolltop:** the panels carried up 8 in for the roll, side straps and buckles, a stiffener in the roll edge.
-- **Top-loader:** a drawcord channel, a lid flap with buckles.
-- **Tote, helmet bag, work bag, duffel:** a gusset down a side, across the bottom and up the other (a duffel: one body wrapped round two round ends), handles; a helmet bag's zip flap, a work bag's laptop sleeve.
-- **Messenger:** a full flap with buckles and hook-and-loop.
-- **Sling, waist bag, pouch:** curved or rounded panels, a top zip, a front pocket.
+- **Zip backpack:** front and padded back panels rounded at all four corners; a clamshell zip gusset in two halves over the top and down the sides, and a base gusset across the bottom and up each side; padded shoulder straps; a front zip pocket; a laptop sleeve.
+- **Rolltop:** the panels and the gusset carried up 8 in for the roll, side straps and buckles, a stiffener in the roll edge.
+- **Top-loader:** a drawcord channel round the top, a lid flap that crosses the top and comes down the front to its buckles.
+- **Tote:** a gusset down a side, across the bottom and up the other; the top 1½ in turned to the inside, the lining sewn to its edge; handles; a base board.
+- **Helmet bag, work bag, pouch:** the same gusset, and the top closed by a zip between two top panels; a helmet bag's zip flap, a work bag's laptop sleeve.
+- **Messenger:** a flap hinged on the back's top edge that crosses the top and comes most of the way down the front, with buckles and hook-and-loop.
+- **Duffel:** one body wrapped round two round ends, its two long edges meeting at the zip along the top; handles each side of the zip.
+- **Sling, waist bag:** crescent panels, a zip gusset in two halves over the top and a gusset round the belly, a front pocket inside the panel's outline.
 
-Every bag has a lining and lists its zips (gauge, way and length), webbing, buckles, hooks, sliders, foam, binding and thread. A gusset, a lining or a sleeve sits under the panel on the product, so the explode shows it. It is a first block from the size: sample it, then true the panels to the drawing.
+**How a bag goes together.** Each panel and gusset labels its corners, and the pattern carries its `assembly`: every seam as the two runs of outline sewn together, every zip with the two edges it joins and its length, every edge finished on its own (a channel folded, a flap bagged out), and everything sewn onto a panel with where it sits (a pocket, a sleeve, handle and strap ends). Rules the drafting keeps:
+
+- A gusset is as long as the panel edge it is sewn round, measured off that panel's outline, rounded corners included.
+- A zip gusset is two halves; the halves and the ½ in of zip between them make the depth. A bag under 1¼ in deep has its zip sewn straight to the two panels.
+- A zip is 1 in shorter than its opening, so it stops ½ in short of each end, under a tab.
+- The lining is built the way the shell is (its panels, its gusset, its zip gusset or top panels) and joined at the top or caught in the zip seam.
+- A handle is long enough to rise 11 in (a tote, to go over a shoulder) or 5 to 9 in (hand carried) with its two ends stitched down 2 in.
+- A detachable strap's swivel hooks have D-rings to clip to; every zip slider has a puller; binding tape covers every inside seam.
+
+Every bag lists its zips (gauge, way and length), webbing, buckles, hooks, rings, sliders, foam, spacer mesh, binding and thread. A gusset, a lining or a sleeve sits under the panel on the product, so the explode shows it. It is a first block from the size: sample it, then true the panels to the drawing.
 
 ## The construction check and the cut-and-sew proof
 
@@ -1302,6 +1378,7 @@ A pattern is only right if it sews together into the garment it was drafted for.
   - tops: chest 1 in below the armhole, length from the high point of the shoulder, shoulder, neck, sleeve and opening
   - bottoms: waist, hip, rise along its seam, inseam, thigh, leg opening, sweep
   - bags: width, height and depth
+- **A bag's assembly.** `checkBag` walks the pattern's `assembly`: the two sides of every seam of the shell and the lining; the two edges each zip joins, and the zip in its opening; that every edge of every piece is sewn or finished once (none left open, none used twice); that a pocket or sleeve lies inside the panel it is sewn on, and handle and strap ends sit clear of its seams; that a flap or lid reaches down the front; that a handle rises; that the shoulder straps let out past the back; that the binding tape covers the inside seams. `missingComponents` asks for a puller to each slider, a D-ring to each swivel hook, a slider on an adjustable strap, foam where a part is padded, the lining's gusset, a drawcord's lock and eyelets, a tote's base board.
 - **Collars, stands and hoods.** Each records the length of the edge it is sewn on by, measured off its own outline, and is walked against the body's neckline. The neckline runs front edge to front edge for a shirt stand, or centre front to centre front, less any designed turn-back at a zip. A hood's neck edge is solved to half the neckline.
 - **Clean outlines.** No cut piece may cross itself or have a corner sharper than 20°.
 - **Everything it is made with.** Every garment goes through `finishGarment` (`src/lab-pattern.js`). It adds whatever drafting has not:
@@ -1324,16 +1401,17 @@ A pattern is only right if it sews together into the garment it was drafted for.
   - every layout item has `at(pts)` for drawing a piece where it lies
 
 **Headwear and totes** are one size and checked against a 22¾ in head (adjustable caps and bucket hats fit about 21½ to 24 in):
-- **Six-panel cap.** Each panel is solved to a quarter of the dome round, so the crown height reads back off it. The brim's inner edge spans the brim's width and is bowed to run across the two front panels and an eighth of each side panel. Its centre length is set from the seam. The board is the brim inset ¼ in, with its two points left out. The sweatband is the head opening less the 2¼ in back opening, plus ½ in turned back at each end.
-- **Bucket hat.** The head opening is the band's foot. The band narrows to the crown, the crown oval is solved to the band's top, and the brim's inner edge is the band's foot.
-- **Tote.** The body is cut twice the height plus the two 1½ in turn-backs.
+- **Six-panel cap.** Each panel is a sixth of the dome: as long as a quarter of the dome is round (so the crown height reads back off it), and at every point of its length as wide as a sixth of the dome is round there, so the six lie round the crown and meet in a point under the button. The check measures the six across at a quarter, half and three quarters of the way down against the dome's round. Each back panel has the back opening cut from its foot (1⅛ in across, 1½ in up). The brim's inner edge spans the brim's width and is bowed to run across the two front panels and an eighth of each side panel. Its centre length is set from the seam. The board is the brim inset ¼ in, with its two points left out. The sweatband is the feet of the six panels as cut (the back two short by the opening), plus ½ in turned back at each end; the check measures the feet off the panels. The seam tape covers the six crown seams.
+- **Bucket hat.** The head opening is the band's foot. The band and the brim are each a cone round the head, so each is cut as part of a ring: its curved edges the two seams, its straight ends the side seams. The band's top is the crown's round and the crown's height runs up its slant; the brim's inner edge is the band's foot and it is the same length at its side seams as at its centre (both are checked). The crown oval is solved to the band's top.
+- **Tote.** The body is cut twice the height plus the two 1½ in turn-backs, with the bottom fold and the turn-backs marked at each edge; the check walks each side seam's front edge against its back edge off the outline.
+- **Beanie.** Knitted flat and linked at the back. The crown is closed by decreases at four points, so the top of the piece is four petals whose feet make the whole round; the cuff's fold is marked, and the cuff is measured from the fold to the edge.
 
 `npm run pattern:proof` writes `pattern-proof/pattern-proof.html`. It covers every library garment at M, with a strip of XS to XXL, and every bag. Each card shows:
-- the block pieces, with each seam's two sides in one colour
+- the block pieces (a bag: the pieces of its shell, the long gussets under the panels), with each seam's two sides in one colour
 - the seam and measurement tables
 - the cutting table
 
-`test/pattern-check.test.js` holds the whole library at every size, and every bag, to the check.
+`test/pattern-check.test.js` holds the whole library at every size, and every bag at its own size and at smaller, larger, shallower and deeper ones, to the check. It also breaks bag patterns on purpose (a gusset an inch short, a seam left out, a zip longer than its opening, a pocket off its panel, hooks with no rings) and requires each to be caught.
 
 ## Editing pieces and the AAMA/ASTM DXF
 
@@ -1516,7 +1594,9 @@ before.
 **The pieces.** Each piece of the upper is carried from the side view onto the surface and off it, flat:
 
 - the pieces of the inside quarter on the inside half, the rest on the outside;
-- the lasting allowance below the feather line and a boot's shaft above the last carried straight on;
+- the lasting allowance below the feather line carried straight on;
+- a leg stood straight up from the last's shoulder: the back of the last, under the leg, is open at the top, so above the point where a section's side leaves upright a height is carried straight on up the sheet and not round over the top (carried round, a 6 in collar was cut 6½ in high at the middle of the leg and bowed). How far forward the leg comes is the style's: a boot's to the front of its leg, a low shoe's to the ankle bone;
+- a piece cut whole made as wide at every section as a tape over the last there, and its fold never longer than the last's centre line (no flat sheet holds every section's length: round a square toe box the flattening left it 1/16 in a side narrow);
 - a piece cut whole (the vamp, the toe cap) flattened on one side and mirrored over its flattened centre line;
 - its side-view outline kept for how it shows on the shoe.
 
@@ -1615,6 +1695,57 @@ A shoe can be designed by hand as freely as with the drafted lines, and the two 
 Routes for paper sketches: `GET /v1/lab/concepts/:id/pattern/underlays` (which views have one and where it sits), `GET|PUT|PATCH|DELETE
 /v1/lab/concepts/:id/pattern/underlays/:view` (the picture; `PUT {image: data URL, place?}`, `PATCH {place: {x, y, w, opacity}}`, in the view's
 inches; a picture up to 15 MB).
+
+### How a fixed body type goes together
+
+The seven fixed body types (bear, four-legged sitting, elephant, sea creature, bean, bunny, pillow) are drafted the way bags are
+(`draftFixed` in `src/lab-pattern.js`). Every piece names the ends of the edge it is sewn by (`at`) and carries a notch where a factory
+needs one. Every piece that depends on another is sized from the edge it is sewn to, measured off that piece's outline:
+
+- **A head gusset** is as long, tip to tip, as the head side's edge it is sewn along, and carries the head side's notches (the brow, the
+  root of an elephant's trunk, the two ear notches). A bear's runs from the nose over the crown to the back of the neck. A four-legged
+  animal's runs from the nose up the top of the snout, over the brow and the crown to the back of the head. An elephant's runs from the
+  tip of the trunk up its top, over the brow and the crown to the back of the head. The head side's brow notch is a match point on that
+  seam, not where the gusset starts.
+- **A foot pad** is as far round as its leg's open foot. On a four-legged body the hind foot is made as far round as the front, so one pad
+  fits all four, and the front leg is as long as the drop from its notch to the ground, so its sole is level with the seat.
+- **A base** (bean, bunny) is as far round as the front's and the two backs' bottom edges, with notches at the centre front, the centre
+  back and the two side seams.
+- **An underbody gusset** runs from the chest notch to the seat, as long as the body side's edge between them. A sea creature's belly
+  gusset is as long as the body side's belly edge.
+- **The neck.** A bear's body neck is the head's: each front and back takes half of a head side's neck edge. A sitting animal's head sits
+  on the body side's top and the top of its chest; the chest seam runs from there to the chest notch.
+- **A bear's back** is 6% fuller than its front, and its length is trued so the side seams walk each other.
+- **An ear lining** is the size of its ear. An elephant's ear is pleated (a quarter of its base taken up) into the gusset seam.
+- **The kit's added parts** are sized from the seam they go into, and are in the assembly as the body's own parts are:
+  - **A row of spikes** is as long as its seam: on a four-legged toy the back seam from the neck to the tail (closed in by hand with the
+    stuffing opening where it crosses it), on a sea creature the top seam from the nose to the dorsal fin (to the opening on one with no
+    fin). Two layers, sewn round the points and turned.
+  - **A mane** is a strip folded in half along its length. A ruff lies in the seam that joins the head to the neck, all the way round, its
+    ends joined. A crest is stitched down the centre of the head gusset from between the ears, then lies in the back seam from the neck to
+    the stuffing opening; it is as long as those two together.
+  - **One horn** is a cone: a sector of a circle whose two straight edges are sewn together. Its base sits ⅛ in inside each seam of the
+    head gusset (a tenth of the gusset's width on a small toy).
+  - **Two horns, antlers and wings** are two pairs each, sewn round and turned, their bases turned in and sewn on by hand. On a toy for
+    under-3s that is a warning: each has to take the 15 lbf pull.
+- **Ears, arms, fins and a tail** are caught in a seam between two notches as far apart as the part's base: a bear's and a four-legged
+  animal's ears in the gusset seam, a bear's arms in the side seam, a bean's ears and arm nubs in the side seams, a pillow's ears in the
+  front seam, a sea creature's fins in the belly seam and its dorsal fin in the top seam, a tail in the back seam. A sea creature's tail
+  has a root as wide as the end of the tail stock. Legs are stuffed, closed and sewn on by hand at their notch.
+- **A pillow's** front is the size asked for (as tall as its height and 82% as wide), and its side gusset is as long as the front is
+  round.
+- **The stuffing opening** is marked by two notches in its seam, with at least ⅜ in of seam beyond each end.
+- **The size.** The toy is drafted, its height measured off its pieces, and drafted again until it stands the height asked for (a sea
+  creature: its length), whatever the head's size and with or without legs or a tail.
+
+`pat.assembly` lists every seam as its two runs (`{ name, a: [piece, [corners…], copy], b, gap?, why? }`), every edge finished on its own
+(`fin`) and the stuffing opening (`open`, `len`). `pat.trims` lists the fibre fill with its weight, the thread, the law label and the
+eyes (safety eyes, or floss), and what the parts call for: a pouch of pellets on a bean's or a bunny's base (3 years and up only), yarn
+for a tufted tail, interfacing behind an elephant's ears, antlers and wings. The construction check walks the assembly
+(`checkPlushShape` in `src/lab-pattern-check.js`, see [pattern-process.md](pattern-process.md)).
+
+`test/pattern-check.test.js` covers every body type at 4 to 48 in with every part it offers, and thirty patterns broken on purpose (a
+head gusset an inch short, a foot pad or a base too small, a seam left out, the fill removed), each caught by the check that is about it.
 
 ## Plush built from parts
 
@@ -1792,7 +1923,7 @@ Footwear and plush now take the tools clothing has, where they apply:
 
 **The elephant** is a plush shape of its own (`src/lab-pattern.js`, `src/lab-plush-views.js`). It sits, with:
 
-- a head and trunk cut in one (two sides that meet down the trunk's underside, and a gusset from the back of the head over the brow and down the top of the trunk);
+- a head and trunk cut in one (two sides that meet down the trunk's underside, and a gusset from the back of the head over the brow and down the top of the trunk to its tip, as long as the head side's edge);
 - big ears, in self and lined in contrast;
 - a body in two sides with an underbody gusset;
 - four legs, each in two, on contrast foot pads;
@@ -1881,7 +2012,7 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   jack, tact switches, LEDs, encoders, a glowing VFD and screens, the battery pouch with its label and protection board, AA cells with
   springs, woofer and tweeter (basket, cone, surround, dust cap, spider, magnet; silk dome), the class-D board and heatsink, the open-frame
   supply (transformer, capacitors, fuse), the CD loader with an iridescent disc, the tape transport with a cassette in it; housings with
-  bevelled edges and the bosses and ribs inside, clear parts that transmit light, brushed and anodised metal, painted steel, MDF grain, grille
+  bevelled edges and their screw bosses where the engineering has them, clear parts that transmit light, brushed and anodised metal, painted steel, MDF grain, grille
   cloth, knurled knobs, screws with threads. A socket faces the nearest outside wall, a part on a board faces away from it. The first view
   looks across the way the parts pull apart. **Zoom to part** closes in on the chosen part; **Files → Picture of this view** saves a PNG.
   Drag to turn, pinch or scroll to zoom, two fingers to move, double-click to reset. **Explode it** or the slider
@@ -1894,6 +2025,23 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
 - **Checks.** Wall against the resin's range (ribs and bosses sized from it), draft for the finish (3° for a texture), undercuts, clear parts
   without an SPI A polish, solid sections that will sink, parts over 600 mm, food contact (PP, Tritan, PETG, LSR, 304), each part inside its
   housing with clearance (a housing and the half that closes it are one space), two parts in one space, and small parts for under-3s.
+- **Do the parts go together** (`fitOf`, part of `dfm`). Measured off the parts as they are built (outlines, walls, floors, openings, bosses,
+  every piece of a part with a quantity), not from the sums that placed them. Each finding carries its `kind` and its number:
+  - `clash` (fix before tooling): a part 0.25 mm or more into another's material where there is no opening: a rectangular cell in a round
+    housing, a board corner in a rounded corner, a part through a wall. A soft part (silicone, TPE, TPU, foam, vinyl) may be squeezed up
+    to 1.5 mm; screws and moulded-in parts are left out.
+  - `contact` (watch): a part, or a group of parts, that touches nothing else within 0.5 mm, with how far the nearest part is.
+  - `fasteners` (watch): the screws on the parts list against what the screw-fixed parts ask for (`fixQty` × quantity), and each screw
+    through two parts.
+  - `size` (watch): the size the parts make against the size asked for at **Start from…** (kept on the assembly as `dims`), over 0.5 mm.
+- **Openings, bosses and screws.** A part says what it passes `through` (a key through its cover, a shaft through a panel, a screw through
+  a board) and the opening is cut there with 0.2 mm round it, worked out each time so it follows the part; sockets and clear windows get
+  theirs without being told. A part with a quantity can list where its other pieces are (`spots`). A housing carries screw `bosses` on its
+  floor. Screws are parts: one line a kind, every position listed, lying through the part held and into the part that takes the thread.
+  Openings and bosses are in the part's solid: its STL, and its STEP as exact faces (holes through a floor or a solid part, and bosses;
+  windows in a housing's side walls are in the STL only for now). The 3D view shows floor openings and bosses.
+- **Starting points are built inside the size asked**, feet, keys, knobs and hinges included, from the table up. A size that cannot hold its
+  parts (a 25 × 50 × 8 mm handheld, a cell asked for that is larger than its housing) still builds, and the checks say what does not fit.
 - **Electronics.** The parts on the board are parts like any other. The page adds the block diagram (power → the main chip → what it drives,
   each line named by its bus), the power budget (run time, standby, charge time, Wh; the share of time each part is on can be set), the board
   (size, layers, how full, placements, fab and SMT cost), the USB-C port at the wall, the radio clear of the battery and of metal, the heat
@@ -1906,7 +2054,8 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   button shows or hides them. The drawing carries them too.
 - **Parts that open.** A CD loader's tray, with the disc on it, slides out toward the product's front (`frontOf`: the way its front panel
   looks) as the view pulls apart, so the laser sled on its rails and the spindle show; the exploded STL and drawing show it open.
-- **The board's fixing.** Its mounting holes are cut through (M3 clearance), each with a pan-head screw on a brass hex standoff.
+- **The board's fixing.** Its mounting holes are where its screws pass through it; the screws, and the standoffs under a board on steel or
+  MDF, are parts on the list, as many as the board says it is fixed by.
 - **Design it from the concept** (Start from…, `src/lab-assembly-compose.js`): for a product none of the starting points fit (a bike light,
   a drone, a kettle), Claude lays out every part from the concept's picture and words in the engine's own terms (its shapes, materials,
   processes, finishes and electronic parts, with its rules for units, placement, walls and draft), so it is checked, wired, costed and
