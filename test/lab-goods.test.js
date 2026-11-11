@@ -1,9 +1,10 @@
 // The product types that are not garments (src/lab-goods.js): each one's flat at its base size has a closed outline, a print area inside it,
-// draws as an svg, takes a graphic in its print area, keeps its measurements through a save, and has no pattern.
+// draws as an svg, takes a graphic in its print area, keeps its measurements through a save, and has no pattern. Drinkware has a wrap laid
+// flat as its second view (test/lab-wrap.test.js holds the wrap itself).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GOODS, goodsGeom, goodsSides } from '../src/lab-goods.js';
-import { STYLES, viewsOf, pomName, defaultParams, geometry, renderSvg, defaultPlacement, placementChecks, cleanFlat, pomTable, describe, detectStyle, measurementsFor, SIZES } from '../src/lab-flats.js';
+import { GOODS, goodsGeom, goodsSides, hasWrap } from '../src/lab-goods.js';
+import { STYLES, viewsOf, sideOf, pomName, defaultParams, geometry, renderSvg, defaultPlacement, placementChecks, cleanFlat, pomTable, describe, detectStyle, measurementsFor, SIZES } from '../src/lab-flats.js';
 import { kindOf, notSewn } from '../src/lab-pattern-routes.js';
 import { rankFabrics } from '../src/lab-fabric-fit.js';
 
@@ -35,7 +36,8 @@ test('every product type at its base size: a closed outline, a print area inside
       assert.equal(regions.length > 0, sides.includes(view), `${tag}: a print area on the sides it has, none on a side it has not`);
       for (const [name, poly] of regions) { assert.match(name, /print area$/, `${tag}: ${name}`); assert.ok(area(poly) > .2, `${tag}: ${name} has an area`);
         const c = [poly.reduce((a, q) => a + q[0], 0) / poly.length, poly.reduce((a, q) => a + q[1], 0) / poly.length];
-        for (const q of poly) assert.ok(inside([c[0] + (q[0] - c[0]) * .98, c[1] + (q[1] - c[1]) * .98], g.outline), `${tag}: ${name} is inside the outline at ${q.map(n => n.toFixed(2))}`); }
+        const outline = (g.outlines || [g.outline]).find(o => inside(c, o)); assert.ok(outline, `${tag}: ${name} is on the product`); // a cup's sides are drawn together, each with its own outline
+        for (const q of poly) assert.ok(inside([c[0] + (q[0] - c[0]) * .98, c[1] + (q[1] - c[1]) * .98], outline), `${tag}: ${name} is inside the outline at ${q.map(n => n.toFixed(2))}`); }
       for (const d of g.pom) assert.ok(d.key in p.m, `${tag}: measures ${d.key}`);
       const svg = renderSvg(p, view, { showPom: true }); assert.match(svg, /^<svg [^>]*viewBox="[-\d. ]+"/); assert.ok(!/NaN|undefined/.test(svg), `${tag}: draws without gaps`);
     }
@@ -52,7 +54,10 @@ test('every product type takes a graphic in its print area, checks it, recolours
     assert.equal(saved.error, undefined); assert.deepEqual(saved.params.m, p.m, `${k}: its measurements survive a save`); assert.equal(saved.params.color, '#2b5d3a'); assert.equal(saved.placements.length, 1);
     assert.deepEqual([saved.placements[0].x, saved.placements[0].y, saved.placements[0].w, saved.placements[0].h], [q.x, q.y, q.w, q.h], `${k}: its graphic stays where it was put`);
     assert.match(renderSvg(saved.params, 'front', { placements: saved.placements }), /data-pl="a"/);
-    if (viewsOf(k).length === 2) assert.equal(defaultPlacement('graphic', p, { label: 'back' }).view, 'back'); else assert.equal(defaultPlacement('graphic', p, { label: 'back' }).view, 'front');
+    // "back" in the words: the back of a two-sided product; a cup's back is drawn beside its front (its second view is its wrap), so it stays on that view
+    const bk = defaultPlacement('graphic', p, { label: 'back' });
+    if (hasWrap(GOODS[k])) { assert.equal(bk.view, 'front'); assert.equal(sideOf(bk, p), GOODS[k].sides === 2 ? 'Back' : 'Front', `${k}: on its back when it has one`); assert.deepEqual(placementChecks({ id: 'b', name: 'Art', ...bk }, p, {}).filter(x => x.level === 'fail'), []); }
+    else assert.equal(bk.view, viewsOf(k).length === 2 ? 'back' : 'front');
   }
   // the back of a one-sided product says it is not printed; the edge of a print area is an edge, not a seam
   assert.match(placementChecks({ id: 'a', name: 'Art', view: 'back', x: 0, y: 12, w: 4, h: 4 }, defaultParams('poster'), {})[0].text, /is on the back, which is not printed on this product/);

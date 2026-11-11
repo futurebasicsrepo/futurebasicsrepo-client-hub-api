@@ -22,7 +22,7 @@ for (const [id, f] of Object.entries(SKETCH_FIXES)) {
 import { FLAT_PARTS, PART_KINDS } from './lab-flat-parts.js';
 import { washSvg, cleanWash, cleanDistress } from './lab-wash.js';
 import { necklineSvg, cleanNeckline, necklinePomName } from './lab-neck.js';
-import { GOODS, GOODS_POM, goodsGeom, goodsSides } from './lab-goods.js';
+import { GOODS, GOODS_POM, SURFACES, goodsGeom, goodsSides, hasWrap, backSideX } from './lab-goods.js';
 export { FLAT_PARTS, PART_KINDS };
 
 export const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
@@ -67,6 +67,26 @@ export const STYLES = {
 for (const [k, g] of Object.entries(GOODS)) STYLES[k] = { label: g.label, category: g.category, kind: 'goods', base: g.base, grade: {}, oneSize: true, names: { ...GOODS_POM, width: 'Width', height: 'Height' }, goods: g };
 // the sides of a piece that are drawn: a garment's and a cap's front and back; a product type's second side when it has one
 export const viewsOf = style => { const S = STYLES[style]; return !S ? ['front'] : S.kind === 'goods' ? goodsSides(S.goods) : ['top', 'bottom', 'cap'].includes(S.kind) ? ['front', 'back'] : ['front']; };
+// Drinkware is printed on a wrap (src/lab-goods.js), so its two views are not a front and a back: the first is its sides (the cup seen from the
+// front, and from the back beside it) and the second is its wrap laid flat. They are kept under the same two names every flat uses, 'front' and
+// 'back', and are always called what they are: viewLabel is the name of a view, sideOf where one placement is.
+export const wrapStyle = style => hasWrap(STYLES[style]?.goods);
+export const viewLabel = (style, view) => (wrapStyle(style) ? (view === 'back' ? 'Wrap' : STYLES[style].goods.sides === 2 ? 'Sides' : 'Front') : view === 'back' ? 'Back' : 'Front');
+export const sideOf = (q, p) => (!wrapStyle(p.style) ? (q.view === 'back' ? 'Back' : 'Front') : q.view === 'back' ? 'Wrap' : q.x > backSideX(STYLES[p.style].goods, p.m) / 2 && STYLES[p.style].goods.sides === 2 ? 'Back' : 'Front');
+// A cup's second view was its other side until the wrap took its place. A graphic saved on that side (it carries no `wrap` mark, which every
+// graphic saved on the wrap does: cleanFlat) is moved to the back drawn beside the front, the same distance from its centre line, so nothing a
+// client placed is lost or lands somewhere else. Run on placements as they are read from where they are kept.
+export function upgradePlacements(params, placements) {
+  const list = Array.isArray(placements) ? placements : []; if (!params || !wrapStyle(params.style) || !list.some(q => q.view === 'back' && !q.wrap)) return list;
+  const dx = backSideX(STYLES[params.style].goods, { ...STYLES[params.style].base, ...(params.m || {}) });
+  return list.map(q => (q.view === 'back' && !q.wrap ? { ...q, view: 'front', x: r8(q.x + dx) } : q));
+}
+// what a piece is decorated on: cloth for everything cut and sewn, a product type's own surface (src/lab-goods.js SURFACES); a technique says
+// which it is made on (none said: cloth, what the garment techniques were written for), and a piece offers the techniques made on its own
+export const surfaceOf = style => (STYLES[style]?.kind === 'goods' ? STYLES[style].goods.surface || 'any' : 'cloth');
+export const madeOn = t => (Array.isArray(t?.surfaces) && t.surfaces.length ? t.surfaces : ['cloth']);
+export const techniqueFits = (t, style) => { const on = surfaceOf(style); return on === 'any' || madeOn(t).includes(on); };
+export { SURFACES };
 export const FITS = { slim: 'Slim', regular: 'Regular', relaxed: 'Relaxed', boxy: 'Boxy', oversized: 'Oversized', wide: 'Wide' };
 // grading from the sample size, as published garment specs grade (Gildan, Bella+Canvas, Comfort Colors, Port & Company, Carhartt, Lands'
 // End, QVC; checked against about 60 spec sheets): unisex and men's tops 2 in across the chest a size, the length 1; women's 1 and ½;
@@ -387,13 +407,13 @@ const cubic = (a, c1, c2, b, n = 10) => Array.from({ length: n + 1 }, (_, i) => 
 const mirror = pts => pts.map(([x, y]) => [-x, y]);
 const add = (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k];
 // → { outline, parts: [{d, kind}], regions: {name: polygon}, keepouts: [{name, poly, why, level}], anchor, bounds, pom: [{key, from, to}] }
-export function geometry(p, view = 'front', size = p.size || 'M') {
+export function geometry(p, view = 'front', size = p.size || 'M', { side = null } = {}) { // side: one side of a cup alone ('front' | 'back'), where its sides are drawn together
   const S = STYLES[p.style], m = measurementsFor(p, size), o = p.options || {};
   if (S.kind === 'top') return topGeom(S, m, o, view);
   if (S.kind === 'bottom') return bottomGeom(S, m, o, view);
   if (S.kind === 'cap') return capGeom(m, view);
   if (S.kind === 'beanie') return beanieGeom(m, view);
-  if (S.kind === 'goods') return goodsGeom(S.goods, m, view);
+  if (S.kind === 'goods') return goodsGeom(S.goods, m, view, { side });
   return toteGeom(m, view);
 }
 function topGeom(S, m, o, view) {
@@ -521,14 +541,23 @@ function describeAt(q, p) {
   if (S.kind === 'bottom') return `${fmtCm(top)} below the top of the waistband, on the ${q.view === 'back' ? 'back' : 'front'} ${q.view === 'back' ? (q.x > 0 ? 'right' : 'left') : (q.x > 0 ? 'left' : 'right')} leg, centre ${fmtCm(Math.abs(q.x))} from the ${q.view === 'back' ? 'CB' : 'CF'}`;
   if (S.kind === 'cap') return `${across ? 'Centred' : `Centre ${fmtCm(q.x)} off centre`} on the ${q.view} crown, bottom edge ${fmtCm(-(q.y + q.h / 2))} above the brim seam`;
   if (S.kind === 'beanie') return `${across ? 'Centred' : `Centre ${fmtCm(q.x)} off centre`} on the ${reg === 'cuff' ? 'cuff' : 'crown'}, ${fmtCm(top - (reg === 'cuff' ? p.m.height - p.m.cuff : 0))} below its top edge`;
+  // a cup: on the wrap, from the nearest centre marked on it (the front's, the back's) or from its middle; on a side, from that side's centre line
+  if (S.kind === 'goods' && g.wrap) { const k = (g.guides || []).filter(x => x.key !== 'handle').sort((a, b) => Math.abs(q.x - a.x) - Math.abs(q.x - b.x))[0], from = k ? k.label.replace(/^C/, 'c') : 'middle of the wrap', dx = q.x - (k ? k.x : 0);
+    return `On the wrap, ${fmtCm(top)} below the top edge of the ${S.label.toLowerCase()}, ${Math.abs(dx) < .125 ? `at the ${from}` : `centre ${fmtCm(dx)} to the ${dx > 0 ? 'right' : 'left'} of the ${from}`}`; }
+  if (S.kind === 'goods' && g.sides?.length > 1) { const sd = g.sides.slice().sort((a, b) => Math.abs(q.x - a.x) - Math.abs(q.x - b.x))[0], dx = q.x - sd.x;
+    return `${sd.key === 'back' ? 'On the back, ' : ''}${fmtCm(top)} below the top edge, ${Math.abs(dx) < .125 ? 'centred' : `centre ${fmtCm(dx)} off centre`}`; }
   return `${fmtCm(top)} below the top edge, ${across ? 'centred' : `centre ${fmtCm(q.x)} off centre`}`;
 }
 // the checks that need only the drawing: on the piece, clear of seams, ribs, zips and pockets, inside what the technique can make
 export function placementChecks(q, p, rules = {}) {
   // a product type's print area ends at an edge, not a seam: artwork keeps an eighth inside it (a garment keeps the room a hoop or a pallet needs)
   const goods = STYLES[p.style].kind === 'goods', g = geometry(p, q.view), box = corners(q), out = [], reg = regionOf(q, g), clear = goods ? Math.min(rules.minClear ?? .75, .125) : rules.minClear ?? .75;
-  if (!reg) { out.push({ level: 'fail', code: 'OFF_PIECE', text: goods && !Object.keys(g.regions).length ? `${q.name} is on the ${q.view}, which is not printed on this product. Put it on the front.` : `${q.name} is not on the piece. Move it onto the ${q.view}.` }); return out; }
-  const poly = g.regions[reg]; if (!box.every(c => inside(c, poly))) out.push({ level: 'fail', code: 'OVER_EDGE', text: `${q.name} runs over the edge of the ${reg}${STYLES[p.style].kind === 'top' && reg === 'body' ? ' (a side or armhole seam)' : ''}. Make it smaller or move it in.` });
+  // a technique made on something else (embroidery on a mug, a pad print on a towel) cannot make it, wherever it is put
+  // (rules.madeOn: what the chosen technique is made on, given when it is one from the library)
+  if (Array.isArray(rules.madeOn) && !techniqueFits({ surfaces: rules.madeOn }, p.style)) out.push({ level: 'fail', code: 'TECHNIQUE', text: `${q.name} is set to ${rules.techniqueName || 'a technique'}, which is not made on ${/^[aeiou]/i.test(STYLES[p.style].label) ? 'an' : 'a'} ${STYLES[p.style].label.toLowerCase()}. Choose a technique from its list.` });
+  if (!reg) { out.push({ level: 'fail', code: 'OFF_PIECE', text: goods && !Object.keys(g.regions).length ? `${q.name} is on the ${q.view}, which is not printed on this product. Put it on the front.` : `${q.name} is not on the piece. Move it onto ${g.wrap ? 'the wrap' : g.sides?.length > 1 ? 'the front or the back' : `the ${q.view}`}.` }); return out; }
+  // a product type's graphic may fill its print area exactly (a wrap from end to end): on the edge is not over it
+  const poly = g.regions[reg]; if (!(goods ? corners({ ...q, w: q.w - .004, h: q.h - .004 }) : box).every(c => inside(c, poly))) out.push({ level: 'fail', code: 'OVER_EDGE', text: `${q.name} runs over the edge of the ${reg}${STYLES[p.style].kind === 'top' && reg === 'body' ? ' (a side or armhole seam)' : ''}. Make it smaller or move it in.` });
   else { const grown = { ...q, w: q.w + clear * 2, h: q.h + clear * 2 }; if (!corners(grown).every(c => inside(c, poly))) out.push({ level: 'warn', code: 'NEAR_SEAM', text: goods ? `${q.name} sits within ${fmt(clear)} of the edge of the ${reg}. Keep it that far inside, or it may be trimmed.` : `${q.name} sits within ${fmt(clear)} of a seam. Printers and embroiderers need that much room to hoop or pallet it.` }); }
   for (const k of g.keepouts) if (overlaps(box, k.poly)) out.push({ level: k.level, code: 'KEEPOUT_' + k.why.toUpperCase(), text: `${q.name} crosses ${k.name}. ${{ zip: 'A zip cannot be printed or embroidered across: split the graphic, or move it.', pocket: 'It has to go on before the pocket is sewn, which costs more and can misalign: move it, or accept that.', neck: 'Too close to the collar to print or hoop: move it down.', hem: 'Ribs and hems cannot be printed flat: move it up.', cuff: 'Ribbed cuffs stretch and cannot be printed: move it.', fly: 'The fly is several layers thick: move it to the side.', waistband: 'The waistband is too thick and curved: move it down.', crotch: 'Seams meet there: move it.', brim: 'It cannot cross the brim seam: move it up.', opening: 'That is the strap opening.', crown: 'Near the button, the panels meet and curve: keep it lower.', fold: 'The cuff folds there: keep it on the cuff.', waistband2: '' }[k.why] || 'Move it.'}` });
   if (rules.maxW && q.w > rules.maxW + 1e-6) out.push({ level: 'fail', code: 'TOO_WIDE', text: `${q.name} is ${fmt(q.w)} wide; ${rules.techniqueName || 'this technique'} goes up to ${fmt(rules.maxW)}.` });
@@ -570,9 +599,11 @@ export function defaultPlacement(kind, p, { aspect = 1, label = '' } = {}) {
   if (S.kind === 'beanie') return box('front', 0, m.height - m.cuff + .5, Math.min(3, 2 * aspect));
   // a product type: in the middle of its print area (the back's, when the words say the back and it has one) at about half its size (10 in wide at most); where
   // that would cross something that cannot be printed (a clock's spindle, a zip), smaller, or higher or lower in the area
-  if (S.kind === 'goods') { const view = /back/.test(t) && goodsSides(S.goods).length === 2 ? 'back' : 'front', poly = Object.values(geometry(p, view).regions)[0];
-    if (poly) { const b = bounds(poly), cy = poly.reduce((a, q) => a + q[1], 0) / poly.length;
-      const at = (fy, k) => { const w = Math.max(.25, Math.min((b.x1 - b.x0) * k, (b.y1 - b.y0) * k * aspect, 10, 12 * aspect)); return { view, x: r8((b.x0 + b.x1) / 2), y: r8(fy == null ? cy : b.y0 + (b.y1 - b.y0) * fy), w: r8(w), h: r8(Math.max(.25, w / aspect)) }; };
+  // A cup (src/lab-goods.js): the words say the wrap, on the wrap at the centre of the front; the back, on the back drawn beside the front.
+  if (S.kind === 'goods') { const cupS = hasWrap(S.goods), view = (cupS ? /wrap/.test(t) : /back/.test(t) && goodsSides(S.goods).length === 2) ? 'back' : 'front', g = geometry(p, view);
+    const poly = (cupS && view === 'front' && /back/.test(t) && g.regions['back print area']) || Object.values(g.regions)[0];
+    if (poly) { const b = bounds(poly), cy = poly.reduce((a, q) => a + q[1], 0) / poly.length, fx = g.wrap ? g.guides?.find(k => k.key === 'front')?.x : null, cx = fx ?? (b.x0 + b.x1) / 2, room = 2 * Math.min(cx - b.x0, b.x1 - cx);
+      const at = (fy, k) => { const w = Math.max(.25, Math.min(room * k, (b.y1 - b.y0) * k * aspect, 10, 12 * aspect)); return { view, x: r8(cx), y: r8(fy == null ? cy : b.y0 + (b.y1 - b.y0) * fy), w: r8(w), h: r8(Math.max(.25, w / aspect)) }; };
       const tries = [at(null, .5), at(null, .3), at(.3, .3), at(.72, .3), at(null, .15), at(.05, .06)];
       return tries.find(q => !placementChecks({ name: '', ...q }, p).some(f => f.level === 'fail')) || tries[0]; } }
   return box('front', 0, 4, Math.min(10, m.width * .6));
@@ -777,8 +808,8 @@ function cutOut(d, pid, inner) {
   return `<defs><g id="${pid}-k">${inner}</g><clipPath id="${pid}-kt">${r(x0, by - big, x1 - x0, c.y - (by - big))}${r(x0, c.y, L - x0, big)}${r(R, c.y, x1 - R, big)}</clipPath><clipPath id="${pid}-kb">${r(L, c.y + c.h, R - L, by + bh - (c.y + c.h))}</clipPath></defs>`
     + `<use href="#${pid}-k" clip-path="url(#${pid}-kt)"/><g transform="translate(0 ${n3(-c.h)})"><use href="#${pid}-k" clip-path="url(#${pid}-kb)"/></g>`;
 }
-export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '', templateHref = TEMPLATE_URL, partHref = PART_URL, editHrefs = {}, editable = false, selectedEdit = null, overlay = '', plain = false, background = true, templateSvg = null, alloverHref = '', maskHref = null, withArt = false, texture = null, tags = [] } = {} /* texture: { href, w, h } the cloth's shading tile (w × h inches of drawing per tile), multiplied over the garment so its colour shows through;  withArt: with plain, the placed graphics drawn too (the Studio's board);  alloverHref: the all-over print's repeat tile, laid over the cloth; templateSvg: the sketch's own markup, to draw it inline (the service: much faster to rasterise than a picture of the whole page); scale 0: no width and height, for nesting; editHrefs: the pictures of areas redrawn by the image model; plain: the drawing alone, no guides or labels */) {
-  const g = geometry(p, view, size), d = drawingOf(p, view, size), b = d ? d.box : g.bounds, pad = 3.2, x0 = b.x0 - pad, y0 = b.y0 - pad - (title ? 1.2 : 0), W = b.x1 - b.x0 + pad * 2, H = b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0);
+export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size = p.size || 'M', showPom = false, showDims = true, selected = null, findings = {}, scale = 22, title = '', templateHref = TEMPLATE_URL, partHref = PART_URL, editHrefs = {}, editable = false, selectedEdit = null, overlay = '', plain = false, background = true, templateSvg = null, alloverHref = '', maskHref = null, withArt = false, texture = null, tags = [], side = null } = {} /* side: one side of a cup alone ('front' | 'back'), for a picture of that side;  texture: { href, w, h } the cloth's shading tile (w × h inches of drawing per tile), multiplied over the garment so its colour shows through;  withArt: with plain, the placed graphics drawn too (the Studio's board);  alloverHref: the all-over print's repeat tile, laid over the cloth; templateSvg: the sketch's own markup, to draw it inline (the service: much faster to rasterise than a picture of the whole page); scale 0: no width and height, for nesting; editHrefs: the pictures of areas redrawn by the image model; plain: the drawing alone, no guides or labels */) {
+  const g = geometry(p, view, size, { side }), d = drawingOf(p, view, size), b = d ? d.box : g.bounds, pad = 3.2, x0 = b.x0 - pad, y0 = b.y0 - pad - (title ? 1.2 : 0), W = b.x1 - b.x0 + pad * 2, H = b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0);
   const k = Math.max(1, Math.max(W, H) / 30), fs = .34 * k; // labels grow with the drawing, so they read at the size it is shown
   const sw = { outline: .07, seam: .035, stitch: .03, rib: .018, under: .05, cord: .05, label: .03 }, dash = { stitch: '.18 .12', label: '.15 .1' };
   const drawnArt = d && p.drawn?.template === d.t.id ? p.drawn[view] : null, drawnHref = drawnArt ? editHrefs[drawnArt] : null; // a view drawn from the picture, in its own colours
@@ -825,8 +856,31 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
     + edits.filter(e => e.type === 'stitch').map(e => hit(e, (editable ? `<path d="${pathD(e.pts)}" fill="none" stroke="#ffffff" stroke-opacity="0" stroke-width=".45"/>` : '') + stitchSvg(e.pts, e.stitch, hexOf(e.thread) || lineFor(cloth)) + (e.id === selectedEdit ? `<path d="${pathD(e.pts)}" fill="none" stroke="#2a6df4" stroke-width=".02"/>` : ''))).join('');
   const T = (x, y, s, t, a = 'middle', c = '#141416', wgt = 500) => `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${s}" text-anchor="${a}" fill="${c}" font-family="Space Grotesk, Helvetica, Arial, sans-serif" font-weight="${wgt}">${esc(eighths(t))}</text>`;
   const arrow = (a, bb, label, col = '#2a6df4') => { const mx = (a[0] + bb[0]) / 2, my = (a[1] + bb[1]) / 2, vert = Math.abs(bb[1] - a[1]) > Math.abs(bb[0] - a[0]); return `<g pointer-events="none"><line x1="${a[0]}" y1="${a[1]}" x2="${bb[0]}" y2="${bb[1]}" stroke="${col}" stroke-width=".03" stroke-dasharray=".14 .08"/><circle cx="${a[0]}" cy="${a[1]}" r=".07" fill="${col}"/><circle cx="${bb[0]}" cy="${bb[1]}" r=".07" fill="${col}"/>${label ? `<rect x="${(vert ? mx + .15 : mx - label.length * fs * .3)}" y="${(vert ? my - fs * .9 : my - fs * 1.75)}" width="${label.length * fs * .6 + .1}" height="${fs * 1.35}" rx=".1" fill="#ffffff" opacity=".92"/>${T(vert ? mx + .2 + label.length * fs * .3 : mx, vert ? my + fs * .3 : my - fs * .75, fs, label, 'middle', col, 600)}` : ''}</g>`; };
+  // what a cup's sides show of its wrap: each graphic placed on the wrap (the 'back' view), drawn where it falls on the side that faces it. The
+  // wrap is cut into upright strips, each drawn as wide as that part of the round cup looks from the side (narrower toward the edges), and on
+  // a cup that tapers in bands down it, each as wide as the cup is there. Not to be dragged here: it is moved on the wrap.
+  const artOf = q => { const rt = rotOf(q); return `<g${rt ? ` transform="rotate(${rt} ${q.x} ${q.y})"` : ''}>${hrefs[q.id] ? `<image href="${esc(hrefs[q.id])}" x="${q.x - q.w / 2}" y="${q.y - q.h / 2}" width="${q.w}" height="${q.h}" preserveAspectRatio="none"/>` : `<rect x="${q.x - q.w / 2}" y="${q.y - q.h / 2}" width="${q.w}" height="${q.h}" fill="#4bff9a" opacity=".35"/>`}</g>`; };
+  const onWrap = g.wrapOn ? placements.filter(z => z.view === 'back') : [];
+  let wrapShown = '';
+  if (onWrap.length) { const w = g.wrapOn, N = 28;
+    wrapShown = `<defs><g id="${pid}-wa">${onWrap.map(artOf).join('')}</g></defs><g pointer-events="none" data-wrap-shown="${onWrap.length}">`;
+    for (const c of w.centres) for (const j of [-1, 0, 1]) { // the wrap as it lies, and once round either way: its ends come round to the back
+      const lo = Math.max(-w.W / 2 + j * w.C, c.s - w.C / 4), hi = Math.min(w.W / 2 + j * w.C, c.s + w.C / 4); if (hi - lo < 1e-3) continue; // the stretch of it within a quarter turn of this side's centre
+      const n = Math.max(1, Math.ceil((hi - lo) / (w.C / 2) * N));
+      for (let i = 0; i < n; i++) { const s0 = lo + (hi - lo) * i / n, s1 = lo + (hi - lo) * (i + 1) / n, a0 = (s0 - c.s) * 2 * Math.PI / w.C, a1 = (s1 - c.s) * 2 * Math.PI / w.C;
+        for (const row of w.rows) { const x0 = c.x + row.half * Math.sin(a0), x1 = c.x + row.half * Math.sin(a1) + .004; if (x1 - x0 < .002) continue;
+          wrapShown += `<svg x="${n3(x0)}" y="${n3(row.y0)}" width="${n3(x1 - x0)}" height="${n3(row.y1 - row.y0 + .004)}" viewBox="${n3(s0 - j * w.C)} ${n3(row.y0)} ${n3(s1 - s0)} ${n3(row.y1 - row.y0)}" preserveAspectRatio="none"><use href="#${pid}-wa"/></svg>`; } } }
+    wrapShown += '</g>'; }
+  // a cup's own words on its drawings: which side is which, the centres marked on the wrap and what is said under it (src/lab-goods.js)
+  let marks = '';
+  if (g.labels) marks += g.labels.map(l => T(l.x, l.y, fs * .9, l.text, 'middle', '#727278')).join('');
+  if (g.wrap) { const r = bounds(g.outline), rowsUsed = [];
+    for (const k of g.guides || []) { const wd = k.label.length * fs * .42, row = [0, 1, 2].find(i => !(rowsUsed[i] || []).some(x => Math.abs(x.x - k.x) < (x.wd + wd) / 2 + .2)) ?? 0; (rowsUsed[row] ||= []).push({ x: k.x, wd });
+      marks += `<line x1="${n3(k.x)}" y1="${n3(r.y0 - .3 - row * fs * 1.25)}" x2="${n3(k.x)}" y2="${n3(r.y1 + .3)}" stroke="#2a6df4" stroke-width=".025" stroke-dasharray=".25 .12" pointer-events="none"/>${T(Math.min(Math.max(k.x, r.x0 + wd / 2 - .6), r.x1 - wd / 2 + .6), r.y0 - .45 - row * fs * 1.25, fs * .8, k.label, 'middle', '#2a6df4', 600)}`; }
+    marks += (g.notes || []).map((nt, i) => T((r.x0 + r.x1) / 2, r.y1 + 1.75 + i * fs * 1.25, fs * .8, nt.t.replace('%', fmt(nt.v || 0)), 'middle', '#727278')).join(''); }
   let pl = '';
-  for (const q of placements.filter(z => z.view === view)) {
+  const drawnX = side && g.bounds ? [g.bounds.x0 - .5, g.bounds.x1 + .5] : null; // one side of a cup alone: only what is placed on it
+  for (const q of placements.filter(z => z.view === view && (!drawnX || (z.x >= drawnX[0] && z.x <= drawnX[1])))) {
     const lv = (findings[q.id] || []).some(f => f.level === 'fail') ? '#a02a20' : (findings[q.id] || []).some(f => f.level === 'warn') ? '#b07a00' : '#17603a';
     const rt = rotOf(q), turn = rt ? ` transform="rotate(${rt} ${q.x} ${q.y})"` : '', knob = q.id === selected ? `<line x1="${q.x}" y1="${q.y - q.h / 2}" x2="${q.x}" y2="${q.y - q.h / 2 - 1.1}" stroke="#17603a" stroke-width=".04" pointer-events="none"/><circle data-rot="${esc(q.id)}" cx="${q.x}" cy="${q.y - q.h / 2 - 1.1}" r=".38" fill="#4bff9a" stroke="#141416" stroke-width=".05" style="cursor:grab"><title>Drag to turn it</title></circle>`
       // the four corners: drag one to make it bigger or smaller (mouse, pen or finger), its shape kept and the opposite corner held still
@@ -857,10 +911,10 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
   const mk = p.markup?.[view], mkHref = mk ? editHrefs[mk.art] : null, markupImg = mkHref ? `<image href="${esc(mkHref)}" x="${mk.x}" y="${mk.y}" width="${mk.w}" height="${mk.h}" preserveAspectRatio="none" pointer-events="none"/>` : '';
   const cf = STYLES[p.style].kind === 'top' || STYLES[p.style].kind === 'bottom' ? `<line x1="0" y1="${b.y0 - .6}" x2="0" y2="${b.y1 + .6}" stroke="#9a9aa0" stroke-width=".02" stroke-dasharray=".4 .15 .08 .15"/>${T(0, b.y1 + 1.1, .3, view === 'back' ? 'CB' : 'CF', 'middle', '#727278')}` : '';
   const hps = STYLES[p.style].kind === 'top' ? `<line x1="${b.x0 - 1}" y1="0" x2="${b.x1 + 1}" y2="0" stroke="#9a9aa0" stroke-width=".02" stroke-dasharray=".25 .15"/>${T(b.x1 + 1.1, .1, .28, 'HPS', 'start', '#727278')}` : '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${x0.toFixed(2)} ${y0.toFixed(2)} ${W.toFixed(2)} ${H.toFixed(2)}"${scale ? ` width="${(W * scale).toFixed(0)}" height="${(H * scale).toFixed(0)}"` : ''} data-view="${view}">${background ? `<rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="#ffffff"/>` : ''}${plain ? drawing + (withArt ? tg + pl + markupImg : '') : `${title ? T(x0 + .4, y0 + .8, .5, title, 'start', '#141416', 600) : ''}${cf}${hps}${drawing}${tg}${pl}${markupImg}${pom}${overlay}${T(x0 + W - .4, y0 + H - .4, .28, `${STYLES[p.style].label} · ${view} · size ${STYLES[p.style].oneSize ? 'one size' : size}${cloth ? ` · ${cloth}` : ''}`, 'end', '#727278')}`}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${x0.toFixed(2)} ${y0.toFixed(2)} ${W.toFixed(2)} ${H.toFixed(2)}"${scale ? ` width="${(W * scale).toFixed(0)}" height="${(H * scale).toFixed(0)}"` : ''} data-view="${view}">${background ? `<rect x="${x0}" y="${y0}" width="${W}" height="${H}" fill="#ffffff"/>` : ''}${plain ? drawing + (withArt ? wrapShown + tg + pl + markupImg : '') : `${title ? T(x0 + .4, y0 + .8, .5, title, 'start', '#141416', 600) : ''}${cf}${hps}${drawing}${wrapShown}${tg}${pl}${marks}${markupImg}${pom}${overlay}${T(x0 + W - .4, y0 + H - .4, .28, `${STYLES[p.style].label} · ${wrapStyle(p.style) ? (side || viewLabel(p.style, view)).toLowerCase() : view} · size ${STYLES[p.style].oneSize ? 'one size' : size}${cloth ? ` · ${cloth}` : ''}`, 'end', '#727278')}`}</svg>`;
 }
 // the picture's coordinates → inches, for dragging placements in the page
-export function viewBoxOf(p, view, { title = '', size = p.size || 'M' } = {}) { const b = drawingOf(p, view, size)?.box || geometry(p, view, size).bounds, pad = 3.2; return { x0: b.x0 - pad, y0: b.y0 - pad - (title ? 1.2 : 0), w: b.x1 - b.x0 + pad * 2, h: b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0) }; }
+export function viewBoxOf(p, view, { title = '', size = p.size || 'M', side = null } = {}) { const b = drawingOf(p, view, size)?.box || geometry(p, view, size, { side }).bounds, pad = 3.2; return { x0: b.x0 - pad, y0: b.y0 - pad - (title ? 1.2 : 0), w: b.x1 - b.x0 + pad * 2, h: b.y1 - b.y0 + pad * 2 + (title ? 1.2 : 0) }; }
 
 // an all-over print is made one of these ways; a placement can keep one artwork size per group of garment sizes, and its inks per colourway
 export const ALLOVER_BASES = ['all-over sublimation', 'all-over screen print', 'jacquard knit'];
@@ -906,7 +960,9 @@ export function cleanFlat(input = {}) {
     .map(([k, v]) => [k, Object.fromEntries(['front', 'back'].filter(w => Array.isArray(v[w]) && v[w].length === 2 && v[w].every(n => Number.isFinite(Number(n)))).map(w => [w, [r8(Math.min(Math.max(Number(v[w][0]), -60), 60)), r8(Math.min(Math.max(Number(v[w][1]), -30), 80))]]))]).filter(([, v]) => Object.keys(v).length));
   // crop: inches taken out of the body above the hem band, on a sketch that is not cropped itself (the sleeves keep their length)
   const crop = STYLES[style].kind === 'top' ? r8(Math.min(Math.max(Number(input.crop) || 0, 0), 12)) : 0;
-  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(crop ? { crop } : {}), ...(Object.keys(tagPos).length ? { tagPos } : {}), ...(cleanWash(input.wash) ? { wash: cleanWash(input.wash) } : {}), ...(cleanNeckline(input.neckline) ? { neckline: cleanNeckline(input.neckline) } : {}), ...(cleanDistress(input.distress) ? { distress: cleanDistress(input.distress) } : {}), ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits), ...(allover ? { allover } : {}), ...(Object.keys(drawn).length ? { drawn: { template, ...drawn } } : {}), ...(Object.keys(markup).length ? { markup: { template: template || 'none', ...markup } } : {}) };
+  // a wash, distressing and a neckline are a garment's: a product type (a mug, a poster) keeps none, and its page offers none
+  const sewn = !big, wash = sewn ? cleanWash(input.wash) : null, neckline = sewn ? cleanNeckline(input.neckline) : null, distress = sewn ? cleanDistress(input.distress) : null, onWrap = wrapStyle(style);
+  const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(crop ? { crop } : {}), ...(Object.keys(tagPos).length ? { tagPos } : {}), ...(wash ? { wash } : {}), ...(neckline ? { neckline } : {}), ...(distress ? { distress } : {}), ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits), ...(allover ? { allover } : {}), ...(Object.keys(drawn).length ? { drawn: { template, ...drawn } } : {}), ...(Object.keys(markup).length ? { markup: { template: template || 'none', ...markup } } : {}) };
   const placements = (Array.isArray(input.placements) ? input.placements : []).slice(0, 12).map((q, i) => ({
     id: /^[a-z0-9-]{1,40}$/i.test(String(q.id || '')) ? String(q.id) : 'p' + i, name: String(q.name || 'Graphic').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Graphic', view: q.view === 'back' ? 'back' : 'front',
     x: r8(Math.min(Math.max(Number(q.x) || 0, -60), 60)), y: r8(Math.min(Math.max(Number(q.y) || 0, -30), big ? 120 : 80)), w: r8(Math.min(Math.max(Number(q.w) || 1, .25), big ? 100 : 40)), h: r8(Math.min(Math.max(Number(q.h) || 1, .25), big ? 100 : 40)), ...(rotOf(q) ? { rot: rotOf(q) } : {}),
@@ -914,7 +970,8 @@ export function cleanFlat(input = {}) {
     // a mark in its own colour (the lines and the lettering), and the cue dot too when it is one colour: a hex each, or the brand's own colours
     ...(q.mark && /^#[0-9a-f]{6}$/i.test(String(q.colour || '')) ? { colour: String(q.colour).toLowerCase() } : {}), ...(q.mark && /^#[0-9a-f]{6}$/i.test(String(q.dot || '')) ? { dot: String(q.dot).toLowerCase() } : {}),
     ...(/^[0-9a-f-]{36}$/i.test(String(q.techniqueId || '')) ? { techniqueId: q.techniqueId } : {}), technique: String(q.technique || 'screen print').slice(0, 40), source: ['logo', 'graphic', 'extra', 'studio'].includes(q.source) ? q.source : 'extra',
-    ...(/^l[a-z0-9]{1,12}$/.test(String(q.layer || '')) ? { layer: String(q.layer) } : {}), ...(q.added === true && q.source !== 'studio' ? { added: true } : {}), ...cleanGrade(q), ...cleanInks(q.inks)
+    ...(/^l[a-z0-9]{1,12}$/.test(String(q.layer || '')) ? { layer: String(q.layer) } : {}), ...(q.added === true && q.source !== 'studio' ? { added: true } : {}), ...cleanGrade(q), ...cleanInks(q.inks),
+    ...(onWrap && q.view === 'back' ? { wrap: true } : {}) // a cup's second view is its wrap: marked, so it is never taken for a graphic saved on the cup's other side before the wrap (upgradePlacements)
   }));
   return { params, placements };
 }

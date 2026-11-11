@@ -42,7 +42,7 @@ import { brandDoc, fact, table, safe, INK, DIM, LINE } from './brand-pdf.js';
 import { imageConfig, openaiEdit } from './check.js';
 import { callJsonSchema, nearestName } from './studio.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
-import { rankTemplates, candidateTemplates, tagMarks, viewsOf } from './lab-flats.js';
+import { rankTemplates, candidateTemplates, tagMarks, viewsOf, viewLabel, sideOf, wrapStyle, upgradePlacements, techniqueFits, surfaceOf } from './lab-flats.js';
 import { tagFaceSvg } from './lab-tags.js';
 import { washWords, washPrompt, cleanWash, washShrink } from './lab-wash.js';
 import { necklineWords, necklineOf } from './lab-neck.js';
@@ -299,11 +299,13 @@ export function registerLabFlatsRoutes(app, d) {
     return cost;
   }
   const shape = (c, row, extra = {}) => ({ concept: { id: c.id, name: c.name, brand: c.brand || '', category: c.category, status: c.status, productId: c.product_id, locked: c.status === 'tech_pack' && !c.product_id }, colourways: cleanColourways(c.spec?.colourways), alloverBases: ALLOVER_BASES, decorations: Array.isArray(c.spec?.decorations) && c.spec.decorations.length ? c.spec.decorations : null, ...extra,
-    styles: Object.fromEntries(Object.entries(STYLES).map(([k, v]) => [k, { label: v.label, kind: v.kind, oneSize: Boolean(v.oneSize) }])), fits: FITS, sizes: SIZES, flat: row });
+    styles: Object.fromEntries(Object.entries(STYLES).map(([k, v]) => [k, { label: v.label, kind: v.kind, oneSize: Boolean(v.oneSize) }])), fits: FITS, sizes: SIZES, flat: row,
+    sides: row?.style && STYLES[row.style] ? Object.fromEntries((row.placements || []).map(q => [q.id, sideOf(q, row)])) : {} }); // where each graphic is, in the piece's own words: Front, Back, or a cup's Wrap
 
   app.get('/v1/lab/concepts/:id/flats', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
     const r = (await pool.query('select style, params, placements, check_result, checked_at, updated_at from lab_flats where concept_id=$1', [c.id])).rows[0];
+    if (r) r.placements = upgradePlacements(r.params, r.placements); // a graphic saved on a cup's other side before its wrap: on the back beside the front
     const list = (await techniques(c.client_id)).map(t => ({ id: t.id, name: t.name, kind: t.kind, base: t.base, rules: t.rules }));
     // a saved flat that does not match its picture (another garment, another sketch, or a cloth colour far from the picture's) says so, and
     // offers to redraw it from the picture
@@ -317,7 +319,7 @@ export function registerLabFlatsRoutes(app, d) {
   app.get('/v1/lab/concepts/:id/flats/from-picture', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
     const init = await initial(c); if (!init) return bad(reply, 'The picture does not show a garment the flats can draw yet');
-    const old = (await pool.query('select placements from lab_flats where concept_id=$1', [c.id])).rows[0]?.placements || [];
+    const was = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], old = upgradePlacements(was?.params, was?.placements);
     const extra = old.filter(q => !init.placements.some(x => x.id === q.id || (q.layer && x.layer === q.layer)) && q.source !== 'logo'); // measured from the centre front, so they keep their spots on the new sketch
     const { params, placements } = cleanFlat({ ...init, placements: [...init.placements, ...extra] });
     return { flat: { ...params, placements, check: await check(params, placements, c.client_id), saved: false } };
@@ -594,7 +596,7 @@ export function registerLabFlatsRoutes(app, d) {
   };
   async function sheet(c, { size } = {}) {
     const r = (await pool.query('select params, placements, check_result from lab_flats where concept_id=$1', [c.id])).rows[0]; if (!r) return null;
-    const p = { ...r.params, size: SIZES.includes(size) ? size : r.params.size || 'M' }, pl = r.placements, list = await techniques(c.client_id), hrefs = {};
+    const p = { ...r.params, size: SIZES.includes(size) ? size : r.params.size || 'M' }, pl = upgradePlacements(r.params, r.placements), list = await techniques(c.client_id), hrefs = {};
     for (const q of pl) { const b = await pngOf(q); if (b) hrefs[q.id] = `data:image/png;base64,${(await sharp(b).resize({ width: 600, height: 600, fit: 'inside', withoutEnlargement: true }).png().toBuffer()).toString('base64')}`; }
     const ck = r.check_result || { findings: {}, summary: { fail: 0, warn: 0 } };
     const views = viewsOf(p.style);
@@ -607,7 +609,7 @@ export function registerLabFlatsRoutes(app, d) {
     let body = svgs.map((s, i) => s.replace('<svg ', `<svg x="${60 + i * colW}" y="120" width="${colW - 20}" height="520" preserveAspectRatio="xMidYMid meet" `)).join('');
     y = 680; body += T(60, y, 20, 'Placements', { w: 600 }); y += 12;
     const lv = q => (ck.findings[q.id] || []).some(f => f.level === 'fail') ? ['Cannot be made as drawn', '#a02a20'] : (ck.findings[q.id] || []).some(f => f.level === 'warn') ? ['Check', '#8a5a00'] : ['Ready', '#17603a'];
-    pl.forEach((q, i) => { const t = techFor(list, q); y += 30; body += T(60, y, 14, `${i + 1}. ${q.name}`, { w: 600 }) + T(360, y, 14, `${t.name} · ${fmtCm(q.w)} × ${fmtCm(q.h)}`) + T(1640, y, 13, lv(q)[0], { a: 'end', c: lv(q)[1], w: 600 }); y += 20; body += T(76, y, 13, `${q.view === 'back' ? 'Back' : 'Front'}: ${describe(q, p)}`, { c: '#45454c' });
+    pl.forEach((q, i) => { const t = techFor(list, q); y += 30; body += T(60, y, 14, `${i + 1}. ${q.name}`, { w: 600 }) + T(360, y, 14, `${t.name} · ${fmtCm(q.w)} × ${fmtCm(q.h)}`) + T(1640, y, 13, lv(q)[0], { a: 'end', c: lv(q)[1], w: 600 }); y += 20; body += T(76, y, 13, `${sideOf(q, p)}: ${describe(q, p)}`, { c: '#45454c' });
       if (q.grade) { y += 18; body += T(76, y, 13, `Artwork by size: ${gradeWords(q)}`, { c: '#45454c' }); } });
     if (p.allover) { y += 30; body += T(60, y, 14, `All over: ${p.allover.name}`, { w: 600 }) + T(360, y, 14, `${p.allover.base} · a ${p.allover.type} repeat of ${fmt(p.allover.w)} × ${fmt(p.allover.h)}`); }
     if (!pl.length) { y += 30; body += T(60, y, 14, 'Nothing placed on this piece.', { c: '#727278' }); }
@@ -641,11 +643,11 @@ export function registerLabFlatsRoutes(app, d) {
     for (const [i, q] of s.pl.entries()) {
       if (i) doc.addPage();
       const t = techFor(list, q), n = notes.get(t.id) || {}, dd = decos.find(x => x.id === q.id), y0 = b.bodyTop;
-      doc.fillColor(DIM).font('MONO').fontSize(8.5).text(safe(`${String(i + 1).padStart(2, '0')} / ${String(s.pl.length).padStart(2, '0')}  ·  ${q.view === 'back' ? 'BACK' : 'FRONT'}`), L, y0, { characterSpacing: 1 });
+      doc.fillColor(DIM).font('MONO').fontSize(8.5).text(safe(`${String(i + 1).padStart(2, '0')} / ${String(s.pl.length).padStart(2, '0')}  ·  ${sideOf(q, s.p).toUpperCase()}`), L, y0, { characterSpacing: 1 });
       doc.fillColor(INK).font('SG-B').fontSize(20).text(safe(q.name), L, doc.y + 4, { width: CW });
       doc.fillColor(DIM).font('SG').fontSize(10.5).text(safe(`${c.name} · made as ${t.name}`), L, doc.y + 2, { width: CW });
       let y = doc.y + 12; const col = CW / 4;
-      fact(b, 'Width', fmtCm(q.w), L, y, col); fact(b, 'Height', fmtCm(q.h), L + col, y, col); fact(b, 'Colours', String(dd?.colours ?? '—'), L + col * 2, y, col); (factory ? fact(b, 'Side', q.view === 'back' ? 'Back' : 'Front', L + col * 3, y, col) : fact(b, 'Cost per piece', dd ? `$${(dd.perPieceCents / 100).toFixed(2)}` : '—', L + col * 3, y, col)); y += 46;
+      fact(b, 'Width', fmtCm(q.w), L, y, col); fact(b, 'Height', fmtCm(q.h), L + col, y, col); fact(b, 'Colours', String(dd?.colours ?? '—'), L + col * 2, y, col); (factory ? fact(b, 'Side', sideOf(q, s.p), L + col * 3, y, col) : fact(b, 'Cost per piece', dd ? `$${(dd.perPieceCents / 100).toFixed(2)}` : '—', L + col * 3, y, col)); y += 46;
       // the artwork, and the flat with the placement on it
       const art = s.hrefs[q.id] ? Buffer.from(s.hrefs[q.id].split(',')[1], 'base64') : null, bw = CW * .48, bh = 140; // low enough that a placement with several threads and a check still fits its one page
       doc.rect(L, y, bw, bh).fill('#f3f2ee'); if (art) { try { doc.image(art, L + 10, y + 10, { fit: [bw - 20, bh - 20], align: 'center', valign: 'center' }); } catch { /* left blank */ } } doc.rect(L, y, bw, bh).lineWidth(.6).strokeColor(LINE).stroke();
@@ -692,7 +694,12 @@ export function registerLabFlatsRoutes(app, d) {
   async function files(c) {
     const s = await sheet(c); if (!s) return [];
     const out = [{ name: 'Spec sheet · flats, placements and measurements', image: await png(s.svg, 2400) }];
-    for (const v of s.views) out.push({ name: `Technical flat · ${v}`, image: await png(renderSvg(s.p, v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, tags: s.tags }), 1800) });
+    const flat = (v, o = {}) => png(renderSvg(s.p, v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, tags: s.tags, ...o }), 1800);
+    // a cup (src/lab-goods.js): each side as its own picture, with what the wrap puts on it, and the wrap laid flat, named as what it is
+    if (wrapStyle(s.p.style)) { const two = STYLES[s.p.style].goods.sides === 2;
+      out.push({ name: 'Technical flat · front', image: await flat('front', { side: 'front' }) }); if (two) out.push({ name: 'Technical flat · back', image: await flat('front', { side: 'back' }) });
+      out.push({ name: 'Technical flat · wrap, laid flat', image: await flat('back'), wrap: true }); return out; }
+    for (const v of s.views) out.push({ name: `Technical flat · ${v}`, image: await flat(v) });
     return out;
   }
   const png = async (svg, width) => `data:image/png;base64,${(await sharp(Buffer.from(svg), { density: 150 }).resize({ width }).flatten({ background: '#ffffff' }).png().toBuffer()).toString('base64')}`;
@@ -717,11 +724,11 @@ export function registerLabFlatsRoutes(app, d) {
       const sketches = [...(fromPattern?.sketches || []), ...labelSketches];
       return materials || colourways.length || sketches.length ? { files: fromPattern?.files || [], lab: { materials, colourways, sketches, ...(fromPattern ? { construction: fromPattern.construction, sizes: fromPattern.sizes } : {}), priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name } } : null;
     }
-    const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], p = r.params, pl = r.placements || [], list = await techniques(c.client_id);
+    const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], p = r.params, pl = upgradePlacements(p, r.placements), list = await techniques(c.client_id);
     const S = STYLES[p.style], tpl = templateOf(p), edits = p.edits || [];
     const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: washShrink(p) ? `From the flats; finished, after the wash (allow ${washShrink(p)}% shrinkage)` : 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
     const construction = [{ area: 'Drawing', detail: `${FITS[p.fit] || p.fit} fit ${S.label.toLowerCase()}, drawn from the ${tpl ? `"${tpl.label}" flat sketch` : 'measurements'}; sample size M.` },
-      ...pl.map(q => ({ area: `${q.view === 'back' ? 'Back' : 'Front'} · ${q.name}`, detail: `${techFor(list, q).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.${q.grade ? ` Artwork by size: ${gradeWords(q)}.` : ''}` })),
+      ...pl.map(q => ({ area: `${sideOf(q, p)} · ${q.name}`, detail: `${techFor(list, q).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.${q.grade ? ` Artwork by size: ${gradeWords(q)}.` : ''}` })),
       ...pl.filter(q => q.inks).map(q => ({ area: `Inks by colourway · ${q.name}`, detail: Object.entries(q.inks).map(([cw, m]) => `on ${(cleanColourways(c.spec?.colourways).find(x => x.hex === cw)?.name) || cw}: ${Object.entries(m).filter(([a, b2]) => a !== b2).map(([a, b2]) => `${pantoneOf(a)} changed to ${pantoneOf(b2)}`).join(', ') || 'as drawn'}`).join('; ') })),
       ...(p.crop ? [{ area: 'Cropped body', detail: `Cropped ${fmtCm(p.crop)} shorter than the sketch's body, taken out above the hem band so the band and hem finish stay as drawn; the sleeves keep their length. Body length (sample M) ${fmtCm(p.m.length)}.` }] : []),
       ...(necklineWords(p) ? [{ area: 'Neckline', detail: necklineWords(p) }] : []),
@@ -733,11 +740,12 @@ export function registerLabFlatsRoutes(app, d) {
     const bom = [...pl.map(q => { const dd = decoOf(q); return { component: `Decoration · ${q.name}`, material: techFor(list, q).name, spec: dd ? `${q.grade ? gradeWords(q) : `${fmtCm(q.w)} × ${fmtCm(q.h)}`}, ${dd.colours} colour${dd.colours === 1 ? '' : 's'}${dd.basis ? `; ${dd.basis}` : ''}`.slice(0, 200) : '', color: dd ? dd.pantones.join(', ').slice(0, 120) : '', placement: describe(q, p).slice(0, 160), qty: '1', unit: 'pc', ...(dd ? { cost: (dd.perPieceCents / 100).toFixed(2) } : {}) }; }),
       ...decos.filter(d2 => d2.allover).map(d2 => ({ component: `All-over print · ${d2.name}`, material: d2.technique, spec: `${d2.placement}; ${d2.colours} colour${d2.colours === 1 ? '' : 's'}${d2.basis ? `; ${d2.basis}` : ''}`.slice(0, 200), color: d2.pantones.join(', ').slice(0, 120), placement: 'All panels', qty: '1', unit: 'pc', cost: (d2.perPieceCents / 100).toFixed(2) })),
       ...[...threads].map(([hex, where]) => ({ component: 'Contrast thread', material: 'Polyester sewing thread', color: hex, placement: [...new Set(where)].join(', ').slice(0, 160), qty: '1', unit: 'cone' })),
-      ...edits.filter(e => e.type === 'block').map(e => ({ component: `Colour block · ${e.name || 'panel'}`, material: 'Self fabric', color: e.color, placement: e.view }))];
+      ...edits.filter(e => e.type === 'block').map(e => ({ component: `Colour block · ${e.name || 'panel'}`, material: 'Self fabric', color: e.color, placement: viewLabel(p.style, e.view).toLowerCase() }))];
     return {
       files: items,
       lab: { pom, sizes: S.oneSize ? ['One size'] : SIZES, construction, bom, materials, colourways, color: p.color ? { hex: p.color, name: 'Main colour' } : null,
-        sketches: [...items.filter(i => /^Technical flat · /.test(i.name)).map(i => ({ view: i.name.endsWith('back') ? 'back' : 'front', label: i.name, image: i.image })), ...labelSketches],
+        // the wrap is the pack's 'flat' view under its own name (the pack's front and back are the cup's two sides)
+        sketches: [...items.filter(i => /^Technical flat · /.test(i.name)).map(i => (i.wrap ? { id: 'lab-flat-wrap', view: 'flat', label: i.name, image: i.image } : { view: i.name.endsWith('back') ? 'back' : 'front', label: i.name, image: i.image })), ...labelSketches],
         priceCents: c.price_cents, costCents: c.cost_cents, qty: c.qty, planName: c.plan_name, style: { sampleSize: S.oneSize ? 'One size' : 'M', fitBlock: `${FITS[p.fit] || p.fit} ${S.label.toLowerCase()}${tpl ? ` (${tpl.label})` : ''}` } }
     };
   }
@@ -829,7 +837,7 @@ export function registerLabFlatsRoutes(app, d) {
     const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0]; let flats = null;
     if (r) {
       // a layer put on the picture from the flats (fromFlat) takes that placement over: same spot, from then on one record drawn on both
-      const params = r.params, old = r.placements || [], claimed = new Set(graphics.map(g => g.fromFlat).filter(Boolean)), keep = old.filter(q => q.source !== 'studio' && !claimed.has(q.id)), studio = [];
+      const params = r.params, old = upgradePlacements(r.params, r.placements), claimed = new Set(graphics.map(g => g.fromFlat).filter(Boolean)), keep = old.filter(q => q.source !== 'studio' && !claimed.has(q.id)), studio = [];
       for (const g of graphics) {
         const prev = old.find(q => q.source === 'studio' && q.layer === g.studioLayer) || (g.fromFlat ? old.find(q => q.id === g.fromFlat && q.source !== 'studio') : null), t = techFor(list, { techniqueId: g.finish?.id, technique: g.technique });
         const base = prev ? { view: prev.view, x: prev.x, y: prev.y - prev.h / 2 + g.heightIn / 2, w: g.widthIn, h: g.heightIn } : sized(defaultPlacement('graphic', params, { aspect: g.widthIn / g.heightIn, label: g.placement }), g, params);
@@ -907,11 +915,11 @@ export function registerLabFlatsRoutes(app, d) {
   // the saved flat, or the flat the piece starts as when none is saved; a piece with no flat keeps an empty thumbnail, so it is not tried again
   async function flatThumb(c) {
     const r = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0], init = r ? null : await initial(c, null).catch(() => null); // no picture read (that is an AI call): the flat as it starts shows only when there is no picture
-    const p = r ? { ...r.params } : init ? { ...init } : null, pl = r ? r.placements || [] : init?.placements || [];
+    const p = r ? { ...r.params } : init ? { ...init } : null, pl = r ? upgradePlacements(r.params, r.placements) : init?.placements || [];
     if (!p || !STYLES[p.style]) { await pool.query('update lab_concepts set flat_thumb=$2 where id=$1', [c.id, Buffer.alloc(0)]); return null; }
     p.size = p.size || 'M'; const hrefs = {}; for (const q of pl) { const b = await pngOf(q).catch(() => null); if (b) hrefs[q.id] = `data:image/png;base64,${(await sharp(b).resize({ width: 600, height: 600, fit: 'inside', withoutEnlargement: true }).png().toBuffer()).toString('base64')}`; }
     await prepMasks(p);
-    const svg = renderSvg(p, 'front', { maskHref, placements: pl, hrefs, scale: 45, templateSvg, partHref, editHrefs: await editHrefsOf(p), alloverHref: await alloverHrefOf(p), tags: tagMarks(p, await labelsOf(c)), showDims: false, plain: true });
+    const svg = renderSvg(p, 'front', { maskHref, placements: pl, hrefs, scale: 45, templateSvg, partHref, editHrefs: await editHrefsOf(p), alloverHref: await alloverHrefOf(p), tags: tagMarks(p, await labelsOf(c)), showDims: false, plain: true, ...(wrapStyle(p.style) ? { side: 'front' } : {}) }); // a cup's card is its front, as every card is
     const thumb = await sharp(Buffer.from(svg), { density: 96 }).resize({ width: 720, height: 720, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).jpeg({ quality: 76 }).toBuffer();
     await pool.query('update lab_concepts set flat_thumb=$2 where id=$1', [c.id, thumb]); return thumb;
   }
@@ -922,7 +930,9 @@ export function registerLabFlatsRoutes(app, d) {
   // with them, `graphics`: every placed graphic's art and its place in words, which every turn has to show
   async function flatPictures(c) {
     const s = await sheet(c); if (!s) return null; const out = {};
-    for (const v of ['front', 'back']) { if (!s.views.includes(v)) continue; out[v] = await sharp(Buffer.from(renderSvg(s.p, v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, tags: s.tags, showDims: false, plain: true })), { density: 150 }).resize({ width: 1024, height: 1024, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer(); }
+    // a cup's two pictures are its two sides, each with what the wrap puts on it (its second view is the wrap laid flat, not a side to turn)
+    const cupS = wrapStyle(s.p.style), has = v => (cupS ? v === 'front' || STYLES[s.p.style].goods.sides === 2 : s.views.includes(v));
+    for (const v of ['front', 'back']) { if (!has(v)) continue; out[v] = await sharp(Buffer.from(renderSvg(s.p, cupS ? 'front' : v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, tags: s.tags, showDims: false, plain: true, ...(cupS ? { side: v } : {}) })), { density: 150 }).resize({ width: 1024, height: 1024, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer(); }
     if (!out.front) return null;
     // each placed graphic, its art on the garment colour (so white art still shows) and where it goes, so no turn leaves one out
     const list = await techniques(c.client_id), ground = /^#[0-9a-f]{6}$/i.test(String(s.p.color || '')) ? s.p.color : '#c8c8c8';
@@ -930,8 +940,8 @@ export function registerLabFlatsRoutes(app, d) {
     for (const q of s.pl.slice(0, 8)) {
       const b = await pngOf(q).catch(() => null); if (!b) continue;
       const art = await sharp(b).ensureAlpha().resize({ width: 640, height: 640, fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).extend({ top: 64, bottom: 64, left: 64, right: 64, background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer().then(x => sharp(x).flatten({ background: ground }).png().toBuffer()).catch(() => null); if (!art) continue; // sharp flattens before it resizes, so the ground goes on after
-      const view = q.view === 'back' ? 'back' : 'front';
-      out.graphics.push({ view, name: String(q.name || 'Graphic').slice(0, 80), art, words: `${q.name || 'Graphic'}: ${techFor(list, q).name}, ${fmt(q.w)} wide × ${fmt(q.h)} tall, on the ${view}, ${describe(q, s.p)}` });
+      const where = sideOf(q, s.p).toLowerCase(), view = where === 'back' ? 'back' : 'front'; // a graphic on a cup's wrap goes with the front picture; its words say the wrap
+      out.graphics.push({ view, name: String(q.name || 'Graphic').slice(0, 80), art, words: `${q.name || 'Graphic'}: ${techFor(list, q).name}, ${fmt(q.w)} wide × ${fmt(q.h)} tall, on the ${where}, ${describe(q, s.p)}` });
       // the art itself (on clear), for placing it on a turn by hand
       (out.placed = out.placed || []).push({ id: q.id, view, name: String(q.name || 'Graphic').slice(0, 80), technique: techFor(list, q).name, png: b, aspect: q.w && q.h ? q.w / q.h : 1 });
     }
