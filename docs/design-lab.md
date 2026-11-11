@@ -2052,6 +2052,14 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   Openings and bosses are in the part's solid: its STL, and its STEP as exact faces (holes through a floor or a solid part, bosses, and
   windows in a housing's side walls with their sides, sill and head, a notch where one reaches the rim). The 3D view shows them too: a
   housing with a window in a side wall is drawn from its solid.
+- **An assembly saved before these rules** (it carries no `v`; a starting point or a design from a concept made now carries `v: 2`) is read as
+  it was meant when it is opened: a part that plainly goes through a wall (in on one side and out on the other or flush with the far
+  face, much narrower than the wall, and not a part that sits inside that housing) gets its opening, worked out each time and never written
+  into the saved parts. On the 15 starting assemblies as they were saved before, that clears 9 of 17 clash findings (the cassette's keys,
+  the speaker's drivers and port, the lamp's stem, the tumbler's straw); the 8 left are misfits the old drawings really had, and say so:
+  board corners in rounded housing corners (handheld, power bank), the cassette's cell holder in a corner, the tumbler lid 0.5 mm into
+  the cup, the turntable's plate and pillar sunk into the plinth, the headphones' square baffles in oval cups. Give the board a corner
+  radius or move the part on the page, or start the piece again from its starting point.
 - **Starting points are built inside the size asked**, feet, keys, knobs and hinges included, from the table up. A size that cannot hold its
   parts (a 25 × 50 × 8 mm handheld, a cell asked for that is larger than its housing) still builds, and the checks say what does not fit.
 - **Electronics.** The parts on the board are parts like any other. The page adds the block diagram (power → the main chip → what it drives,

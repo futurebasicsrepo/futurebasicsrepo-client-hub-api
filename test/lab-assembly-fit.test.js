@@ -160,3 +160,20 @@ test('the Engineering page lets a person set what a part passes through, where i
   for (const k of ['thru[012]', 'spot\\d+_[012]', 'boss\\d+_[012]', 'bossd\\d+']) assert.ok(html.includes(`/^${k}$/.test(k)`), `the page sets ${k}`);
   assert.ok(html.includes('p.cuts,p.bosses,p.flange'), 'the 3D part is rebuilt when its openings or bosses change');
 });
+
+test('an assembly saved before parts said what they pass through: a part plainly through a wall gets its opening when it is opened, the saved parts are not rewritten, and a real misfit still shows', () => {
+  const strip = s => { const c = JSON.parse(JSON.stringify(s)); delete c.v; return c; }, bads = s => dfm(cleanAssembly(s)).filter(c => c.level === 'bad').map(c => `${c.id}: ${c.text}`);
+  // as it would have been saved: no `v`, and the caps do not say they go through the plinth
+  const saved = strip(archetype('turntable')); delete saved.parts.find(p => p.id === 'caps').through; const opened = cleanAssembly(saved);
+  assert.equal(opened.v, undefined); assert.equal(opened.parts.find(p => p.id === 'caps').through, undefined, 'nothing is written into the saved part');
+  assert.equal(opened.parts.find(p => p.id === 'plinth').cuts.filter(c => c.for === 'caps').length, 3, 'an opening for each of the three caps'); assert.deepEqual(bads(saved), []);
+  assert.ok(bads({ ...saved, v: 2 }).some(t => /^caps: Button caps goes [\d.]+ mm into/.test(t)), 'made today, the same part has to say it passes through');
+  // the old cassette player's keys, a hollow cap through the top of both halves
+  const tape = strip(archetype('cassette')); delete tape.parts.find(p => p.id === 'keys').through; assert.deepEqual(bads(tape), []); assert.ok(cleanAssembly(tape).parts.find(p => p.id === 'back').cuts.some(c => c.for === 'keys'));
+  // what only digs into a wall, what sits inside its housing, and a lid a size too small are not read as passing through
+  const sunk = strip(archetype('turntable')); sunk.parts.find(p => p.id === 'hinge').at[2] -= 4; assert.ok(bads(sunk).some(t => /^hinge: /.test(t)), 'a hinge sunk 4 mm into the plinth');
+  const cell = strip(archetype('puck')); cell.parts.find(p => p.id === 'battery').size = [60, 88, 6]; assert.ok(bads(cell).some(t => /^battery: .* into the wall of bottom housing/.test(t)), 'a cell through its own housing\'s wall');
+  const lid = strip(archetype('tumbler')); lid.parts.find(p => p.id === 'body').size[0] = lid.parts.find(p => p.id === 'body').size[1] = 88; lid.parts.find(p => p.id === 'lid').size = [91, 91, 18]; assert.ok(bads(lid).some(t => /0\.5 mm into the material/.test(t)), 'the lid 0.5 mm into the cup');
+  for (const a of Object.keys(ARCHES)) assert.deepEqual(bads(strip(archetype(a))), [], `${a}: read under the old rules, today's assembly is still clean`);
+  assert.equal(archetype('puck').v, 2); assert.equal(cleanAssembly({ ...archetype('puck'), v: 7 }).v, 2);
+});

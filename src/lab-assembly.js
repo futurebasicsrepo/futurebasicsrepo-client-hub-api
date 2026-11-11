@@ -353,11 +353,12 @@ export function cleanAssembly(s = {}) {
   const seen = new Set(); for (const p of parts) { while (seen.has(p.id)) p.id = `${p.id}x`.slice(-32); seen.add(p.id); }
   for (const p of parts) if (p.parent && (!seen.has(p.parent) || p.parent === p.id)) p.parent = null;
   for (const p of parts) if (p.through) { p.through = p.through.filter(id => seen.has(id) && id !== p.id); if (!p.through.length) delete p.through; }
-  openings(parts);
+  const v = Number(s.v) >= 2 ? 2 : 1; // 2: made since parts say what they pass through; 1 (nothing saved): made before
+  openings(parts, v < 2);
   const dm = s.dims && ['w', 'd', 'h'].every(k => Number(s.dims[k]) > 0) ? { w: r1(num(s.dims.w, .3, 5000, 1)), d: r1(num(s.dims.d, .3, 5000, 1)), h: r1(num(s.dims.h, .3, 5000, 1)) } : null; // the size asked for, when it was
   return { arch, kind: s.kind === 'electronics' || ARCHES[arch].kind === 'electronics' && s.kind !== 'goods' ? 'electronics' : 'goods', name: clip(s.name, 80),
     volume: Math.round(num(s.volume, 50, 1e7, 5000)), years: Math.round(num(s.years, 1, 10, 3)), age: AGES[s.age] ? s.age : '14+', chargeMa: Math.round(num(s.chargeMa, 50, 5000, 500)),
-    labour: r2(num(s.labour, 1, 80, 6)), ...(dm ? { dims: dm } : {}), parts };
+    labour: r2(num(s.labour, 1, 80, 6)), ...(dm ? { dims: dm } : {}), ...(v >= 2 ? { v } : {}), parts };
 }
 // The openings each part needs, worked out afresh every time so an opening follows the part it is for: a part that says it goes `through`
 // another gets its outline (and each of its `spots`) cut there with 0.2 mm round it, and every socket and every clear window gets its
@@ -375,13 +376,28 @@ function cutFor(h, q, o) {
   const out = []; for (const k of [0, 1, 2]) { if (k === ax) continue; for (const sg of [1, -1]) { const reach = sg > 0 ? qhi[k] - (hhi[k] - t) : (hlo[k] + t) - qlo[k]; if (reach > e) out.push(mk(k, rel.map((v, i) => (i === k ? r2(sg * (h.size[k] / 2 - t / 2)) : v)))); } }
   return out;
 }
-function openings(parts) {
+// An assembly saved before parts said what they pass through (no `v`) is read as it was meant: a part that plainly goes through a wall
+// (in on one side and out on the other, or flush with the far face; much narrower than the wall; not a part that sits inside that housing)
+// gets its opening, as if it had said so. Nothing is written into the saved parts: the opening is worked out each time it is opened. A part
+// that only digs into a wall, a board corner in a rounded corner, a lid a size too small still clash, as they should.
+function plainlyThrough(h, q, o) {
+  if (q.parent === h.id && shellLike(h)) return false; if (h.parent === q.id || isScrew(q) || isScrew(h) || h.shape === 'ball' || h.elec || q.shape === 'pcb') return false;
+  const e = .6, ax = axisOf(h), qa = q.at.map((v, k) => v + o[k]), qlo = qa.map((v, k) => v - q.size[k] / 2), qhi = qa.map((v, k) => v + q.size[k] / 2), hlo = h.at.map((v, k) => v - h.size[k] / 2), hhi = h.at.map((v, k) => v + h.size[k] / 2);
+  if ([0, 1, 2].some(k => qhi[k] <= hlo[k] || qlo[k] >= hhi[k])) return false;
+  const spans = (k, a, b) => qlo[k] <= a + e && qhi[k] >= b - e && (qlo[k] < a - .5 || qhi[k] > b + .5), narrow = k => [0, 1, 2].filter(i => i !== k).every(i => q.size[i] <= h.size[i] * .8 && qlo[i] > hlo[i] && qhi[i] < hhi[i]);
+  if (!shellLike(h)) return spans(ax, hlo[ax], hhi[ax]) && narrow(ax);
+  const t = h.wall, op = openOf(h);
+  if (op !== 'both') { const flo = op === '+' ? hlo[ax] : hhi[ax] - t; if (spans(ax, flo, flo + t) && narrow(ax)) return true; if (qlo[ax] < flo + t && qhi[ax] > flo) return false; }
+  return [0, 1, 2].some(k => k !== ax && ((spans(k, hhi[k] - t, hhi[k]) && qlo[k] > hlo[k] + t) || (spans(k, hlo[k], hlo[k] + t) && qhi[k] < hhi[k] - t)) && [0, 1, 2].filter(i => i !== k).every(i => q.size[i] <= h.size[i] * .8));
+}
+function openings(parts, before = false) {
   const byId = Object.fromEntries(parts.map(p => [p.id, p])); for (const p of parts) delete p.cuts;
   const add = (h, q) => { for (const o of [[0, 0, 0], ...(q.spots || [])]) for (const ho of [[0, 0, 0], ...(h.spots || [])]) for (const c of cutFor(h, q, o.map((v, k) => v - ho[k]))) if ((h.cuts ||= []).length < 40 && !h.cuts.some(x => x.axis === c.axis && x.at.every((v, k) => Math.abs(v - c.at[k]) < .01))) h.cuts.push(c); };
   for (const q of parts) { for (const id of q.through || []) add(byId[id], q);
     // a socket reaches through the housing wall it sits at, and a clear part set into a housing wall is a window: both get their opening
     const socket = q.elec && (ELEC[q.elec.kind].port || q.elec.kind === 'usbc'), pane = RESINS[q.resin].clear && !shellLike(q);
-    if (socket || pane) for (const h of parts) if (h !== q && shellLike(h) && !h.elec && (socket || !RESINS[h.resin].clear) && !(q.through || []).includes(h.id)) add(h, q); }
+    if (socket || pane) for (const h of parts) if (h !== q && shellLike(h) && !h.elec && (socket || !RESINS[h.resin].clear) && !(q.through || []).includes(h.id)) add(h, q);
+    if (before && !socket && !pane && !q.through) for (const h of parts) if (h !== q && [[0, 0, 0], ...(q.spots || [])].some(o => plainlyThrough(h, q, o))) add(h, q); }
 }
 
 // ---- archetypes: a starting assembly drawn to the product's size ---------------------------------------------------------------------------------
@@ -740,7 +756,7 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     add({ id: 'armr', name: 'Right arm', shape: 'cyl', axis: 'x', size: [36 * k, 14 * k, 14 * k], at: [46 * k, 0, 96 * k], resin: 'soft PVC (vinyl)', process: 'rotocasting', finish: 'spray paint', fix: 'press', order: 4, dir: [1, 0, 0], lvl: 1.2 });
     add({ id: 'head', name: 'Head', shape: 'ball', size: [74 * k, 66 * k, 66 * k], at: [0, 0, 118 * k + 33 * k], resin: 'soft PVC (vinyl)', process: 'rotocasting', finish: 'spray paint', fix: 'press', order: 5, lvl: 3, main: true });
   } else { made = [num(dims.w, 5, 2000, 100), num(dims.d, 5, 2000, 60), num(dims.h, 5, 2000, 40)]; add({ id: 'body', name: 'Body', shape: 'shell', size: made, at: [0, 0, made[2] / 2], r: 4, wall: 2, open: '+', resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, order: 1, main: true }); }
-  return cleanAssembly({ arch, kind: ARCHES[arch]?.kind, ...(made ? { dims: { w: made[0], d: made[1], h: made[2] } } : {}), parts });
+  return cleanAssembly({ arch, kind: ARCHES[arch]?.kind, v: 2, ...(made ? { dims: { w: made[0], d: made[1], h: made[2] } } : {}), parts });
 }
 // the archetype a concept reads as, from its words (the designer's own words first)
 export function guessArch(c = {}) {
