@@ -493,7 +493,7 @@ $('#pPl').addEventListener('click',async e=>{
 });
 async function addPlacement(base){
   const href=await hrefOf(base),img=await new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=href});const aspect=img?(img.naturalWidth||1)/(img.naturalHeight||1):1;
-  const t=D.techniques.find(x=>x.id===base.techniqueId)||D.techniques.find(x=>x.base===(base.mark?'embroidery':'screen print'));
+  const t=D.techniques.find(x=>x.id===base.techniqueId)||D.techniques.find(x=>x.base===(base.mark&&STYLES[P.style]?.kind!=='goods'?'embroidery':'screen print')); // a mark on a garment starts embroidered; on a product type (a mug, a poster) printed
   const q={id:'p'+Math.random().toString(36).slice(2,8),...base,added:true,techniqueId:t&&t.id,technique:t?t.base:'screen print',...defaultPlacement(base.mark?'logo':'graphic',P,{aspect,label:VIEW==='back'?'back':base.mark?'left chest':'front chest'})};
   if(VIEW==='back'&&q.view!=='back'){q.view='back'}HREF[q.id]=href;PL.push(q);SEL=q.id;touch();paint()}
 // a brand mark in its placement's colours: the brand's ink (the lines and lettering) and its cue green (the dot) swapped for the chosen ones

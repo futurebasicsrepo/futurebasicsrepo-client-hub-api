@@ -54,6 +54,11 @@ test('every product type takes a graphic in its print area, checks it, recolours
     assert.match(renderSvg(saved.params, 'front', { placements: saved.placements }), /data-pl="a"/);
     if (viewsOf(k).length === 2) assert.equal(defaultPlacement('graphic', p, { label: 'back' }).view, 'back'); else assert.equal(defaultPlacement('graphic', p, { label: 'back' }).view, 'front');
   }
+  // the back of a one-sided product says it is not printed; the edge of a print area is an edge, not a seam
+  assert.match(placementChecks({ id: 'a', name: 'Art', view: 'back', x: 0, y: 12, w: 4, h: 4 }, defaultParams('poster'), {})[0].text, /is on the back, which is not printed on this product/);
+  const near = placementChecks({ id: 'a', name: 'Art', view: 'front', x: 0, y: 1.9, w: 2.9, h: 3.4 }, defaultParams('mug'), {}); assert.equal(near[0].code, 'NEAR_SEAM'); assert.match(near[0].text, /of the edge of the print area/);
+  assert.deepEqual(placementChecks({ id: 'a', name: 'Art', view: 'front', x: 0, y: 1.875, w: 2.5, h: 3 }, defaultParams('mug'), {}), [], 'a graphic that fills most of the mug\'s side is fine');
+  assert.match(placementChecks({ id: 'a', name: 'Art', view: 'front', x: 9.5, y: 8, w: 2, h: 2 }, defaultParams('tee'), {}).map(f => f.text).join(' '), /of a seam|over the edge/, 'a garment is checked as it was');
   // a typed-in size is kept (a king duvet is past a garment's 80 in), and a garment's limits are as they were
   assert.equal(cleanFlat({ style: 'bedding', m: { width: 104, height: 94 } }).params.m.width, 104); assert.equal(cleanFlat({ style: 'tee', m: { chest: 104 } }).params.m.chest, 80);
 });

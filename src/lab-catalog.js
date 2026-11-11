@@ -146,7 +146,9 @@ export const labCatalogItem = (id, cat = labCatalog()) => { const i = cat.byId.g
 // Browse: every word typed must be in the product (its name, brand, what it opens on, its group), as the staff search does (src/price-catalog.js);
 // group is one of GROUPS. → { total, count (the whole catalogue), items, groups: [{ name, count }] (of what the words found) }
 export function browseLabCatalog({ q = '', group = '', limit = 48, offset = 0 } = {}, cat = labCatalog()) {
-  const want = wordsOf(q), found = want.length ? cat.items.filter(i => wordsMatch(i.words, want)) : cat.items, hits = group ? found.filter(i => i.base?.group === group) : found;
+  const want = wordsOf(q), said = i => want.filter(w => i.words.includes(w)).length;
+  // the products that say the very words come first ("tumbler" lists tumblers before the bottles that stand for them), then in the catalogue's order
+  const found = want.length ? cat.items.filter(i => wordsMatch(i.words, want)).map((i, n) => [i, said(i), n]).sort((a, b) => b[1] - a[1] || a[2] - b[2]).map(x => x[0]) : cat.items, hits = group ? found.filter(i => i.base?.group === group) : found;
   const n = Math.max(1, Math.min(96, Number(limit) || 48)), from = Math.max(0, Math.floor(Number(offset) || 0));
   const counts = new Map(); for (const i of found) counts.set(i.base?.group || 'Other', (counts.get(i.base?.group || 'Other') || 0) + 1);
   return { total: hits.length, count: cat.items.length, offset: from, items: hits.slice(from, from + n).map(view), groups: GROUPS.filter(g => counts.has(g)).map(name => ({ name, count: counts.get(name) })) };

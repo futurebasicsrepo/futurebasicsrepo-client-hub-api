@@ -525,10 +525,11 @@ function describeAt(q, p) {
 }
 // the checks that need only the drawing: on the piece, clear of seams, ribs, zips and pockets, inside what the technique can make
 export function placementChecks(q, p, rules = {}) {
-  const g = geometry(p, q.view), box = corners(q), out = [], reg = regionOf(q, g), clear = rules.minClear ?? .75;
-  if (!reg) { out.push({ level: 'fail', code: 'OFF_PIECE', text: `${q.name} is not on the piece. Move it onto the ${q.view}.` }); return out; }
+  // a product type's print area ends at an edge, not a seam: artwork keeps an eighth inside it (a garment keeps the room a hoop or a pallet needs)
+  const goods = STYLES[p.style].kind === 'goods', g = geometry(p, q.view), box = corners(q), out = [], reg = regionOf(q, g), clear = goods ? Math.min(rules.minClear ?? .75, .125) : rules.minClear ?? .75;
+  if (!reg) { out.push({ level: 'fail', code: 'OFF_PIECE', text: goods && !Object.keys(g.regions).length ? `${q.name} is on the ${q.view}, which is not printed on this product. Put it on the front.` : `${q.name} is not on the piece. Move it onto the ${q.view}.` }); return out; }
   const poly = g.regions[reg]; if (!box.every(c => inside(c, poly))) out.push({ level: 'fail', code: 'OVER_EDGE', text: `${q.name} runs over the edge of the ${reg}${STYLES[p.style].kind === 'top' && reg === 'body' ? ' (a side or armhole seam)' : ''}. Make it smaller or move it in.` });
-  else { const grown = { ...q, w: q.w + clear * 2, h: q.h + clear * 2 }; if (!corners(grown).every(c => inside(c, poly))) out.push({ level: 'warn', code: 'NEAR_SEAM', text: `${q.name} sits within ${fmt(clear)} of a seam. Printers and embroiderers need that much room to hoop or pallet it.` }); }
+  else { const grown = { ...q, w: q.w + clear * 2, h: q.h + clear * 2 }; if (!corners(grown).every(c => inside(c, poly))) out.push({ level: 'warn', code: 'NEAR_SEAM', text: goods ? `${q.name} sits within ${fmt(clear)} of the edge of the ${reg}. Keep it that far inside, or it may be trimmed.` : `${q.name} sits within ${fmt(clear)} of a seam. Printers and embroiderers need that much room to hoop or pallet it.` }); }
   for (const k of g.keepouts) if (overlaps(box, k.poly)) out.push({ level: k.level, code: 'KEEPOUT_' + k.why.toUpperCase(), text: `${q.name} crosses ${k.name}. ${{ zip: 'A zip cannot be printed or embroidered across: split the graphic, or move it.', pocket: 'It has to go on before the pocket is sewn, which costs more and can misalign: move it, or accept that.', neck: 'Too close to the collar to print or hoop: move it down.', hem: 'Ribs and hems cannot be printed flat: move it up.', cuff: 'Ribbed cuffs stretch and cannot be printed: move it.', fly: 'The fly is several layers thick: move it to the side.', waistband: 'The waistband is too thick and curved: move it down.', crotch: 'Seams meet there: move it.', brim: 'It cannot cross the brim seam: move it up.', opening: 'That is the strap opening.', crown: 'Near the button, the panels meet and curve: keep it lower.', fold: 'The cuff folds there: keep it on the cuff.', waistband2: '' }[k.why] || 'Move it.'}` });
   if (rules.maxW && q.w > rules.maxW + 1e-6) out.push({ level: 'fail', code: 'TOO_WIDE', text: `${q.name} is ${fmt(q.w)} wide; ${rules.techniqueName || 'this technique'} goes up to ${fmt(rules.maxW)}.` });
   if (rules.maxH && q.h > rules.maxH + 1e-6) out.push({ level: 'fail', code: 'TOO_TALL', text: `${q.name} is ${fmt(q.h)} tall; ${rules.techniqueName || 'this technique'} goes up to ${fmt(rules.maxH)}.` });
@@ -567,11 +568,11 @@ export function defaultPlacement(kind, p, { aspect = 1, label = '' } = {}) {
   if (S.kind === 'bottom') return /back/.test(t) ? box('back', -4, m.waistband + 9.5, 2.5) : box('front', m.hip / 2 - 3.6, m.waistband + Math.min(m.rise - 2.5, 9), 2.5);
   if (S.kind === 'cap') { const w = Math.min(3.25, 1.9 * aspect, m.crownWidth * .4), h = w / aspect; return /back/.test(t) ? { view: 'back', x: 0, y: r8(-2.2 - h / 2), w: r8(Math.min(w, 2.25)), h: r8(Math.min(w, 2.25) / aspect) } : { view: 'front', x: 0, y: r8(-.75 - h / 2), w: r8(w), h: r8(h) }; }
   if (S.kind === 'beanie') return box('front', 0, m.height - m.cuff + .5, Math.min(3, 2 * aspect));
-  // a product type: in the middle of its print area (the back's, when the words say the back and it has one) at about half its size; where
+  // a product type: in the middle of its print area (the back's, when the words say the back and it has one) at about half its size (10 in wide at most); where
   // that would cross something that cannot be printed (a clock's spindle, a zip), smaller, or higher or lower in the area
   if (S.kind === 'goods') { const view = /back/.test(t) && goodsSides(S.goods).length === 2 ? 'back' : 'front', poly = Object.values(geometry(p, view).regions)[0];
     if (poly) { const b = bounds(poly), cy = poly.reduce((a, q) => a + q[1], 0) / poly.length;
-      const at = (fy, k) => { const w = Math.max(.25, Math.min((b.x1 - b.x0) * k, (b.y1 - b.y0) * k * aspect)); return { view, x: r8((b.x0 + b.x1) / 2), y: r8(fy == null ? cy : b.y0 + (b.y1 - b.y0) * fy), w: r8(w), h: r8(Math.max(.25, w / aspect)) }; };
+      const at = (fy, k) => { const w = Math.max(.25, Math.min((b.x1 - b.x0) * k, (b.y1 - b.y0) * k * aspect, 10, 12 * aspect)); return { view, x: r8((b.x0 + b.x1) / 2), y: r8(fy == null ? cy : b.y0 + (b.y1 - b.y0) * fy), w: r8(w), h: r8(Math.max(.25, w / aspect)) }; };
       const tries = [at(null, .5), at(null, .3), at(.3, .3), at(.72, .3), at(null, .15), at(.05, .06)];
       return tries.find(q => !placementChecks({ name: '', ...q }, p).some(f => f.level === 'fail')) || tries[0]; } }
   return box('front', 0, 4, Math.min(10, m.width * .6));

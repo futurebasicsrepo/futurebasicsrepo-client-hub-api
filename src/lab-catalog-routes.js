@@ -47,7 +47,8 @@ export function registerLabCatalogRoutes(app, d) {
       return reply.code(201).send({ concept: { id: out.concept.id, name: out.concept.name, category: out.concept.category }, studio: out.studio, base: item.base });
     }
     // a style drawn from its measurements: the concept names the style, and its flats start as that style's flat (src/lab-flats-routes.js)
-    const S = STYLES[s.style], spec = { description: `Started from the catalogue: ${memo.name}.`, silhouette: S.label, fabric: '', fit: '', details: [], trims: '', colors: s.colour ? [s.colour.name || s.colour.hex] : [], style: s.style, template: 'none', ...(s.colour ? { color: s.colour.hex } : {}), catalog: memo };
+    const S = STYLES[s.style], spec = { description: `Started from the catalogue: ${memo.name}.`, silhouette: S.label, fabric: '', fit: '', details: [], trims: '', colors: s.colour ? [s.colour.name || s.colour.hex] : [], style: s.style, template: 'none', ...(s.colour ? { color: s.colour.hex } : {}), catalog: memo,
+      ...(S.kind === 'goods' ? { branding: { logo: { mark: 'none' } } } : {}) }; // a product type starts bare: no logo is put on a mug for its maker (a garment starts as it does from a sketch)
     const id = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,$2,'core',$3,'',$4,$5) returning id`, [s.name, S.category || 'other', spec, actorOf(req), own(req)])).rows[0].id;
     flatThumb?.(id);
     return reply.code(201).send({ concept: { id, name: s.name, category: S.category || 'other' }, studio: `/lab/studio?concept=${id}&view=front`, base: item.base });
