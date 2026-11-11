@@ -56,6 +56,16 @@ export function embroiderySettings(t, rules) {
   return { stitch, thread: '40 wt polyester (or rayon for sheen)', needle: '75/11 ballpoint for knits, 75/11 sharp for wovens', backing: /cap|puff|3d/.test(name) ? 'cut-away, medium; foam 3 mm' : 'tear-away for wovens, cut-away for knits', density: rules.density || 1800, underlay: 'edge-run plus zigzag under satin columns; tatami under fills', pullCompensation: '0.2–0.3 mm on satin columns', minSatinMm: rules.minLineMm, maxWidthIn: rules.maxW, maxHeightIn: rules.maxH };
 }
 
+// what the job sheet says of a product type's technique: what the file is for, and what the supplier decides
+const PRODUCT_JOB = {
+  'sublimation on blanks': 'Pressed into a blank made for sublimation; time, temperature and pressure as the blank\'s maker gives. White in the artwork is the blank showing through.',
+  'UV print': 'Printed straight onto the product in full colour; a white layer goes under the colours on a dark or clear product. The ink layers and films in this folder are for reference only.',
+  'pad print': 'One plate per colour, from the films; each colour as its Pantone.',
+  'screen print on glass': 'One screen per colour, from the films; each colour as its Pantone. Cured or fired as the use needs (dishwasher, food contact).',
+  'laser engraving': 'Engraved from the artwork as one tone: it shows as the material under the coating, not as an ink colour. The ink layers and films in this folder are for reference only.',
+  'digital print': 'Printed from the file in CMYK; add the bleed the printer asks for past the trim. The ink layers and films in this folder are for reference only.',
+  'offset print': 'Printed from plates in CMYK, with any spot colour as its Pantone; add the bleed the printer asks for past the trim.'
+};
 // → { kind, summary, files: [{ name, data }] } for a graphic (a PNG with transparency) made as a technique at a width in inches.
 export async function jobFile(png, { name = 'Graphic', technique = null, widthIn = 4, garmentColour = '', digitizeOpts = {} } = {}) {
   const t = technique || { name: 'Screen print', kind: 'print', base: 'screen print', rules: {}, finish: {}, factoryNote: '', artGuide: '' };
@@ -103,7 +113,12 @@ export async function jobFile(png, { name = 'Graphic', technique = null, widthIn
   if (tonal && kind === 'embroidery') job.warnings.push('The artwork has soft tones (a gradient or fade): embroidery sews each thread solid, so the tones become flat areas.');
   if (rules.maxColors && masks.length > rules.maxColors) job.warnings.push(`${masks.length} colours; this technique is usually priced for ${rules.maxColors}. Fewer colours cost less.`);
   if (w > rules.maxW || h > rules.maxH) job.warnings.push(`${r2(w)} × ${h} in is over the usual ${rules.maxW} × ${rules.maxH} in for this technique.`);
-  if (kind === 'print') {
+  if (PRODUCT_JOB[t.base]) {
+    // a product type's technique (src/lab-library.js PRODUCT_TECHNIQUES): the artwork at size and its colours are the job; how the supplier
+    // runs it is theirs to say, so no garment press or screen settings are given
+    if (t.base === 'sublimation on blanks') files.push({ name: 'artwork-mirrored-300dpi.png', data: await sharp(resized).flop().png().toBuffer() });
+    job.product = { process: t.base, file: t.base === 'sublimation on blanks' ? 'artwork-mirrored-300dpi.png (mirrored, as it is printed on the transfer paper)' : 'artwork-300dpi.png (as it is seen on the product)', note: PRODUCT_JOB[t.base] };
+  } else if (kind === 'print') {
     const s = ps; job.print = { ...s, halftone: Boolean(tonal && screened), ...(tonal && screened ? {} : { lpi: 0 }) };
     const dark = garmentColour ? lum(garmentColour) < 128 : true;
     if (s.underbase && dark) { // white under every ink that is not near-black, choked half a point inside the colours so it never peeks out
@@ -179,6 +194,7 @@ async function jobSheet(job, artworkPng) {
   if (job.transfer) { const t = job.transfer; rows.push(['Print file', t.print], ['Finish', t.finish], ['Carrier', t.backing], ['Apply', t.apply], ['Bleed', t.bleed]); }
   if (job.patch) { const p = job.patch; rows.push(['Base', p.base], ['Cut line', p.cutLine], ['Edge', p.edge], ['Backing', p.backing], ['Size', p.sizeNote]); }
   if (job.wash) rows.push(['Note', job.wash.note]);
+  if (job.product) rows.push(['Process', job.product.process], ['Print file', job.product.file], ['How it is run', job.product.note]);
   if (job.factoryNote) rows.push(['Factory note', job.factoryNote]);
   if (job.designRules) rows.push(['Designed for', job.designRules]);
   if (rows.length) { doc.fillColor(INK).font('SG-B').fontSize(11).text('Settings', L, y); table(b, [{ h: 'Setting', w: .28, mono: true }, { h: 'Value', w: .72 }], rows, { y: doc.y + 6, fontSize: 9.5, head: false }); y = doc.y + 14; }

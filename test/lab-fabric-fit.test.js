@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fabricFit, clothOf, stretchOf, STYLE_CLOTH } from '../src/lab-fabric-fit.js';
+import { fabricFit, clothOf, stretchOf, rankFabrics, STYLE_CLOTH } from '../src/lab-fabric-fit.js';
 import { STYLES } from '../src/lab-flats.js';
 
 const F = (name, spec, o = {}) => ({ kind: 'fabric', role: 'main', name, spec, ...o });
@@ -8,7 +8,13 @@ const jersey = F('180 jersey', { weightGsm: 180, construction: 'single jersey', 
 const twill = F('8 oz twill', { weightGsm: 270, construction: 'twill', stretch: 'none', composition: '100% cotton' });
 const lycra = F('Swim tricot', { weightGsm: 200, construction: 'tricot', composition: '80% nylon 20% elastane' });
 
-test('every flat style has fabric rules', () => { for (const s of Object.keys(STYLES).filter(k => STYLES[k].kind !== 'goods')) assert.ok(STYLE_CLOTH[s], s); }); // a product type (a mug, a poster: src/lab-goods.js) is not cut from cloth by the Lab; test/lab-goods.test.js holds those
+test('every flat style has fabric rules; a product type has none, and its fabrics are listed unjudged', () => {
+  for (const s of Object.keys(STYLES).filter(k => STYLES[k].kind !== 'goods')) assert.ok(STYLE_CLOTH[s], s);
+  // a product type (a mug, a towel: src/lab-goods.js) is not cut from cloth by the Lab, so no rule says what suits it: where the Studio offers
+  // it a cloth (what is sewn: a towel, a pillow), every fabric is listed as it comes, none called best or unsuitable
+  for (const s of Object.keys(STYLES).filter(k => STYLES[k].kind === 'goods')) { assert.equal(STYLE_CLOTH[s], undefined, s);
+    assert.deepEqual(rankFabrics(s, [jersey, twill]).map(m => [m.name, m.fit.verdict, m.fit.tier]), [['180 jersey', 'unknown', ''], ['8 oz twill', 'unknown', '']], `${s}: listed unjudged`); }
+});
 
 test('knit or woven, and how much stretch', () => {
   assert.equal(clothOf(jersey), 'knit'); assert.equal(clothOf(twill), 'woven'); assert.equal(clothOf(F('x', { construction: 'stretch woven' })), 'woven');

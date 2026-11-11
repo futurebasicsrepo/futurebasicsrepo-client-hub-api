@@ -26,11 +26,13 @@ test('measurements come from the style and fit, and grade by size', () => {
 });
 
 test('every style draws front and back, closed and measurable', () => {
-  // a product type (src/lab-goods.js) is drawn on the sides it has: a poster has no back to place things on (test/lab-goods.test.js holds each)
-  for (const st of Object.keys(STYLES)) for (const view of STYLES[st].kind === 'goods' ? viewsOf(st) : ['front', 'back']) {
+  // every style, product types (src/lab-goods.js) among them, draws both views closed and without gaps. Somewhere to place things is asked of
+  // the views a product type has: a poster's back is drawn, and has nowhere to print (test/lab-goods.test.js holds each type)
+  for (const st of Object.keys(STYLES)) for (const view of ['front', 'back']) {
     const p = defaultParams(st), g = geometry(p, view), svg = renderSvg(p, view, { showPom: true });
     assert.ok(g.outline.length >= 4 && g.outline.every(q => q.every(Number.isFinite)), `${st} ${view} outline`);
-    assert.ok(Object.values(g.regions).some(r => r.length >= 3), `${st} ${view} has somewhere to place things`);
+    if (STYLES[st].kind !== 'goods' || viewsOf(st).includes(view)) assert.ok(Object.values(g.regions).some(r => r.length >= 3), `${st} ${view} has somewhere to place things`);
+    else assert.deepEqual(g.regions, {}, `${st} has no ${view} to print`);
     assert.match(svg, /^<svg [^>]*viewBox="[-\d. ]+"/); assert.ok(!/NaN|undefined/.test(svg), `${st} ${view} draws without gaps`);
   }
 });

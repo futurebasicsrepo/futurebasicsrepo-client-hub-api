@@ -5,9 +5,20 @@
 //   - how to design artwork for it (line weights, colours), given to the image model whenever a graphic is drawn for this technique;
 //   - reference photos of the real thing, shown to the image model next to the piece.
 import { GRAPHIC_TECHNIQUES } from './lab-concepts.js';
+import { SURFACES } from './lab-goods.js';
 
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const num = (v, d, a, b) => { const n = Number(v); return Number.isFinite(n) ? Math.min(b, Math.max(a, n)) : d; };
+// What a technique is made on (src/lab-goods.js SURFACES): cloth, or what a product type is made of. A technique that says nothing is made
+// on cloth, which is what every garment technique was written for; a piece offers the techniques made on its own surface (src/lab-flats.js
+// techniqueFits), so a mug is not embroidered and a tee is not pad printed.
+export const cleanSurfaces = v => { const out = [...new Set((Array.isArray(v) ? v : []).map(x => String(x)).filter(x => SURFACES[x]))]; return out.length ? out : null; };
+// How a product type that is not cloth is decorated. Kept apart from the garment techniques (GRAPHIC_TECHNIQUES), which the concept assistant
+// chooses from for a garment's graphics. None of these has a cost estimate (src/lab-decor.js): every figure there was worked out for garments.
+export const PRODUCT_TECHNIQUES = ['sublimation on blanks', 'UV print', 'pad print', 'laser engraving', 'screen print on glass', 'digital print', 'offset print'];
+export const TECHNIQUE_BASES = [...GRAPHIC_TECHNIQUES, ...PRODUCT_TECHNIQUES];
+// the technique a new graphic on a product type starts with, by what the product is made of (a technique's key, below)
+export const SURFACE_FIRST = { soft: 'sublimation', ceramic: 'sublimation-blank', glass: 'glass-screen', metal: 'sublimation-blank', plastic: 'uv-print', paper: 'digital-print', wood: 'uv-print' };
 export const TECHNIQUE_KINDS = [{ id: 'embroidery', label: 'Embroidery' }, { id: 'print', label: 'Print' }, { id: 'heat_transfer', label: 'Heat transfer' }, { id: 'patch', label: 'Patches and appliqué' }, { id: 'other', label: 'Other ways: knit, laser, metal, stones' }, { id: 'distress', label: 'Distressing and wash' }];
 // what each way of making it can do: the finest line it holds (mm), how many inks or threads it is usually priced for (0: no limit), the largest size (inches),
 // how near a seam it can go, and for embroidery the stitches per square inch (for the stitch count). Used by the "can it be made" check on the flats.
@@ -22,7 +33,13 @@ export const BASE_RULES = {
   'sublimation': { minLineMm: .2, maxColors: 0, maxW: 40, maxH: 40, minClear: 0 }, 'direct-to-garment': { minLineMm: .3, maxColors: 0, maxW: 14, maxH: 16, minClear: .75 },
   'leather patch': { minLineMm: 1, maxColors: 1, maxW: 4, maxH: 4, minClear: .5 }, 'metal plaque': { minLineMm: .5, maxColors: 2, maxW: 3, maxH: 3, minClear: .5 },
   'laser etch': { minLineMm: .5, maxColors: 1, maxW: 14, maxH: 16, minClear: .5 }, 'jacquard knit': { minLineMm: 3, maxColors: 4, maxW: 20, maxH: 24, minClear: 0 },
-  'rhinestones': { minLineMm: 4, maxColors: 3, maxW: 12, maxH: 14, minClear: 1 }
+  'rhinestones': { minLineMm: 4, maxColors: 3, maxW: 12, maxH: 14, minClear: 1 },
+  // product types (PRODUCT_TECHNIQUES): the usual figures of each process, to be set to the supplier's own on the technique. The size is the
+  // product's print area unless the process itself is smaller (a pad, a screen round a glass, a laser's field).
+  'sublimation on blanks': { minLineMm: .2, maxColors: 0, maxW: 40, maxH: 40, minClear: 0 }, 'UV print': { minLineMm: .25, maxColors: 0, maxW: 40, maxH: 40, minClear: 0 },
+  'pad print': { minLineMm: .25, maxColors: 4, maxW: 3, maxH: 3, minClear: .125 }, 'laser engraving': { minLineMm: .25, maxColors: 1, maxW: 12, maxH: 12, minClear: .125 },
+  'screen print on glass': { minLineMm: .4, maxColors: 4, maxW: 12, maxH: 8, minClear: .125 }, 'digital print': { minLineMm: .15, maxColors: 0, maxW: 40, maxH: 40, minClear: 0 },
+  'offset print': { minLineMm: .1, maxColors: 0, maxW: 40, maxH: 40, minClear: 0 }
 };
 export function cleanRules(r = {}, base = 'screen print') {
   const d = BASE_RULES[base] || BASE_RULES['screen print'];
@@ -47,9 +64,9 @@ export function cleanTechnique(b = {}, base = {}) {
   const pick = (k, d) => (b[k] === undefined ? base[k] ?? d : b[k]);
   const name = clip(pick('name', ''), 60); if (name.length < 2) return { error: 'Give the technique a name' };
   const kind = pick('kind', 'print'); if (!TECHNIQUE_KINDS.some(k => k.id === kind)) return { error: 'Choose what kind of technique it is' };
-  const baseTech = clip(pick('base', ''), 40).toLowerCase(); // nothing said: the usual one for its kind
-  const madeAs = GRAPHIC_TECHNIQUES.includes(baseTech) ? baseTech : kind === 'embroidery' ? 'embroidery' : kind === 'heat_transfer' ? 'heat transfer' : 'screen print';
-  return { technique: { name, kind, summary: clip(pick('summary', ''), 300), base: madeAs,
+  const baseTech = clip(pick('base', ''), 40).toLowerCase(); // nothing said: the usual one for its kind (found whatever its capitals: "DTF transfer", "UV print")
+  const madeAs = TECHNIQUE_BASES.find(b => b.toLowerCase() === baseTech) || (kind === 'embroidery' ? 'embroidery' : kind === 'heat_transfer' ? 'heat transfer' : 'screen print');
+  return { technique: { name, kind, summary: clip(pick('summary', ''), 300), base: madeAs, surfaces: cleanSurfaces(pick('surfaces', null)),
     finish: cleanFinish(pick('finish', {})), rules: cleanRules(pick('rules', {}) || {}, madeAs), prompt: clip(pick('prompt', ''), 900), artGuide: clip(pick('artGuide', ''), 500), factoryNote: clip(pick('factoryNote', ''), 500) } };
 }
 
@@ -75,7 +92,7 @@ export const BUILTIN_TECHNIQUES = [
     prompt: 'Vintage chain-stitch embroidery: rows of small interlocking thread loops that follow the curves of the design, a slightly irregular hand-guided line, cotton thread with a matte look, filled areas made of spiralling rows of chain stitch.', artGuide: 'Flowing script and line art; fills are spirals of line. At most 5 colours.', factoryNote: 'Chain stitch (Cornely-style machine); fills as spiral chain rows.' },
   { key: 'tatami-fill', rules: { density: 1500 }, kind: 'embroidery', name: 'Fill stitch embroidery', base: 'embroidery', summary: 'Flat, textured stitch for large areas such as big crests and backs.', finish: F({ effect: 'stitch', stitch: 'fill', angle: 30, strength: .75, raise: 1.5 }),
     prompt: 'Tatami fill-stitch embroidery: large areas covered with short stitches laid in staggered rows, a woven-looking texture, flat and dense, outlined with a narrow satin border.', artGuide: 'Large flat areas with a 2 mm outline; avoid gradients and fine detail.', factoryNote: 'Tatami fill with satin border; mind stitch count on large areas.' },
-  { key: 'plastisol', kind: 'print', name: 'Plastisol screen print', base: 'screen print', summary: 'Bright, opaque ink that sits on top of the fabric with a slight sheen.', finish: F({ effect: 'ink', strength: .6, sheen: .2 }),
+  { key: 'plastisol', surfaces: ['cloth', 'soft'], kind: 'print', name: 'Plastisol screen print', base: 'screen print', summary: 'Bright, opaque ink that sits on top of the fabric with a slight sheen.', finish: F({ effect: 'ink', strength: .6, sheen: .2 }),
     prompt: 'Plastisol screen print: thick opaque ink sitting on top of the fabric, flat solid colour with a slight satin sheen, crisp edges, the knit texture just visible through the ink.', artGuide: 'Flat spot colours (up to 6), halftones for shading, lines at least 0.5 mm.', factoryNote: 'Plastisol inks, one screen per colour, white underbase on dark garments.' },
   { key: 'water-based', rules: { minLineMm: .75 }, kind: 'print', name: 'Water-based / discharge print', base: 'screen print', summary: 'Soft ink that soaks into the cloth: no feel, a slightly faded, lived-in look.', finish: F({ effect: 'soak', strength: .8, blend: 'multiply', opacity: .9, sat: 85 }),
     prompt: 'Water-based discharge screen print: the ink is soaked into the cotton so the fabric texture shows through everywhere, soft matte colours, slightly uneven coverage, no layer on top of the fabric.', artGuide: 'Spot colours that work slightly muted; avoid fine white details on dark garments.', factoryNote: 'Water-based or discharge inks on 100% cotton; soft hand.' },
@@ -130,7 +147,7 @@ export const BUILTIN_TECHNIQUES = [
   // more heat transfer
   { key: 'silicone-3d', rules: { minLineMm: 1.5, maxColors: 4 }, kind: 'heat_transfer', name: '3D silicone heat transfer', base: 'silicone transfer', summary: 'A thick, glossy, rounded silicone label pressed on: the modern athletic logo.', finish: F({ effect: 'silicone', strength: 1, sheen: .75, raise: 5 }),
     prompt: 'Thick 3D silicone heat transfer: a glossy, rounded, raised label with smooth domed edges, pressed onto the fabric.', artGuide: 'Bold closed shapes and block lettering at least 1.5 mm wide; up to 4 colours in levels.', factoryNote: '3D silicone transfer, 1–2 mm thickness, levels by colour; heat press 150 °C.' },
-  { key: 'dtf', kind: 'heat_transfer', name: 'DTF transfer', base: 'DTF transfer', summary: 'Full-colour film transfer: fine detail, any colours, a thin flexible layer on top.', finish: F({ effect: 'film', strength: .5, sheen: .25, raise: .4 }),
+  { key: 'dtf', surfaces: ['cloth', 'soft'], kind: 'heat_transfer', name: 'DTF transfer', base: 'DTF transfer', summary: 'Full-colour film transfer: fine detail, any colours, a thin flexible layer on top.', finish: F({ effect: 'film', strength: .5, sheen: .25, raise: .4 }),
     prompt: 'Direct-to-film heat transfer: full-colour artwork as a thin, slightly glossy flexible layer on the fabric with crisp edges.', artGuide: 'Anything, including fine detail, gradients and photographs.', factoryNote: 'DTF with white underlayer and hot-melt adhesive; heat press.' },
   { key: 'vinyl-matte', rules: { maxColors: 3 }, kind: 'heat_transfer', name: 'Vinyl transfer, matte', base: 'vinyl transfer', summary: 'Cut vinyl pressed on: flat, opaque, matte. Numbers and names.', finish: F({ effect: 'film', strength: .6, sheen: .08, raise: .6 }),
     prompt: 'Matte heat-transfer vinyl: flat, opaque, cut shapes with crisp edges and no shine.', artGuide: 'Solid shapes and lettering, no gradients; each colour is a separate layer.', factoryNote: 'Cut HTV (PU), matte; layered by colour.' },
@@ -138,7 +155,7 @@ export const BUILTIN_TECHNIQUES = [
     prompt: 'Glossy heat-transfer vinyl: flat cut shapes with a shiny face and crisp edges.', artGuide: 'Solid shapes and lettering, no gradients; each colour is a separate layer.', factoryNote: 'Cut HTV (PVC/PU), gloss; layered by colour.' },
   { key: 'holographic', rules: { maxColors: 1 }, kind: 'heat_transfer', name: 'Holographic transfer', base: 'heat transfer', summary: 'A rainbow-shifting metallic film: loud, playful.', finish: F({ effect: 'metallic', metal: 'silver', strength: .9, sparkle: .5, sheen: .8 }),
     prompt: 'Holographic heat-transfer film: a mirror-like silver surface shifting through rainbow colours as the light moves.', artGuide: 'Bold simple shapes; one colour (the film).', factoryNote: 'Holographic HTV; specify pattern (rainbow, cracked ice).' },
-  { key: 'sublimation', kind: 'heat_transfer', name: 'Sublimation, all over', base: 'sublimation', summary: 'Dye pressed into polyester: the print is in the cloth, no hand at all, edge to edge.', finish: F({ effect: 'soak', strength: .3, sat: 100, opacity: 1 }),
+  { key: 'sublimation', surfaces: ['cloth', 'soft'], kind: 'heat_transfer', name: 'Sublimation, all over', base: 'sublimation', summary: 'Dye pressed into polyester: the print is in the cloth, no hand at all, edge to edge.', finish: F({ effect: 'soak', strength: .3, sat: 100, opacity: 1 }),
     prompt: 'Dye-sublimation print on polyester: the colours are part of the fabric itself with the weave fully visible, no surface layer.', artGuide: 'Full-colour, photographic, all-over patterns; polyester only; whites stay the fabric colour.', factoryNote: 'Sublimation on 100% polyester (white or light); cut-and-sew for all-over.' },
   // more patches
   { key: 'leather-patch', kind: 'patch', name: 'Leather patch, debossed', base: 'leather patch', summary: 'A small leather label with the mark pressed in: the back-pocket patch.', finish: F({ effect: 'leather', strength: .8, raise: 0, opacity: .9 }),
@@ -159,5 +176,20 @@ export const BUILTIN_TECHNIQUES = [
   { key: 'sun-faded', kind: 'distress', name: 'Sun-faded wash', base: 'screen print', summary: 'Washed out and uneven, like a tee left in the sun.', finish: F({ effect: 'none', blend: 'multiply', opacity: .85, sat: 60, distress: { style: 'faded', amount: .45, size: 70 } }),
     prompt: 'Sun-faded and washed out: colours bleached and uneven, softer in patches, a chalky vintage look.', artGuide: '', factoryNote: 'Pigment dye with acid or sun-fade wash.' },
   { key: 'thrashed', kind: 'distress', name: 'Heavily distressed', base: 'screen print', summary: 'Cracked, flaked and worn through in places.', finish: F({ effect: 'ink', strength: .4, blend: 'multiply', opacity: .9, sat: 75, distress: { style: 'cracked', amount: .65, size: 55 } }),
-    prompt: 'Heavily distressed: the print cracked and flaked away in large areas, worn through to the fabric, rough and faded, like a thrifted tee.', artGuide: '', factoryNote: 'Distressed screen plus stone or enzyme wash.' }
+    prompt: 'Heavily distressed: the print cracked and flaked away in large areas, worn through to the fabric, rough and faded, like a thrifted tee.', artGuide: '', factoryNote: 'Distressed screen plus stone or enzyme wash.' },
+  // on product types that are not cloth (src/lab-goods.js): a mug, a tumbler, a glass, a phone case, a poster. Each says what it is made on.
+  { key: 'sublimation-blank', surfaces: ['ceramic', 'glass', 'metal', 'plastic'], kind: 'heat_transfer', name: 'Sublimation on coated blanks', base: 'sublimation on blanks', summary: 'Dye pressed from paper into the coating of a blank made for it: a mug, a tumbler, a frosted glass, an aluminium panel. Full colour, right round, nothing to feel.', finish: F({ effect: 'soak', strength: .2, sat: 100, opacity: 1 }),
+    prompt: 'Dye-sublimation print on a coated hard product: the colours are in the glossy coating itself, smooth and bright, with no raised layer and no edge to the print.', artGuide: 'Full colour, photographs and gradients, at the size of the print area. White is the blank showing through, so it needs a white or light blank.', factoryNote: 'Sublimation onto a polymer-coated blank; printed mirrored at the size of the print area; time, temperature and pressure as the blank\'s maker gives.' },
+  { key: 'uv-print', surfaces: ['soft', 'ceramic', 'glass', 'metal', 'plastic', 'wood'], kind: 'print', name: 'UV print', base: 'UV print', summary: 'Ink jetted straight onto the product and cured with UV light: full colour on almost any hard surface, with white under it on a dark or clear one.', finish: F({ effect: 'ink', strength: .5, sheen: .35, raise: .5 }),
+    prompt: 'UV-cured inkjet print on a hard product: full-colour artwork sitting on the surface as a thin, slightly raised, satin layer with crisp edges.', artGuide: 'Full colour allowed and fine detail holds. Say where white ink goes under the colours on a dark or clear product.', factoryNote: 'UV-LED direct print, on a rotary jig for round products; white underbase on dark or clear; primer where the surface needs it for adhesion.' },
+  { key: 'pad-print', surfaces: ['ceramic', 'glass', 'metal', 'plastic'], kind: 'print', name: 'Pad print', base: 'pad print', summary: 'A silicone pad carries ink from an etched plate onto a curved or uneven surface: small marks in one to four colours.', finish: F({ effect: 'ink', strength: .6, sheen: .15 }),
+    prompt: 'Pad print on a hard product: a small mark in flat, opaque spot colour with crisp edges, lying thin on the curved surface.', artGuide: 'A small mark in flat spot colours, up to four, about 3 in across at most; no gradients.', factoryNote: 'Pad print, one plate per colour; give each colour as a Pantone and the size of the mark.' },
+  { key: 'glass-screen', surfaces: ['ceramic', 'glass', 'metal'], kind: 'print', name: 'Screen print on glass', base: 'screen print on glass', summary: 'Spot-colour ink screened round the glass and cured or fired on: one to four colours, hard-wearing. Also printed on mugs and coated bottles.', finish: F({ effect: 'ink', strength: .7, sheen: .3 }),
+    prompt: 'Screen print on glassware: flat, opaque spot-colour ink printed round the glass, crisp edges, a slight gloss, the glass clear around it.', artGuide: 'Flat spot colours, up to four; no gradients; lines at least 0.4 mm. A wrap leaves a gap where its ends meet.', factoryNote: 'Rotary screen print, one screen per colour; organic ink cured, or ceramic ink fired, as the use needs (dishwasher, food contact).' },
+  { key: 'laser-engrave', surfaces: ['glass', 'metal', 'plastic', 'wood'], kind: 'other', name: 'Laser engraving', base: 'laser engraving', summary: 'The laser takes the coating off a tumbler down to the steel, frosts glass or burns into wood: one tone, permanent, no ink.', finish: F({ effect: 'etch', strength: .8, blend: 'source-over', opacity: .9 }),
+    prompt: 'Laser engraving on a hard product: the mark cut through the coloured coating to the bare material beneath (bright steel, frosted glass, darkened wood), one tone, crisp edges, nothing added.', artGuide: 'One colour: solid shapes and lines at least 0.25 mm. It shows as the material under the coating, not as a colour of your choosing.', factoryNote: 'Laser engraving (fibre or CO2 as the material needs), on a rotary for round products; give the artwork as one-colour vector.' },
+  { key: 'digital-print', surfaces: ['paper'], kind: 'print', name: 'Digital print on paper', base: 'digital print', summary: 'Printed straight from the file in full colour, with no plates: posters, stickers, cards, puzzles and canvas in any number.', finish: F({ effect: 'soak', strength: .3, sat: 100, opacity: 1 }),
+    prompt: 'A full-colour digital print on paper or card: smooth, even colour in the sheet itself, with no raised ink.', artGuide: 'Full colour at 300 dpi at the printed size, with 1/8 in of bleed past the trim and nothing that matters within 1/8 in of it.', factoryNote: 'Digital print (inkjet or toner) in CMYK; say the stock, its weight and the finish (matte, gloss, laminate).' },
+  { key: 'offset-print', surfaces: ['paper'], kind: 'print', name: 'Offset print', base: 'offset print', summary: 'Printed from plates on a press: the sharpest type and the truest spot colours, for longer runs of cards, sleeves, notebooks and calendars.', finish: F({ effect: 'soak', strength: .3, sat: 100, opacity: 1 }),
+    prompt: 'An offset-printed sheet: sharp, even colour in the paper, fine type crisp, no raised ink.', artGuide: 'CMYK, with any spot colour given as a Pantone; 300 dpi at the printed size, with 1/8 in of bleed past the trim.', factoryNote: 'Offset litho, CMYK plus the spot colours named; say the stock, its weight and the finish.' }
 ];
