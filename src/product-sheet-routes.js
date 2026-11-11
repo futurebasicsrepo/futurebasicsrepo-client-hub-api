@@ -8,12 +8,15 @@
 //   DELETE /v1/admin/products/:id/price-tiers/:tid
 //   POST   /v1/admin/products/:id/studio                      the product's Design Lab concept (made the first time, from the tech pack) → { conceptId, studio }
 //   PATCH  /v1/admin/products/:id/price-tiers/:tid            one tier changed in place (its quantity too); DELETE removes it
+//   GET    /v1/admin/price-catalog?q=&category=&limit=         the price catalogue (suppliers' lists, src/price-catalog.js) searched; the sheet
+//                                                              carries the items closest to its product. A starting cost only: nothing is saved
 //   GET    /v1/admin/price-ladders   POST { name, kind?, tiers } or { name, kind?, productId }   DELETE /v1/admin/price-ladders/:lid
 //   PATCH  /v1/admin/price-ladders/:lid                       { name?, kind?, tiers? } a ladder renamed, or its tiers changed
 //
 // Tables: product_configurations and price_tiers (src/db.js), price_ladders (src/db.js).
 import { specFromTechPack, configFromSpec, makeLines, tierView, tiersToCopy, rankPast, cleanLadder, cleanTier, kindOf, labCategoryOf, conceptSpecOf, productPictureOf } from './product-sheet.js';
 import sharp from 'sharp';
+import { searchCatalog, suggestFor, catalogSummary } from './price-catalog.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -61,8 +64,10 @@ export function registerProductSheetRoutes(app, { pool, authenticate, adminOnly,
     const past = rankPast({ ...p, category: spec?.category || '' }, pool2).map(x => ({ id: x.id, title: x.title, client: x.client_name, image: x.shopify_image_url || (x.has_rendering ? renderingUrl(x.id) : ''), kind: kindOf(`${x.title} ${x.product_type || ''}`), score: x.score,
       config: x.config ? { blank: x.config.blank_name || '', material: x.config.material || '', decoration: x.config.decoration_method || '', moq: x.config.moq, leadTimeDays: x.config.lead_time_days } : null,
       tiers: (x.tiers || []).map(tierView) }));
-    return { product: { id: p.id, title: p.title, kind: kindOf(`${p.title} ${p.product_type || ''} ${spec?.category || ''}`) }, spec, lines: makeLines(config, spec || {}), config, factory, tiers: tiers.map(tierView), ladders, past };
+    return { product: { id: p.id, title: p.title, kind: kindOf(`${p.title} ${p.product_type || ''} ${spec?.category || ''}`) }, spec, lines: makeLines(config, spec || {}), config, factory, tiers: tiers.map(tierView), ladders, past,
+      catalog: { catalogs: catalogSummary(), suggestions: suggestFor({ title: p.title, kind: kindOf(`${p.title} ${p.product_type || ''} ${spec?.category || ''}`) }) } };
   });
+  app.get('/v1/admin/price-catalog', { preHandler: pre }, async req => ({ catalogs: catalogSummary(), ...searchCatalog({ q: String(req.query?.q || '').slice(0, 80), category: String(req.query?.category || '').slice(0, 60), limit: req.query?.limit }) }));
 
   app.post('/v1/admin/products/:id/configuration/from-tech-pack', { preHandler: pre }, async (req, reply) => {
     const p = await productOf(req.params.id); if (!p) return bad(reply, 'Product not found', 404);

@@ -1608,7 +1608,7 @@ await journey('J215', 'Design Lab flats in a browser: open them from a concept, 
     await F.click('[data-pkind="zips"]'); const nEd = await F.locator('#canvas [data-ed]').count(); await F.click('[data-addpart]');
     ok(await F.locator('#canvas [data-ed]').count() === nEd + 1 && await F.locator('#canvas svg image[href^="/lab/flat-parts/"]').count() === 1 && /add-on sheet/.test(await F.innerText('#pDesign')), 'a zip from the pack\'s add-on sheet goes on the flat and is written up');
     await F.click('.ed.on [data-edel]'); ok(await F.locator('#canvas [data-ed]').count() === nEd, 'and comes off again');
-    const cb = await F.locator('#canvas > svg').boundingBox();
+    const cb = await F.locator('#canvas svg').first().boundingBox();
     await F.click('[data-mode=stitch]'); await page.mouse.click(cb.x + cb.width * .35, cb.y + cb.height * .8); await page.mouse.click(cb.x + cb.width * .65, cb.y + cb.height * .8); await page.keyboard.press('Enter');
     ok(/Double needle line/.test(await F.innerText('#pDesign')), 'a stitch line is drawn point by point');
     await F.click('[data-mode=ai]'); await page.mouse.move(cb.x + cb.width * .4, cb.y + cb.height * .45); await page.mouse.down(); await page.mouse.move(cb.x + cb.width * .6, cb.y + cb.height * .62, { steps: 6 }); await page.mouse.up();
