@@ -117,4 +117,14 @@ test('the files: a made part\'s STL is its one closed solid, and its STEP carrie
   const baffle = stepOf(sp, { only: 'baffle' }), slab = stepOf(plain, { only: 'baffle' });
   assert.equal(count(baffle, /CYLINDRICAL_SURFACE\(/g) - count(slab, /CYLINDRICAL_SURFACE\(/g), 4, 'the woofer\'s and the tweeter\'s openings, two half-cylinders each'); assert.equal(count(baffle, /FACE_BOUND\(/g), 4, 'two openings in each face of the baffle');
   const hh = cleanAssembly(archetype('handheld')), bottom = stepOf(hh, { only: 'bottom' }); assert.ok(shut(bottom)); assert.ok(count(bottom, /CYLINDRICAL_SURFACE\(/g) >= 4 + 4 * 4, 'four bosses, each bored through the floor for its screw');
+  // a window in a side wall (the USB-C port's notch in the end of each shell) is in the STEP and in the 3D view, as it is in the STL
+  const bot = hh.parts.find(q => q.id === 'bottom'), usb = hh.parts.find(q => q.elec?.kind === 'usbc'), win = bot.cuts.find(c => c.for === usb.id); assert.equal(win.axis, 'y');
+  assert.equal(inMaterial(bot, [usb.at[0], bot.at[1] - bot.size[1] / 2 + bot.wall / 2, usb.at[2] - 1]), false, 'the end wall is open where the port is'); assert.equal(inMaterial(bot, [usb.at[0] + 12, bot.at[1] - bot.size[1] / 2 + bot.wall / 2, usb.at[2] - 1]), true);
+  const noPort = stepOf({ ...hh, parts: hh.parts.filter(q => q.id !== usb.id) }, { only: 'bottom' }); assert.ok(shut(noPort));
+  assert.ok(count(bottom, /ADVANCED_FACE\(/g) >= count(noPort, /ADVANCED_FACE\(/g) + 3, 'the notch adds its two sides and its sill, and splits the walls at its height');
+  const { realMeshes } = await import('../src/lab-parts-mesh.js'), drawn = realMeshes(hh);
+  for (const id of ['bottom', 'top']) { assert.equal(drawn[id].length, 1, `${id}: drawn from its solid`); assert.ok(closed(drawn[id][0].tri), `${id}: the drawn housing is closed, its window cut`); }
+  let windows = 0, written = 0; for (const a of Object.keys(ARCHES)) { const s = cleanAssembly(archetype(a)); for (const q of s.parts) { const side = (q.cuts || []).filter(c => c.axis !== q.axis).length; if (!side) continue; windows += side;
+    const mine = stepOf(s, { only: q.id }), alone = stepOf(cleanAssembly({ ...s, parts: [{ ...q, cuts: undefined }] })); assert.ok(shut(mine), `${a}: ${q.name}`); if (count(mine, /ADVANCED_FACE\(/g) > count(alone, /ADVANCED_FACE\(/g)) written++; } } // alone: the part with nothing passing through it
+  assert.ok(windows >= 60 && written >= 15, `${windows} windows in side walls over the starting assemblies, in ${written} housings' STEP`);
 });

@@ -2038,8 +2038,9 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   a board) and the opening is cut there with 0.2 mm round it, worked out each time so it follows the part; sockets and clear windows get
   theirs without being told. A part with a quantity can list where its other pieces are (`spots`). A housing carries screw `bosses` on its
   floor. Screws are parts: one line a kind, every position listed, lying through the part held and into the part that takes the thread.
-  Openings and bosses are in the part's solid: its STL, and its STEP as exact faces (holes through a floor or a solid part, and bosses;
-  windows in a housing's side walls are in the STL only for now). The 3D view shows floor openings and bosses.
+  Openings and bosses are in the part's solid: its STL, and its STEP as exact faces (holes through a floor or a solid part, bosses, and
+  windows in a housing's side walls with their sides, sill and head, a notch where one reaches the rim). The 3D view shows them too: a
+  housing with a window in a side wall is drawn from its solid.
 - **Starting points are built inside the size asked**, feet, keys, knobs and hinges included, from the table up. A size that cannot hold its
   parts (a 25 × 50 × 8 mm handheld, a cell asked for that is larger than its housing) still builds, and the checks say what does not fit.
 - **Electronics.** The parts on the board are parts like any other. The page adds the block diagram (power → the main chip → what it drives,
