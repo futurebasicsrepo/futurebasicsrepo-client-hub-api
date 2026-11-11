@@ -176,7 +176,9 @@ function featuresOf(p) {
     else { const lim = half - Math.max(r, t) - .05, a = Math.max(-lim, at[mi] - sz[mi] / 2), b = Math.min(lim, at[mi] + sz[mi] / 2); if (b - a < .1) continue; F.sides.push({ wall: ki, side, a, b, ua, ub }); }
   }
   if (floor) for (const b of p.bosses || []) { const at = toLocal(p, b.at), R = Math.max(b.d * 1.2, b.d / 2 + 1.2), ue = sgn * at[2], q = { cx: at[0], cy: at[1], hw: R, hd: R, R, rp: b.d * .4, ue };
-    if (ue > F.uf + .3 && inFloor(q.cx, q.cy, R, R, .15) && F.holes.every(h => apart(h, q)) && F.bosses.every(h => Math.hypot(h.cx - q.cx, h.cy - q.cy) > h.R + R + .2)) F.bosses.push(q); }
+    // a screw that comes up through the floor into its boss: the hole in the floor and the boss's pilot are one bore
+    const bore = F.holes.find(h => h.round && !h.boss && Math.hypot(h.cx - q.cx, h.cy - q.cy) < .05 && Math.abs(h.hw - h.hd) < 1e-6 && h.hw < R - .4); if (bore) q.rp = bore.hw;
+    if (ue > F.uf + .3 && inFloor(q.cx, q.cy, R, R, .15) && F.holes.every(h => h === bore || apart(h, q)) && F.bosses.every(h => Math.hypot(h.cx - q.cx, h.cy - q.cy) > h.R + R + .2)) { if (bore) { bore.boss = true; q.bore = true; } F.bosses.push(q); } }
   return F;
 }
 // the outline across the part with the windows' edges added to it, outer and inner in step (the same number of points, one over the other)
@@ -268,8 +270,9 @@ function solidOf(p) {
     if (!F.floor && !cur.some(([x]) => x <= u0 + 1e-9)) quad(at(out[i], u0), at(inn[i], u0), at(inn[j], u0), at(out[j], u0));
   }
   if (F.floor) { // the floor: its outside face, its inside face round the bosses, the openings through it, and each boss with its pilot hole
-    flat(out, loops, u0, false); flat(inn, [...loops, ...F.bosses.map(b => ringLoop(b.cx, b.cy, b.R))], uf, true); for (const l of loops) tube(l, u0, uf, false);
-    for (const b of F.bosses) { const o = ringLoop(b.cx, b.cy, b.R), q = ringLoop(b.cx, b.cy, b.rp); tube(o, uf, b.ue, true); tube(q, uf, b.ue, false); flat(q, [], uf, true); for (let i = 0; i < o.length; i++) { const j = (i + 1) % o.length; quad(at(o[i], b.ue), at(o[j], b.ue), at(q[j], b.ue), at(q[i], b.ue)); } }
+    const own = loops.filter((_, i) => !F.holes[i].boss);
+    flat(out, loops, u0, false); flat(inn, [...own, ...F.bosses.map(b => ringLoop(b.cx, b.cy, b.R))], uf, true); for (const l of own) tube(l, u0, uf, false);
+    for (const b of F.bosses) { const o = ringLoop(b.cx, b.cy, b.R), q = ringLoop(b.cx, b.cy, b.rp); tube(o, uf, b.ue, true); tube(q, b.bore ? u0 : uf, b.ue, false); if (!b.bore) flat(q, [], uf, true); for (let i = 0; i < o.length; i++) { const j = (i + 1) % o.length; quad(at(o[i], b.ue), at(o[j], b.ue), at(q[j], b.ue), at(q[i], b.ue)); } }
   }
   return { T, sgn: F.sgn };
 }
