@@ -31,13 +31,14 @@ test('every starting assembly goes together at its default, smallest and largest
   for (const [label, a, dims, opts] of SPECS) {
     const s = archetype(a, dims, opts), E = engineer(s), f = fitOf(E.spec), bad = E.checks.filter(c => c.level === 'bad').map(c => c.text); built++;
     for (const k of ['clash', 'contact', 'fasteners', 'size']) assert.ok(f[k].every(c => E.checks.some(x => x.kind === k && x.text === c.text)), `${label}: dfm carries the ${k} findings`);
+    if (label === 'powerbank smallest') { assert.deepEqual(bad, []); assert.deepEqual(notOk(f).map(c => c.kind), ['size'], 'three 18650 cells side by side are 62.4 mm wide: 40 mm was asked, and the size check says so'); assert.match(f.size[0].text, /22\.4 mm more wide/); continue; }
     if (CANNOT[label]) { assert.ok(bad.some(t => CANNOT[label].test(t)), `${label} cannot be built and must say so: ${bad.join(' | ') || 'no bad finding'}`); continue; }
     assert.deepEqual(bad, [], `${label}: nothing to fix`);
     assert.deepEqual(notOk(f).map(c => `${c.kind}: ${c.text}`), [], `${label}: the fit checks pass`);
     for (const k of ['clash', 'contact', 'size']) assert.ok(f[k].some(c => c.level === 'ok') || E.spec.parts.length < 2, `${label}: ${k} was measured`);
     // the same facts measured here, apart from the checks: the size, and the screws against what the parts ask
     const e = extentOf(E.spec.parts).size, want = [E.spec.dims.w, E.spec.dims.d, E.spec.dims.h]; for (let k = 0; k < 3; k++) assert.ok(Math.abs(e[k] - want[k]) <= .5, `${label}: ${'wdh'[k]} ${e[k]} against ${want[k]} asked`);
-    for (const k of Object.keys(dims)) assert.ok(Math.abs(E.spec.dims[k] - dims[k]) <= (a === 'powerbank' && k === 'w' ? 30 : .05), `${label}: built to the ${k} asked`); // a power bank is as wide as its cells
+    for (const k of Object.keys(dims)) assert.ok(Math.abs(E.spec.dims[k] - dims[k]) <= .05, `${label}: built to the ${k} asked`);
     assert.ok(E.spec.parts.every(p => p.at[2] - p.size[2] / 2 > -.11), `${label}: nothing below the table`);
     const need = E.spec.parts.filter(p => p.fix === 'screws' && !isScrew(p)).reduce((t, p) => t + Math.max(1, p.fixQty) * p.qty, 0), have = E.spec.parts.filter(isScrew).reduce((t, p) => t + p.qty, 0); assert.equal(have, need, `${label}: screws on the parts list`);
     assert.ok(E.spec.parts.filter(isScrew).every(p => p.qty === 1 + (p.spots || []).length), `${label}: every screw has its place`);
@@ -100,4 +101,20 @@ test('openings and bosses are part of the solid: the material is gone where a pa
   assert.ok(closed(meshOf(part)), 'two floor openings, a notch to the rim and a boss: one closed solid');
   const old = cleanAssembly({ arch: 'puck', parts: [{ id: 'a', shape: 'cup', size: [40, 40, 20], at: [0, 0, 10] }, { id: 'b', shape: 'box', size: [10, 10, 5], at: [0, 0, 4.5], parent: 'a' }] }); assert.equal(old.dims, undefined); assert.ok(!dfm(old).some(c => c.kind === 'size'), 'an assembly saved before sizes were kept has no size finding');
   assert.ok(engineer(old).checks.length > 0 && closed(meshOf(old.parts[0])));
+});
+
+test('the files: a made part\'s STL is its one closed solid, and its STEP carries the same openings and bosses as exact faces', async () => {
+  const { stepOf } = await import('../src/lab-step.js'), { stlOf } = await import('../src/lab-assembly.js');
+  const tris = u8 => { const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), n = dv.getUint32(80, true), t = new Float32Array(n * 9); for (let i = 0, o = 84; i < n; i++, o += 50) for (let k = 0; k < 9; k++) t[i * 9 + k] = dv.getFloat32(o + 12 + k * 4, true); return t; };
+  // every edge of a STEP solid is used once in each direction by its faces
+  const shut = txt => { const ent = new Map(); for (const m of txt.matchAll(/^#(\d+)=(.*);$/gm)) ent.set('#' + m[1], m[2]); let n = 0;
+    for (const v of ent.values()) { if (!v.startsWith('MANIFOLD_SOLID_BREP')) continue; n++; const use = new Map();
+      for (const f of ent.get(/,(#\d+)\)$/.exec(v)[1]).match(/#\d+/g)) for (const b of ent.get(f).match(/^ADVANCED_FACE\('',\(([^)]*)\)/)[1].split(',')) for (const oe of ent.get(ent.get(b).match(/#\d+/)[0]).match(/#\d+/g)) { const m = /ORIENTED_EDGE\('',\*,\*,(#\d+),\.(T|F)\.\)/.exec(ent.get(oe)), u = use.get(m[1]) || { T: 0, F: 0 }; u[m[2]]++; use.set(m[1], u); }
+      if ([...use.values()].some(u => u.T !== 1 || u.F !== 1)) return false; } return n > 0; };
+  for (const a of Object.keys(ARCHES)) { const s = cleanAssembly(archetype(a)); assert.ok(shut(stepOf(s)), `${a}: every STEP solid is closed`);
+    for (const p of s.parts.filter(q => q.process !== 'bought in' && q.shape !== 'pcb')) assert.ok(closed(tris(stlOf(s, { only: p.id }))), `${a}: ${p.name}'s STL is one closed solid`); }
+  const sp = cleanAssembly(archetype('speaker')), plain = { ...sp, parts: sp.parts.map(p => ({ ...p, through: undefined })) }, count = (t, re) => (t.match(re) || []).length;
+  const baffle = stepOf(sp, { only: 'baffle' }), slab = stepOf(plain, { only: 'baffle' });
+  assert.equal(count(baffle, /CYLINDRICAL_SURFACE\(/g) - count(slab, /CYLINDRICAL_SURFACE\(/g), 4, 'the woofer\'s and the tweeter\'s openings, two half-cylinders each'); assert.equal(count(baffle, /FACE_BOUND\(/g), 4, 'two openings in each face of the baffle');
+  const hh = cleanAssembly(archetype('handheld')), bottom = stepOf(hh, { only: 'bottom' }); assert.ok(shut(bottom)); assert.ok(count(bottom, /CYLINDRICAL_SURFACE\(/g) >= 4 + 4 * 4, 'four bosses, each bored through the floor for its screw');
 });

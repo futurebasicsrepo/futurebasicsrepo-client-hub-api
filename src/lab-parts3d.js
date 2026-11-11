@@ -119,6 +119,13 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
   const thread = (r, len, pitch) => { const pts = []; for (let z = 0; z <= len; z += pitch / 2) pts.push([((z / (pitch / 2)) % 2 ? r * .82 : r), -len / 2 + z]); return lathe(pts, 24); };
   const helix = (R, r, len, turns, m) => { const pts = []; for (let i = 0; i <= turns * 24; i++) { const a = i / 24 * PI * 2; pts.push(new T.Vector3(Math.cos(a) * R, Math.sin(a) * R, -len / 2 + len * i / (turns * 24))); } return mesh(new T.TubeGeometry(new T.CatmullRomCurve3(pts), turns * 24, r, 6), m); };
   const group = (...kids) => { const g = new T.Group(); for (const k of kids.flat()) if (k) g.add(k); return g; };
+  // a part's openings and bosses (worked out by src/lab-assembly.js) in its own frame: x and y across it, z along its axis. Only openings along
+  // the axis (through a floor, or through a solid part) are drawn; windows in a housing's side walls are in the part's solid (its STL and
+  // STEP) but not in this picture.
+  const inFrame = (p, v) => (p.axis === 'y' ? [v[0], -v[2], v[1]] : p.axis === 'x' ? [v[1], v[2], v[0]] : [v[0], v[1], v[2]]);
+  const holesOf = (p, w, d, round) => (p.cuts || []).filter(c => c.axis === (p.axis || 'z')).map(c => { const a = inFrame(p, c.at), s = inFrame(p, c.size).map(Math.abs), hw = s[0] / 2, hd = s[1] / 2;
+    const fits = round ? [[1, 1], [1, -1], [-1, 1], [-1, -1]].every(([i, j]) => ((a[0] + i * hw) / (w / 2 - .3)) ** 2 + ((a[1] + j * hd) / (d / 2 - .3)) ** 2 <= 1) : Math.abs(a[0]) + hw <= w / 2 - .3 && Math.abs(a[1]) + hd <= d / 2 - .3; if (!fits || hw < .1 || hd < .1) return null;
+    const q = new T.Path(); if (c.round) q.absellipse(a[0], a[1], hw, hd, 0, PI * 2, true, 0); else { q.moveTo(a[0] - hw, a[1] - hd); q.lineTo(a[0] - hw, a[1] + hd); q.lineTo(a[0] + hw, a[1] + hd); q.lineTo(a[0] + hw, a[1] - hd); q.closePath(); } return q; }).filter(Boolean);
 
   // ---- the board: solder mask with the traces, pads, vias and silkscreen drawn under the real parts, and the passives around them ----
   const REF = { mcu: 'U', ble: 'U', wifi: 'U', dac: 'U', amp: 'U', amp2: 'U', charger: 'U', reg: 'U', preamp: 'U', hpamp: 'U', imu: 'U', env: 'U', mic: 'MK', usbc: 'J', rca: 'J', jack: 'J', iec: 'J', led: 'D', button: 'SW', encoder: 'SW', ir: 'U', pot: 'RV', antenna: 'AE' };
@@ -164,12 +171,10 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
   }
   function pcb(p, [w, d, h], ctx) {
     const comps = ctx.comps || [], tex = boardTex(p.id, w, d, comps, ctx.name), top = std({ map: tex, roughness: .32, clearcoat: .7, clearcoatRoughness: .2 });
-    // the mounting holes are cut through (M3 clearance, 3.2 mm) where the silkscreen rings are, each with a pan-head screw on a brass hex
-    // standoff that the chassis boss would carry
-    const holes = w >= 20 && d >= 20 ? [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => [sx * (w / 2 - 3.2), sy * (d / 2 - 3.2)]) : [];
-    const outline = rr(w, d, p.r ?? .5); for (const [x, y] of holes) { const c = new T.Path(); c.absarc(x, y, 1.6, 0, PI * 2, true); outline.holes.push(c); }
+    // the mounting holes are where the board's screws pass through it (the board's openings, from the engineering); the screws and any standoffs
+    // are parts of their own, so the picture, the parts list and the count on the board agree
+    const outline = rr(w, d, p.r ?? .5); outline.holes.push(...holesOf(p, w, d, false));
     const g = group(mesh(extrude(outline, h, 0), [M.mask(), M.fr4()]), plane(w - .05, d - .05, top, h / 2 + .012), (() => { const b = plane(w - .05, d - .05, M.mask('#18492f'), -h / 2 - .012); b.rotation.x = PI; return b; })(), passives(p.id, w, d, comps, h / 2));
-    for (const [x, y] of holes) g.add(mesh(lathe([[0, h / 2 + 1.7], [2.2, h / 2 + 1.7], [2.75, h / 2 + 1.1], [2.75, h / 2], [0, h / 2]], 32), M.zinc(), x, y, 0), mesh(new T.BoxGeometry(2.6, .5, .5), M.plastic('#050505', .9), x, y, h / 2 + 1.55), mesh(new T.BoxGeometry(.5, 2.6, .5), M.plastic('#050505', .9), x, y, h / 2 + 1.55), mesh(thread(1.45, h + 4, .5), M.zinc(), x, y, -2), mesh(new T.CylinderGeometry(2.75, 2.75, 5, 6).rotateX(PI / 2), M.brass(), x, y, -h / 2 - 2.5));
     return g;
   }
   // ---- the electronic parts ----
@@ -357,11 +362,10 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
     const round = ['cup', 'ring'].includes(p.shape), t = Math.min(p.wall || 2, Math.min(w, d) / 2 - .3), r = p.r ?? 2, out = round ? ell(w, d) : rr(w, d, r), inn = round ? ell(w - 2 * t, d - 2 * t) : rr(w - 2 * t, d - 2 * t, Math.max(r - t, .2));
     const ring = round ? ell(w, d) : rr(w, d, r); ring.holes.push(hole(inn)); const bev = Math.min(.8, t * .35), g = group(mesh(extrude(ring, h, bev), m));
     if (p.shape === 'ring') { if (/port/i.test(p.name)) g.add(mesh(lathe([[w / 2 - t, h / 2], [w / 2 + 4, h / 2 + .01], [w / 2 + 4, h / 2 - 1.5], [w / 2, h / 2 - 3]], 64), m)); return g; }
-    const zf = p.open === '-' ? h / 2 - t / 2 : -h / 2 + t / 2; g.add(mesh(extrude(out, t, bev), m, 0, 0, zf));
-    // the bosses and ribs a moulder puts inside a housing, so an exploded housing reads as moulded, not a box
-    if (!round && w > 24 && d > 24 && h > 6 && p.process !== 'CNC routed' && !/grille/i.test(p.name)) { const bh = (h - t) * .65, sgn = p.open === '-' ? -1 : 1, z0 = zf + sgn * (t / 2 + bh / 2);
-      for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const x = sx * (w / 2 - t - 4.5), y = sy * (d / 2 - t - 4.5); g.add(mesh(lathe([[1.1, -bh / 2], [2.6, -bh / 2], [2.4, bh / 2], [1.1, bh / 2]], 24), m, x, y, z0)); }
-      g.add(mesh(new T.BoxGeometry(w - 2 * t, Math.max(.8, t * .55), bh * .6), m, 0, 0, zf + sgn * (t / 2 + bh * .3))); }
+    const zf = p.open === '-' ? h / 2 - t / 2 : -h / 2 + t / 2, sgn = p.open === '-' ? -1 : 1, zi = zf + sgn * t / 2; out.holes.push(...holesOf(p, w - 2 * t, d - 2 * t, round)); g.add(mesh(extrude(out, t, bev), m, 0, 0, zf));
+    // the screw bosses on the floor, each a closed tube from the floor to its free end, where the engineering puts them
+    for (const b of p.bosses || []) { const a = inFrame(p, b.at), len = Math.abs(a[2] - zi), R = Math.max(b.d * 1.2, b.d / 2 + 1.2), rp = b.d * .4; if (len < .3) continue;
+      g.add(mesh(lathe([[rp, -len / 2], [R, -len / 2], [R, len / 2], [rp, len / 2], [rp, -len / 2]], 24), m, a[0], a[1], (a[2] + zi) / 2)); }
     return g;
   }
   function mech(p, dims) {
@@ -375,6 +379,8 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
     if (p.shape === 'pcb') return null;
     if (['shell', 'cup', 'ring'].includes(p.shape)) return housing(p, dims, m);
     if (p.shape === 'ball') return group(mesh(new T.SphereGeometry(.5, 64, 32).scale(w, d, h), m));
+    const thru = p.shape === 'box' || p.shape === 'cyl' ? holesOf(p, w, d, p.shape === 'cyl') : []; // a baffle's driver openings, a panel's, a plate's
+    if (thru.length) { const sh = p.shape === 'cyl' ? ell(w, d) : rr(w, d, p.r ?? 1); sh.holes.push(...thru); return group(mesh(extrude(sh, h, Math.min(.6, h / 4)), m)); }
     if (p.shape === 'cyl') { const b = Math.min(1, h / 4, Math.min(w, d) / 6); return group(mesh(rcyl(w, d, h, b), m)); }
     const b = Math.min(/panel|baffle|cabinet/i.test(p.name) ? 1.6 : .8, h / 4, Math.min(w, d) / 6); return group(mesh(rbox(w, d, h, p.r ?? 1, b), m));
   }

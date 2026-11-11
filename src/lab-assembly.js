@@ -154,7 +154,7 @@ const axisOf = p => p.axis === 'y' ? 1 : p.axis === 'x' ? 0 : 2;
 // through a ball) is left out, so the clash it was meant to clear is still found.
 //   → { w, d, L, r, t, round, sgn, floor, u0, uf, u1, holes: [{ cx, cy, hw, hd, round }], sides: [{ wall | phi, a, b, ua, ub }], bosses: [{ cx, cy, R, rp, ue }] }
 const HOLE_N = 24;
-function featuresOf(p) {
+export function featuresOf(p) {
   const [w, d, L] = localDims(p), round = ROUND.has(p.shape), r = round ? 0 : Math.max(0, Math.min(p.r ?? 0, w / 2 - .01, d / 2 - .01)), t = shellLike(p) ? Math.min(p.wall, Math.min(w, d) / 2 - .2) : 0, o = openOf(p);
   const sgn = shellLike(p) && o === '-' ? -1 : 1, floor = shellLike(p) && o !== 'both', F = { w, d, L, r, t, round, sgn, floor, shell: shellLike(p), u0: -L / 2, uf: floor ? -L / 2 + t : -L / 2, u1: L / 2, holes: [], sides: [], bosses: [] };
   if (p.shape === 'ball') return F;
@@ -538,7 +538,7 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     elec('tweeter', { axis: 'y', size: [80, 40, 80], at: [0, yw + 20, tz], parent: 'baffle', through: ['baffle'], fix: 'screws', fixQty: 4, order: 7, dir: [0, -1, 0], lvl: 1.8 });
     add({ id: 'grille', name: 'Grille (cloth on a frame)', shape: 'shell', axis: 'y', size: [W - 4, gr, Hs - 4], r: 3, at: [0, y0 + gr / 2, zb + Hs / 2], wall: 2, open: '+', resin: 'ABS', finish: 'none', draft: 1, fix: 'press', order: 10, dir: [0, -1, 0], lvl: 2.8 });
     const so4 = [[-(bw / 2 - 5), pz - bhh / 2 + 5], [bw / 2 - 5, pz - bhh / 2 + 5], [bw / 2 - 5, pz + bhh / 2 - 5], [-(bw / 2 - 5), pz + bhh / 2 - 5]], sol = yb - t - (py + .8);
-    add({ id: 'standoffs', name: `Standoff, M3 × ${Math.round(sol)}, screwed into the back`, shape: 'cyl', axis: 'y', size: [5.5, sol, 5.5], at: [so4[0][0], py + .8 + sol / 2, so4[0][1]], resin: 'bought in', process: 'bought in', cost: .05, qty: 4, spots: so4.slice(1).map(q => [q[0] - so4[0][0], 0, q[1] - so4[0][1]]), fix: 'press', order: 2, lvl: 4.2 });
+    add({ id: 'standoffs', name: `Standoff, M3 × ${Math.round(sol)}, threaded into the back`, shape: 'cyl', axis: 'y', size: [5.5, sol, 5.5], at: [so4[0][0], py + .8 + sol / 2, so4[0][1]], resin: 'bought in', process: 'bought in', cost: .05, qty: 4, spots: so4.slice(1).map(q => [q[0] - so4[0][0], 0, q[1] - so4[0][1]]), fix: 'press', order: 2, lvl: 4.2 });
     screw('screws-board', 'Screw, M3 × 6 (amplifier board)', 3, 6, 'y', so4.map(q => [q[0], py - .8 - 1 + 3, q[1]]), { parent: 'pcb', through: ['pcb'], dir: [0, -1, 0], lvl: 5 });
     screw('screws-psu', 'Screw, M4 × 20 wood (supply, up through the cabinet)', 4, 20, 'z', [[-44, psy - 24], [44, psy - 24], [44, psy + 24], [-44, psy + 24]].map(q => [...q, zb + 10]), { through: ['cab'], dir: [0, 0, -1], lvl: 2 });
     const rim = (cz, r) => [45, 135, 225, 315].map(a => [(r + .3) * Math.cos(a * Math.PI / 180), y0 + gr + 7, cz + (r + .3) * Math.sin(a * Math.PI / 180)]);
@@ -652,7 +652,7 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     // a power bank: a pack of 18650 cells side by side, the controller board at one end on two screws that close the shells there, USB-C in
     // and out through the end, a four-LED fuel gauge behind its window and a button under its cap, in two PC/ABS shells
     const n = Math.round(num(mah ? mah / 3000 : undefined, 2, 4, 3)), L = num(dims.d, 110, 200, 146), w = 1.8, W = e2(Math.max(num(dims.w, 40, 100, 0), n * 18.6 + 2 * w + 3)), H = num(dims.h, 22, 40, 25), hb = e2(H / 2);
-    made = [W, L, H];
+    made = [Number(dims.w) > 0 ? num(dims.w, 40, 100, W) : W, L, H]; // a width asked for that the cells do not fit in is kept, so the size check says how much wider it came out
     add({ id: 'bottom', name: 'Bottom shell', shape: 'shell', size: [W, L, hb], r: 6, at: [0, 0, hb / 2], wall: w, open: '+', resin: 'PC/ABS', finish: 'MT-11010 (fine texture)', draft: 3, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
     const cy = -L / 2 + w + 2 + 32.5;
     add({ id: 'cells', name: `Li-ion cells, ${n} × 18650, ${n * 3000} mAh (1S${n}P)`, shape: 'box', size: [n * 18.4, 65, 18], at: [0, cy, w + .2 + 9], resin: 'bought in', process: 'bought in', cost: r2(n * 1.7), fix: 'adhesive', order: 2, parent: 'bottom', elec: { kind: 'li18650', mah: n * 3000 }, lvl: .8 });
