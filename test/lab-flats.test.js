@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
-import { STYLES, SIZES, detectStyle, defaultParams, measurementsFor, pomTable, geometry, renderSvg, describe, placementChecks, defaultPlacement, cleanFlat, fmt, fmtCm } from '../src/lab-flats.js';
+import { STYLES, SIZES, viewsOf, detectStyle, defaultParams, measurementsFor, pomTable, geometry, renderSvg, describe, placementChecks, defaultPlacement, cleanFlat, fmt, fmtCm } from '../src/lab-flats.js';
 import { artInfo } from '../src/lab-flats-routes.js';
 import { cleanRules, BASE_RULES } from '../src/lab-library.js';
 
@@ -26,7 +26,8 @@ test('measurements come from the style and fit, and grade by size', () => {
 });
 
 test('every style draws front and back, closed and measurable', () => {
-  for (const st of Object.keys(STYLES)) for (const view of ['front', 'back']) {
+  // a product type (src/lab-goods.js) is drawn on the sides it has: a poster has no back to place things on (test/lab-goods.test.js holds each)
+  for (const st of Object.keys(STYLES)) for (const view of STYLES[st].kind === 'goods' ? viewsOf(st) : ['front', 'back']) {
     const p = defaultParams(st), g = geometry(p, view), svg = renderSvg(p, view, { showPom: true });
     assert.ok(g.outline.length >= 4 && g.outline.every(q => q.every(Number.isFinite)), `${st} ${view} outline`);
     assert.ok(Object.values(g.regions).some(r => r.length >= 3), `${st} ${view} has somewhere to place things`);

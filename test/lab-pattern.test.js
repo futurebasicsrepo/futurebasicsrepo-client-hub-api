@@ -7,7 +7,7 @@ import { kindOf, cleanPatternSpec } from '../src/lab-pattern-routes.js';
 const ok = pts => pts.length >= 3 && pts.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
 
 test('every style the flats know drafts into whole pieces, each with a grain, a cut and a seam allowance', () => {
-  for (const style of Object.keys(STYLES)) {
+  for (const style of Object.keys(STYLES).filter(k => STYLES[k].kind !== 'goods')) { // a product type (a mug, a poster) is not cut and sewn: it has no pattern (test/lab-goods.test.js)
     const pat = garmentPattern(defaultParams(style), 'M');
     assert.ok(pat.pieces.length >= 1, style);
     for (const q of pat.pieces) { assert.ok(ok(q.sew), `${style} ${q.id}`); assert.ok(areaOf(q.sew) > .5, `${style} ${q.id} has an area`); assert.equal(q.grain.length, 2); assert.match(cutWords(q), /^Cut \d/); }
@@ -145,7 +145,7 @@ test('AAMA DXF: a block a piece and a size with its text, the standard layers, i
 
 test('the exploded view accounts for every piece cut, at every step, for every garment, plush and shoe', async () => {
   const { footwearPattern, FW_STYLES } = await import('../src/lab-footwear.js');
-  const pats = [...Object.keys(STYLES).map(s => [s, garmentPattern(defaultParams(s), 'M')]),
+  const pats = [...Object.keys(STYLES).filter(k => STYLES[k].kind !== 'goods').map(s => [s, garmentPattern(defaultParams(s), 'M')]),
     ...['bear', 'quad', 'elephant', 'sea', 'bean', 'bunny', 'pillow'].flatMap(shape => [[shape, plushPattern({ shape })], [`${shape}+`, plushPattern({ shape, arms: true, legs: true, tail: true, fabric: 'leather', horn: 'antlers', mane: 'ruff', wings: true, spikes: true, dorsal: true, snout: 'long' })]]),
     ...Object.keys(FW_STYLES).map(s => [s, footwearPattern({ style: s })])];
   for (const [name, pat] of pats) {

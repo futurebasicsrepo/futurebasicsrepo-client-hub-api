@@ -12,15 +12,15 @@ const G = (label, group, shape, base, from, o = {}) => ({ label, group, shape, b
 const ACC = { category: 'accessories' };
 export const GOODS = {
   // ---- drinkware: drawn from the side; the print area on a side is the part of the wrap that shows on it ----
-  mug: G('Mug', 'Drinkware', 'cup', { diameter: 3.2, height: 3.75, wrapWidth: 8.5, printHeight: 3.5 }, 'the standard 11 oz ceramic mug: 3.2 in across, 3.75 in tall, wrap print area 8.5 × 3.5 in', { handle: [.14, .82, 1.05], sides: 2 }),
-  tumbler: G('Tumbler', 'Drinkware', 'cup', { diameter: 2.9, height: 8.8, wrapWidth: 9.3, printHeight: 8 }, 'a typical 20 oz straight tumbler (2.9 in across, 8.2 in body under a 0.6 in lid, wrap 9.3 in around): chosen here', { lid: .6, straw: true, sides: 2 }),
-  tumblerhandle: G('Tumbler with handle', 'Drinkware', 'cup', { diameter: 3.9, baseDiameter: 3, height: 10.6, wrapWidth: 9.5, printHeight: 4.5 }, 'a typical 40 oz handled travel tumbler (3.9 in across the top, a 3 in base for a cup holder, 10.6 in tall with its lid): chosen here', { lid: .8, straw: true, handle: [.1, .5, 1.3], profile: [[0, 't'], [.58, 't'], [.7, 'b'], [1, 'b']], printTop: .6, sides: 2 }),
-  bottle: G('Water bottle', 'Drinkware', 'cup', { diameter: 2.9, height: 10.4, wrapWidth: 9.1, printHeight: 5 }, 'a typical 20 oz steel bottle (2.9 in across, 10.4 in tall with its cap): chosen here', { profile: [[0, .55], [.1, .55], [.2, 't'], [1, 't']], printTop: 3, sides: 2 }),
+  mug: G('Mug', 'Drinkware', 'cup', { diameter: 3.25, height: 3.75, wrapWidth: 8.5, printHeight: 3.5 }, 'the standard 11 oz ceramic mug: 3.2 in across (82 mm, kept as 3¼ in: the flats work in eighths), 3.75 in tall, wrap print area 8.5 × 3.5 in', { handle: [.14, .82, 1.05], sides: 2 }),
+  tumbler: G('Tumbler', 'Drinkware', 'cup', { diameter: 2.875, height: 8.75, wrapWidth: 9.25, printHeight: 8 }, 'a typical 20 oz straight tumbler (2⅞ in across, 8¾ in tall with its lid, wrap 9¼ in around): chosen here', { lid: .625, straw: true, sides: 2 }),
+  tumblerhandle: G('Tumbler with handle', 'Drinkware', 'cup', { diameter: 3.875, baseDiameter: 3, height: 10.625, wrapWidth: 9.5, printHeight: 4.5 }, 'a typical 40 oz handled travel tumbler (3⅞ in across the top, a 3 in base for a cup holder, 10⅝ in tall with its lid): chosen here', { lid: .75, straw: true, handle: [.1, .5, 1.3], profile: [[0, 't'], [.58, 't'], [.7, 'b'], [1, 'b']], printTop: .6, sides: 2 }),
+  bottle: G('Water bottle', 'Drinkware', 'cup', { diameter: 2.875, height: 10.375, wrapWidth: 9.125, printHeight: 5 }, 'a typical 20 oz steel bottle (2⅞ in across, 10⅜ in tall with its cap): chosen here', { profile: [[0, .55], [.1, .55], [.2, 't'], [1, 't']], printTop: 3, sides: 2 }),
   canglass: G('Can glass', 'Drinkware', 'cup', { diameter: 3, height: 5.25, wrapWidth: 9.25, printHeight: 4 }, 'a typical 16 oz can-shaped glass (3 in across, 5.25 in tall): chosen here', { profile: [[0, .86], [.06, .86], [.14, 't'], [.94, 't'], [1, .9]], printTop: .8, sides: 2 }),
-  pintglass: G('Pint glass', 'Drinkware', 'cup', { diameter: 3.5, baseDiameter: 2.4, height: 5.9, wrapWidth: 8, printHeight: 3.5 }, 'a typical 16 oz pint glass (3.5 in across the rim, 2.4 in at the base, 5.9 in tall): chosen here', { printTop: 1, sides: 2 }),
-  wineglass: G('Stemless wine glass', 'Drinkware', 'cup', { diameter: 2.9, baseDiameter: 2.2, height: 4.6, wrapWidth: 6, printHeight: 2.25 }, 'a typical 15 oz stemless wine glass (2.9 in rim, 3.7 in at its widest, 4.6 in tall): chosen here', { profile: [[0, 't'], [.12, 1.12], [.3, 1.24], [.5, 1.28], [.7, 1.2], [.88, .98], [1, 'b']], printTop: 1, sides: 2 }),
-  rocksglass: G('Rocks glass', 'Drinkware', 'cup', { diameter: 3.3, baseDiameter: 2.9, height: 3.5, wrapWidth: 8, printHeight: 2 }, 'a typical 10.5 oz rocks glass (3.3 in across, 3.5 in tall): chosen here', { printTop: .6, sides: 2 }),
-  cancooler: G('Can cooler', 'Drinkware', 'cup', { diameter: 3, height: 4.6, wrapWidth: 9, printHeight: 3.5 }, 'a typical 12 oz can cooler (3 in across, 4.6 in tall): chosen here', { sides: 2 }),
+  pintglass: G('Pint glass', 'Drinkware', 'cup', { diameter: 3.5, baseDiameter: 2.375, height: 5.875, wrapWidth: 8, printHeight: 3.5 }, 'a typical 16 oz pint glass (3½ in across the rim, 2⅜ in at the base, 5⅞ in tall): chosen here', { printTop: 1, sides: 2 }),
+  wineglass: G('Stemless wine glass', 'Drinkware', 'cup', { diameter: 2.875, baseDiameter: 2.25, height: 4.625, wrapWidth: 6, printHeight: 2.25 }, 'a typical 15 oz stemless wine glass (2⅞ in rim, 3⅝ in at its widest, 4⅝ in tall): chosen here', { profile: [[0, 't'], [.12, 1.12], [.3, 1.24], [.5, 1.28], [.7, 1.2], [.88, .98], [1, 'b']], printTop: 1, sides: 2 }),
+  rocksglass: G('Rocks glass', 'Drinkware', 'cup', { diameter: 3.25, baseDiameter: 2.875, height: 3.5, wrapWidth: 8, printHeight: 2 }, 'a typical 10.5 oz rocks glass (3¼ in across, 3½ in tall): chosen here', { printTop: .6, sides: 2 }),
+  cancooler: G('Can cooler', 'Drinkware', 'cup', { diameter: 3, height: 4.625, wrapWidth: 9, printHeight: 3.5 }, 'a typical 12 oz can cooler (3 in across, 4⅝ in tall): chosen here', { sides: 2 }),
   // ---- wall art and decor ----
   poster: G('Poster', 'Wall art and decor', 'panel', { width: 18, height: 24 }, '18 × 24 in, a standard poster size: chosen here'),
   canvas: G('Canvas print', 'Wall art and decor', 'panel', { width: 16, height: 20, depth: 1.25 }, '16 × 20 in on a 1.25 in gallery-wrap bar, a standard size: chosen here', { marks: ['depth'] }),
@@ -46,13 +46,13 @@ export const GOODS = {
   apron: G('Apron', 'Home textiles', 'apron', { width: 27, height: 31, bibWidth: 10 }, 'a typical bib apron (27 in wide, 31 in long, a 10 in bib): chosen here'),
   stocking: G('Christmas stocking', 'Home textiles', 'sock', { width: 7.5, legLength: 18, footLength: 11, cuff: 3 }, 'a typical 18 in stocking, 7.5 in across the leg: chosen here', { sides: 2 }),
   // ---- tech ----
-  phonecase: G('Phone case', 'Tech', 'panel', { width: 2.95, height: 6 }, 'a case for a 2.82 × 5.81 in phone (Apple\'s iPhone 15 dimensions) with its wall', { corner: .45, marks: ['camera'], ...ACC }),
+  phonecase: G('Phone case', 'Tech', 'panel', { width: 3, height: 6 }, 'a case for a 2.82 × 5.81 in phone (Apple\'s iPhone 15 dimensions) with its wall, to the eighth', { corner: .45, marks: ['camera'], ...ACC }),
   mousepad: G('Mouse pad', 'Tech', 'panel', { width: 9.25, height: 7.75 }, '9.25 × 7.75 in, the common printed mouse pad: chosen here', { corner: .5, ...ACC }),
   deskmat: G('Desk mat', 'Tech', 'panel', { width: 31.5, height: 15.75 }, '800 × 400 mm (31.5 × 15.75 in), the common desk mat: chosen here', { corner: .4, marks: ['hem'], ...ACC }),
   laptopsleeve: G('Laptop sleeve', 'Tech', 'panel', { width: 13.5, height: 10 }, 'a sleeve for a 13 in laptop (the catalogue lists 12, 13 and 15 in): outside size chosen here', { corner: .6, marks: ['zip'], sides: 2, ...ACC }),
-  powerbank: G('Power bank', 'Tech', 'panel', { width: 2.8, height: 5.7 }, 'a typical 10,000 mAh power bank: chosen here', { corner: .3, marks: ['port'], ...ACC }),
+  powerbank: G('Power bank', 'Tech', 'panel', { width: 2.75, height: 5.75 }, 'a typical 10,000 mAh power bank, 2¾ × 5¾ in: chosen here', { corner: .3, marks: ['port'], ...ACC }),
   speaker: G('Speaker', 'Tech', 'cup', { diameter: 3, height: 7, wrapWidth: 4, printHeight: 2 }, 'a typical cylinder Bluetooth speaker, 3 in across and 7 in tall: chosen here', { printTop: 2.5, marks: ['grille'], ...ACC }),
-  earbudscase: G('Earbuds case', 'Tech', 'panel', { width: 2.4, height: 1.8 }, 'the AirPods Pro charging case, 60.6 × 45.2 mm (Apple\'s dimensions)', { corner: .5, marks: ['lid'], ...ACC }),
+  earbudscase: G('Earbuds case', 'Tech', 'panel', { width: 2.375, height: 1.75 }, 'the AirPods Pro charging case, 60.6 × 45.2 mm (Apple\'s dimensions), to the eighth', { corner: .5, marks: ['lid'], ...ACC }),
   chargingpad: G('Wireless charging pad', 'Tech', 'disc', { diameter: 4 }, 'a typical 4 in round charging pad: chosen here', { marks: ['coil'], ...ACC }),
   // ---- paper and small goods ----
   sticker: G('Sticker', 'Paper and small goods', 'panel', { width: 3, height: 3 }, '3 × 3 in, a typical die-cut sticker: chosen here', { corner: .3 }),
@@ -64,15 +64,15 @@ export const GOODS = {
   recordsleeve: G('Record sleeve', 'Music', 'panel', { width: 12.375, height: 12.375 }, 'a 12 in LP jacket, 12.375 in square (the standard jacket)', { marks: ['disc'], sides: 2 }),
   // ---- pets ----
   petbed: G('Pet bed', 'Pets', 'panel', { width: 28, height: 18 }, 'the catalogue\'s 28 × 18 in pet bed', { corner: 2.5, marks: ['bolster'] }),
-  petbowl: G('Pet bowl', 'Pets', 'cup', { diameter: 5.5, baseDiameter: 6.5, height: 2.2, wrapWidth: 8, printHeight: 1.25 }, 'a typical steel pet bowl, 6.5 in across its base and 2.2 in tall: chosen here', { sides: 2 }),
+  petbowl: G('Pet bowl', 'Pets', 'cup', { diameter: 5.5, baseDiameter: 6.5, height: 2.25, wrapWidth: 8, printHeight: 1.25 }, 'a typical steel pet bowl, 6½ in across its base and 2¼ in tall: chosen here', { sides: 2 }),
   petcollar: G('Pet collar or leash', 'Pets', 'panel', { width: 20, height: 1 }, 'a 1 in wide collar, 20 in long (large): chosen here; a leash is the same strap, longer', { marks: ['buckle'], ...ACC }),
   petmat: G('Pet feeding mat', 'Pets', 'panel', { width: 19, height: 14 }, 'the catalogue\'s 14 × 19 in feeding mat (drawn as a rectangle; the catalogue cuts it as a bone or a fish)', { corner: 2 }),
   pettee: G('Pet tee', 'Pets', 'pettee', { length: 14, chest: 10, neckWidth: 6.5 }, 'a typical medium dog shirt, 14 in down the back and 10 in across the chest laid flat: chosen here', { sides: 2, ...ACC }),
   // ---- sports and outdoor ----
   yogamat: G('Yoga mat', 'Sports and outdoor', 'panel', { width: 24, height: 68 }, '24 × 68 in, the standard yoga mat', { corner: .5 }),
-  ball: G('Ball', 'Sports and outdoor', 'disc', { diameter: 9.4 }, 'a size 7 basketball, 29.5 in around (9.4 in across)', { marks: ['seams'] }),
+  ball: G('Ball', 'Sports and outdoor', 'disc', { diameter: 9.375 }, 'a size 7 basketball, 29.5 in around (9⅜ in across)', { marks: ['seams'] }),
   skateboard: G('Skateboard deck', 'Sports and outdoor', 'panel', { width: 8.25, height: 32 }, 'a typical 8.25 × 32 in deck: chosen here', { corner: 4.125, marks: ['trucks'] }),
-  paddle: G('Paddle', 'Sports and outdoor', 'paddle', { width: 7.9, length: 15.75, handle: 5 }, 'a typical pickleball paddle, 7.9 in wide and 15.75 in long with a 5 in handle: chosen here', { sides: 2 }),
+  paddle: G('Paddle', 'Sports and outdoor', 'paddle', { width: 7.875, length: 15.75, handle: 5 }, 'a typical pickleball paddle, 7⅞ in wide and 15¾ in long with a 5 in handle: chosen here', { sides: 2 }),
   umbrella: G('Umbrella', 'Sports and outdoor', 'disc', { diameter: 38 }, 'a folding umbrella with a 42 in arc, about 38 in across when open: chosen here', { ngon: 8, marks: ['ribs'], ...ACC }),
   // ---- automotive ----
   carmat: G('Car mat', 'Automotive', 'panel', { width: 18, height: 27 }, 'a typical universal front mat, 18 × 27 in: chosen here', { corner: 2, marks: ['border'] }),
@@ -83,8 +83,8 @@ export const GOODS = {
   socks: G('Socks', 'Socks, scarves and sandals', 'sock', { width: 3.75, legLength: 8.5, footLength: 9.5, cuff: 1.5 }, 'a typical men\'s medium crew sock laid flat: chosen here', { sides: 2, ...ACC }),
   scarf: G('Scarf', 'Socks, scarves and sandals', 'panel', { width: 70, height: 10 }, 'a typical 10 × 70 in scarf: chosen here', { marks: ['fringe'], ...ACC }),
   flipflop: G('Flip-flop', 'Socks, scarves and sandals', 'sole', { length: 11.25, width: 4.25 }, 'a typical men\'s US 9 flip-flop, 11.25 in long: chosen here', { variant: 'thong', ...ACC }),
-  slide: G('Slide sandal', 'Socks, scarves and sandals', 'sole', { length: 11, width: 4.3 }, 'a typical men\'s US 9 slide, 11 in long: chosen here', { variant: 'slide', ...ACC }),
-  clog: G('Clog', 'Socks, scarves and sandals', 'sole', { length: 11.25, width: 4.4 }, 'a typical men\'s US 9 foam clog, 11.25 in long: chosen here', { variant: 'clog', ...ACC }),
+  slide: G('Slide sandal', 'Socks, scarves and sandals', 'sole', { length: 11, width: 4.25 }, 'a typical men\'s US 9 slide, 11 in long: chosen here', { variant: 'slide', ...ACC }),
+  clog: G('Clog', 'Socks, scarves and sandals', 'sole', { length: 11.25, width: 4.375 }, 'a typical men\'s US 9 foam clog, 11.25 in long: chosen here', { variant: 'clog', ...ACC }),
   bandana: G('Bandana', 'Socks, scarves and sandals', 'triangle', { width: 22, height: 11 }, 'a 22 in bandana folded to its triangle, 11 in deep (a person\'s or a pet\'s): chosen here', ACC),
   facemask: G('Face mask', 'Socks, scarves and sandals', 'panel', { width: 7.5, height: 5 }, 'a typical adult cloth mask, 7.5 × 5 in: chosen here', { corner: 1, marks: ['loops'], ...ACC }),
   belt: G('Web belt', 'Socks, scarves and sandals', 'panel', { width: 48, height: 1.5 }, 'a 1.5 in web belt, 48 in long: chosen here', { marks: ['buckle'], ...ACC }),
@@ -215,7 +215,7 @@ function apron(S, m, view) {
 }
 // a bandana or a bandana bib folded to its triangle: the long edge at the top, the point at the bottom
 function triangle(S, m, view) {
-  const w = m.width / 2, h = m.height, poly = [[-w, 0], [w, 0], [0, h]], k = .62, area = [[-w * k, h * .08], [w * k, h * .08], [0, h * (.08 + k * .92)]];
+  const w = m.width / 2, h = m.height, poly = [[-w, 0], [w, 0], [.2, h], [-.2, h]], k = .62, area = [[-w * k, h * .08], [w * k, h * .08], [0, h * (.08 + k * .92)]];
   const parts = [closed(poly), closed([[-w + .9, .3], [w - .9, .3], [0, h - .5]], 'stitch'), dot(-w + .45, .25, .12), dot(w - .45, .25, .12)];
   return out(poly, parts, named(S, view, area), [], [{ key: 'width', from: [-w, -.6], to: [w, -.6] }, { key: 'height', from: [w + .7, 0], to: [w + .7, h] }]);
 }

@@ -950,6 +950,7 @@ app.get('/lab/vendor/three/*', (req, reply) => {
 });
 app.get('/lab/lab-neck.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-neck.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-wash.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-wash.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-goods.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-goods.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-flat-panels.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flat-panels.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-flats.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
 app.get('/lab/flats.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));

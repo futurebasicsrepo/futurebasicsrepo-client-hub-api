@@ -22,6 +22,7 @@ for (const [id, f] of Object.entries(SKETCH_FIXES)) {
 import { FLAT_PARTS, PART_KINDS } from './lab-flat-parts.js';
 import { washSvg, cleanWash, cleanDistress } from './lab-wash.js';
 import { necklineSvg, cleanNeckline, necklinePomName } from './lab-neck.js';
+import { GOODS, GOODS_POM, goodsGeom, goodsSides } from './lab-goods.js';
 export { FLAT_PARTS, PART_KINDS };
 
 export const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
@@ -61,6 +62,11 @@ export const STYLES = {
   leggings: { label: 'Leggings', category: 'bottoms', kind: 'bottom', base: { waist: 13.5, hip: 16.5, rise: 10.5, inseam: 28, thigh: 9.5, legOpening: 4.25, waistband: 3 }, grade: { waist: 1, hip: 1, rise: .375, inseam: 0, thigh: .5, legOpening: .25, waistband: 0 } },
   bucket: { label: 'Bucket hat', category: 'headwear', kind: 'cap', bucket: true, base: { crownWidth: 9.5, crownHeight: 3.75, brimLength: 2.25, brimWidth: 13 }, grade: {}, oneSize: true }
 };
+// the product types that are not garments (src/lab-goods.js): drinkware, wall art, home textiles, tech, paper, pet, sports and car products.
+// Each is a style of kind 'goods': one size, drawn from its measurements with its print area; printed or bought in, so it has no pattern.
+for (const [k, g] of Object.entries(GOODS)) STYLES[k] = { label: g.label, category: g.category, kind: 'goods', base: g.base, grade: {}, oneSize: true, names: { ...GOODS_POM, width: 'Width', height: 'Height' }, goods: g };
+// the sides of a piece that are drawn: a garment's and a cap's front and back; a product type's second side when it has one
+export const viewsOf = style => { const S = STYLES[style]; return !S ? ['front'] : S.kind === 'goods' ? goodsSides(S.goods) : ['top', 'bottom', 'cap'].includes(S.kind) ? ['front', 'back'] : ['front']; };
 export const FITS = { slim: 'Slim', regular: 'Regular', relaxed: 'Relaxed', boxy: 'Boxy', oversized: 'Oversized', wide: 'Wide' };
 // grading from the sample size, as published garment specs grade (Gildan, Bella+Canvas, Comfort Colors, Port & Company, Carhartt, Lands'
 // End, QVC; checked against about 60 spec sheets): unisex and men's tops 2 in across the chest a size, the length 1; women's 1 and ½;
@@ -387,6 +393,7 @@ export function geometry(p, view = 'front', size = p.size || 'M') {
   if (S.kind === 'bottom') return bottomGeom(S, m, o, view);
   if (S.kind === 'cap') return capGeom(m, view);
   if (S.kind === 'beanie') return beanieGeom(m, view);
+  if (S.kind === 'goods') return goodsGeom(S.goods, m, view);
   return toteGeom(m, view);
 }
 function topGeom(S, m, o, view) {
@@ -560,6 +567,13 @@ export function defaultPlacement(kind, p, { aspect = 1, label = '' } = {}) {
   if (S.kind === 'bottom') return /back/.test(t) ? box('back', -4, m.waistband + 9.5, 2.5) : box('front', m.hip / 2 - 3.6, m.waistband + Math.min(m.rise - 2.5, 9), 2.5);
   if (S.kind === 'cap') { const w = Math.min(3.25, 1.9 * aspect, m.crownWidth * .4), h = w / aspect; return /back/.test(t) ? { view: 'back', x: 0, y: r8(-2.2 - h / 2), w: r8(Math.min(w, 2.25)), h: r8(Math.min(w, 2.25) / aspect) } : { view: 'front', x: 0, y: r8(-.75 - h / 2), w: r8(w), h: r8(h) }; }
   if (S.kind === 'beanie') return box('front', 0, m.height - m.cuff + .5, Math.min(3, 2 * aspect));
+  // a product type: in the middle of its print area (the back's, when the words say the back and it has one) at about half its size; where
+  // that would cross something that cannot be printed (a clock's spindle, a zip), smaller, or higher or lower in the area
+  if (S.kind === 'goods') { const view = /back/.test(t) && goodsSides(S.goods).length === 2 ? 'back' : 'front', poly = Object.values(geometry(p, view).regions)[0];
+    if (poly) { const b = bounds(poly), cy = poly.reduce((a, q) => a + q[1], 0) / poly.length;
+      const at = (fy, k) => { const w = Math.max(.25, Math.min((b.x1 - b.x0) * k, (b.y1 - b.y0) * k * aspect)); return { view, x: r8((b.x0 + b.x1) / 2), y: r8(fy == null ? cy : b.y0 + (b.y1 - b.y0) * fy), w: r8(w), h: r8(Math.max(.25, w / aspect)) }; };
+      const tries = [at(null, .5), at(null, .3), at(.3, .3), at(.72, .3), at(null, .15), at(.05, .06)];
+      return tries.find(q => !placementChecks({ name: '', ...q }, p).some(f => f.level === 'fail')) || tries[0]; } }
   return box('front', 0, 4, Math.min(10, m.width * .6));
 }
 
@@ -820,7 +834,7 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
     if (showDims) {
       const top = q.y - q.h / 2, S = STYLES[p.style];
       if (S.kind === 'top' && regionOf(q, g) === 'body') { pl += arrow([q.x, 0], [q.x, top], fmt(top)); if (Math.abs(q.x) >= .125) pl += arrow([0, q.y], [q.x, q.y], fmt(q.x)); }
-      else if (S.kind === 'bottom' || S.kind === 'tote' || S.kind === 'beanie') pl += arrow([q.x, 0], [q.x, top], fmt(top));
+      else if (S.kind === 'bottom' || S.kind === 'tote' || S.kind === 'beanie' || S.kind === 'goods') pl += arrow([q.x, 0], [q.x, top], fmt(top));
       else if (S.kind === 'cap') pl += arrow([q.x, 0], [q.x, q.y + q.h / 2], fmt(-(q.y + q.h / 2)));
       pl += `<g pointer-events="none">${T(q.x, q.y + q.h / 2 + fs * 1.3, fs * .9, `${fmt(q.w)} × ${fmt(q.h)}`, 'middle', '#141416', 600)}</g>`;
     }
@@ -873,8 +887,8 @@ function keptConstruction(c) {
 }
 export function cleanFlat(input = {}) {
   const style = STYLES[input.style] ? input.style : null; if (!style) return { error: 'Choose what the piece is' };
-  const fit = FITS[input.fit] ? input.fit : 'regular', base = defaultParams(style, fit), m = {};
-  for (const k of Object.keys(base.m)) { const v = Number(input.m?.[k]); m[k] = Number.isFinite(v) ? r8(Math.min(Math.max(v, 0), 80)) : base.m[k]; }
+  const fit = FITS[input.fit] ? input.fit : 'regular', base = defaultParams(style, fit), m = {}, big = STYLES[style].kind === 'goods'; // a product type can be larger than a garment: a duvet is 88 in
+  for (const k of Object.keys(base.m)) { const v = Number(input.m?.[k]); m[k] = Number.isFinite(v) ? r8(Math.min(Math.max(v, 0), big ? 120 : 80)) : base.m[k]; }
   const o = input.options || {}, options = { drop: Boolean(o.drop), cropped: Boolean(o.cropped), pleats: Math.min(Math.max(Math.round(Number(o.pleats) || 0), 0), 2), chestPocket: Boolean(o.chestPocket), noPocket: Boolean(o.noPocket), drawcord: o.drawcord !== false, rib: o.rib !== false, ...(o.legsDrawn ? { legsDrawn: true } : {}), ...(Number(o.kneeRatio) >= .8 && Number(o.kneeRatio) <= 1.7 ? { kneeRatio: Math.round(Number(o.kneeRatio) * 100) / 100 } : {}), ...(keptConstruction(o.construction) ? { construction: keptConstruction(o.construction) } : {}), ...(Number.isFinite(Number(o.sleeveAngle)) && o.sleeveAngle !== null && o.sleeveAngle !== '' && Number(o.sleeveAngle) >= 0 && Number(o.sleeveAngle) <= 85 ? { sleeveAngle: Math.round(Number(o.sleeveAngle)) } : {}) }; // the legs as the sketch draws them (followDrawing); how it is built, as the concept says or as read
   const template = input.template === 'none' ? 'none' : FLAT_TEMPLATES.some(t => t.id === input.template && t.style === style) ? input.template : defaultTemplate(style, fit);
   const ao = input.allover, allover = ao && /^[0-9a-f-]{36}$/i.test(String(ao.art || '')) ? { art: ao.art, w: r8(Math.min(Math.max(Number(ao.w) || 4, .5), 48)), h: r8(Math.min(Math.max(Number(ao.h) || 4, .5), 48)), type: String(ao.type || 'straight').slice(0, 20), name: String(ao.name || 'All-over print').replace(/\s+/g, ' ').trim().slice(0, 60),
@@ -894,7 +908,7 @@ export function cleanFlat(input = {}) {
   const params = { style, fit, size: SIZES.includes(input.size) ? input.size : 'M', m, options, ...(crop ? { crop } : {}), ...(Object.keys(tagPos).length ? { tagPos } : {}), ...(cleanWash(input.wash) ? { wash: cleanWash(input.wash) } : {}), ...(cleanNeckline(input.neckline) ? { neckline: cleanNeckline(input.neckline) } : {}), ...(cleanDistress(input.distress) ? { distress: cleanDistress(input.distress) } : {}), ...(template ? { template } : {}), color: hexOf(input.color), edits: cleanEdits(input.edits), ...(allover ? { allover } : {}), ...(Object.keys(drawn).length ? { drawn: { template, ...drawn } } : {}), ...(Object.keys(markup).length ? { markup: { template: template || 'none', ...markup } } : {}) };
   const placements = (Array.isArray(input.placements) ? input.placements : []).slice(0, 12).map((q, i) => ({
     id: /^[a-z0-9-]{1,40}$/i.test(String(q.id || '')) ? String(q.id) : 'p' + i, name: String(q.name || 'Graphic').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Graphic', view: q.view === 'back' ? 'back' : 'front',
-    x: r8(Math.min(Math.max(Number(q.x) || 0, -60), 60)), y: r8(Math.min(Math.max(Number(q.y) || 0, -30), 80)), w: r8(Math.min(Math.max(Number(q.w) || 1, .25), 40)), h: r8(Math.min(Math.max(Number(q.h) || 1, .25), 40)), ...(rotOf(q) ? { rot: rotOf(q) } : {}),
+    x: r8(Math.min(Math.max(Number(q.x) || 0, -60), 60)), y: r8(Math.min(Math.max(Number(q.y) || 0, -30), big ? 120 : 80)), w: r8(Math.min(Math.max(Number(q.w) || 1, .25), big ? 100 : 40)), h: r8(Math.min(Math.max(Number(q.h) || 1, .25), big ? 100 : 40)), ...(rotOf(q) ? { rot: rotOf(q) } : {}),
     ...(/^[0-9a-f-]{36}$/i.test(String(q.art || '')) ? { art: q.art } : {}), ...(['cue', 'mark', 'word', 'lockup'].includes(q.mark) ? { mark: q.mark === 'cue' ? 'mark' : q.mark } : {}),
     // a mark in its own colour (the lines and the lettering), and the cue dot too when it is one colour: a hex each, or the brand's own colours
     ...(q.mark && /^#[0-9a-f]{6}$/i.test(String(q.colour || '')) ? { colour: String(q.colour).toLowerCase() } : {}), ...(q.mark && /^#[0-9a-f]{6}$/i.test(String(q.dot || '')) ? { dot: String(q.dot).toLowerCase() } : {}),

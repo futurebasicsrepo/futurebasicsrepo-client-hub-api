@@ -8,7 +8,7 @@ const jersey = F('180 jersey', { weightGsm: 180, construction: 'single jersey', 
 const twill = F('8 oz twill', { weightGsm: 270, construction: 'twill', stretch: 'none', composition: '100% cotton' });
 const lycra = F('Swim tricot', { weightGsm: 200, construction: 'tricot', composition: '80% nylon 20% elastane' });
 
-test('every flat style has fabric rules', () => { for (const s of Object.keys(STYLES)) assert.ok(STYLE_CLOTH[s], s); });
+test('every flat style has fabric rules', () => { for (const s of Object.keys(STYLES).filter(k => STYLES[k].kind !== 'goods')) assert.ok(STYLE_CLOTH[s], s); }); // a product type (a mug, a poster: src/lab-goods.js) is not cut from cloth by the Lab; test/lab-goods.test.js holds those
 
 test('knit or woven, and how much stretch', () => {
   assert.equal(clothOf(jersey), 'knit'); assert.equal(clothOf(twill), 'woven'); assert.equal(clothOf(F('x', { construction: 'stretch woven' })), 'woven');
