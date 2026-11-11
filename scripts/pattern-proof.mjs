@@ -1,4 +1,4 @@
-// The cut-and-sew proof: every library garment and bag drafted, laid on its cloth, and sewn together on paper, as one page.
+// The cut-and-sew proof: every library garment, bag and plush drafted, laid on its cloth, and sewn together on paper, as one page.
 // For each piece: the block (front, back, sleeve, legs…) with the two sides of every seam drawn in the same colour and numbered; the seams
 // walked against each other and the made garment measured against its spec (src/lab-pattern-check.js); then every piece laid on the cutting
 // table at the cloth's width, with the yardage and how much of the cloth is used. A strip of sizes says which sizes pass the same check.
@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { FLAT_TEMPLATES } from '../src/lab-flat-templates.js';
 import { BAG_TEMPLATES } from '../src/lab-bag-templates.js';
 import { defaultParams, fitToTemplate, measurementsFor, STYLES, SIZES } from '../src/lab-flats.js';
-import { garmentPattern, bagPattern, plushPattern } from '../src/lab-pattern.js';
+import { garmentPattern, bagPattern, plushPattern, plushDefaults, PLUSH_SHAPES, PLUSH_TYPE } from '../src/lab-pattern.js';
 import { PLUSH_PRESETS } from '../src/lab-plush-parts.js';
 import { constructionCheck } from '../src/lab-pattern-check.js';
 import { proofCard, proofPage, proveSizes } from '../src/lab-pattern-proof.js';
@@ -44,6 +44,12 @@ if (!STY.length || STY.includes('plush')) for (const [id, pr] of Object.entries(
   const pat = plushPattern({ shape: 'build', height: 12, build: pr.build }), c = constructionCheck(pat); pN++; if (c.ok) pOk++; seamsN += c.seams.filter(s => s.ok !== null).length; measN += c.meas.filter(s => s.ok !== null).length;
   cards.push({ order: 4, html: proofCard({ id: 'plush-' + id, label: pr.name, style: `Plush built from parts · ${pat.size}`, kind: 'plush', pat, c, sizes: [] }) });
   json.push({ id: 'plush-' + id, style: 'plush', ok: c.ok, passed: c.passed, made: c.made, yards: c.table.map(q => [q.fabric, q.yards, q.efficiency]) }); }
+// plush on the fixed body types (a bear, a four-legged sitting animal, an elephant, a sea creature, a bean, a bunny, a pillow), each at 12 in
+// with the parts it starts with: its assembly walked seam by seam
+if (!STY.length || STY.includes('plush')) for (const shape of Object.keys(PLUSH_SHAPES).filter(k => k !== 'build')) { if (ONLY.length && !ONLY.includes('plush-shape-' + shape)) continue;
+  const pat = plushPattern({ ...plushDefaults(shape), height: 12 }), c = constructionCheck(pat, { edges: true }); pN++; if (c.ok) pOk++; seamsN += c.seams.filter(s => s.ok !== null).length; measN += c.meas.filter(s => s.ok !== null).length;
+  cards.push({ order: 5, html: proofCard({ id: 'plush-shape-' + shape, label: PLUSH_TYPE[shape], style: `Plush, a fixed body type · ${pat.size}`, kind: 'plush', pat, c, sizes: [] }) });
+  json.push({ id: 'plush-shape-' + shape, style: 'plush', ok: c.ok, passed: c.passed, made: c.made, yards: c.table.map(q => [q.fabric, q.yards, q.efficiency]) }); }
 cards.sort((a, b) => a.order - b.order);
 
 const html = proofPage({ title: 'Cut and Sew Proof', lede: `Every garment and bag in the sketch library, drafted at size ${SIZE}, checked by measurement: the two sides of every seam walked against each other (collars, stands and hoods against the neckline), the finished piece measured against its spec, every component its features call for present, and every piece laid on its cloth. No pictures are judged and no AI is used. Each strip of sizes shows the same check run from XS to XXL.`,
