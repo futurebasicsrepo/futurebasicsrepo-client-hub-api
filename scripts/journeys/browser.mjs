@@ -2470,5 +2470,48 @@ await journey('J306', "The product page reads in order at every width: the stage
   } finally { await ctx.close(); }
 });
 
+await journey('J307', "A quote is seen before it is sent: the builder's Preview and send shows the email as the client will get it (who it goes to, the subject, every line and the total) with nothing saved or sent; a note typed there appears in it; Back keeps the quote as typed; Send saves and sends it; and a saved quote's Send opens the same preview first", async () => {
+  const r = await room('307'), W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' }), adm = (path, o = {}) => call(path, { ...o, token: admin });
+  await adm(`/v1/admin/products/${r.id}/price-tiers`, { body: { minQuantity: 50, unitCostCents: 900, wholesaleCents: 2300, srpCents: 5400 } });
+  const count = () => sql(`select count(*)||':'||count(*) filter (where status='sent') from order_quotes where client_id='${r.clientId}'`), notes = () => sql(`select count(*) from notifications where client_id='${r.clientId}' and type='order-quote'`);
+  const pv = `/v1/admin/clients/${r.clientId}/order-quotes/preview`, lines = [{ productId: r.id, quantity: 60, unitCents: 2300 }];
+  // the service: the email as it would go, with nothing written
+  let x = await adm(pv, { body: { lines, extras: [{ label: 'Freight', cents: 12000 }], notes: 'Lead time 5 weeks.', message: 'Hello <b>team</b>' } });
+  ok(x.status === 200 && /^Your quote Q-\d{4}-\d{4} from Future Basics: \$1,500\.00$/.test(x.json.subject) && x.json.to.includes(r.email) && /Layer runner/.test(x.json.html) && /60 × \$23\.00/.test(x.json.html) && /Freight/.test(x.json.html) && /Lead time 5 weeks\./.test(x.json.html), '1. a quote being built is returned as the email it would be: its subject and total, who it goes to, each line, the extra line and the notes', { status: x.status, subject: x.json?.subject, to: x.json?.to });
+  ok(/Hello &lt;b&gt;team&lt;\/b&gt;/.test(x.json.html) && !/<b>team<\/b>/.test(x.json.html), '   the note opens it, as words (markup in it is not run)');
+  ok(count() === '0:0' && notes() === '0', '2. asking for it saves nothing and sends nothing', { quotes: count(), notes: notes() });
+  ok((await adm(pv, { body: {} })).status === 422 && (await adm(pv, { body: { lines: [] } })).status === 422, '   nothing to preview is said so');
+  ok([401, 403].includes((await call(pv, { token: r.token, body: { lines } })).status), '   a client cannot ask for it');
+  const other = await room('307b', { wait: false }), oa = await forge({ sub: sql(`select id from users where lower(email)='${other.email}'`), clientId: other.clientId, role: 'admin' });
+  const theirs = (await call(`/v1/admin/clients/${other.clientId}/order-quotes`, { token: oa, body: { lines: [{ productId: other.id, quantity: 5, unitCents: 1000 }] } })).json?.quote?.id;
+  ok(!!theirs && (await adm(pv, { body: { quoteId: theirs } })).status === 404, "   another room's quote is not shown under this room");
+  const { ctx, page } = await consoleAt(admin, 1280, 950);
+  try {
+    const mail = () => page.evaluate(() => document.getElementById('opFrame')?.shadowRoot?.textContent.replace(/\s+/g, ' ') || ''), ready = () => page.waitForSelector('#oqPrev[open] #opSend:not([disabled])', { timeout: 10000 });
+    await page.goto(`${W}/clients/${r.clientId}`, { waitUntil: 'networkidle' }); await page.evaluate(() => window.selectRoom('invoices')); await page.waitForSelector('#roomQuotes button:has-text("New quote")', { timeout: 15000 });
+    await page.click('#roomQuotes button:has-text("New quote")'); await page.waitForSelector('#qbDialog[open]', { timeout: 8000 });
+    await page.click(`#qbr-${r.id} input[type=checkbox]`); await page.fill('#qbNotes', 'Lead time 5 weeks from approval.');
+    ok(await page.locator('#qbDialog .qb-acts button').allTextContents().then(t => t.join('|') === 'Save draft|Preview and send'), '3. the builder offers Save draft and Preview and send: nothing sends without the preview', await page.locator('#qbDialog .qb-acts button').allTextContents());
+    await page.click('#qbDialog button:has-text("Preview and send")'); await ready();
+    const first = { to: await page.textContent('#opTo'), subject: await page.textContent('#opSubject'), title: await page.textContent('#opTitle'), mail: await mail() };
+    ok(first.to.includes(r.email) && /\$1,150\.00/.test(first.subject) && /\$1,150\.00/.test(first.title) && /Layer runner/.test(first.mail) && /50 × \$23\.00/.test(first.mail) && /Lead time 5 weeks from approval\./.test(first.mail) && /Review and accept in your hub/.test(first.mail), '4. the preview shows who it goes to, the subject, and the email itself: the product, its quantity and price, the notes and the button they press', first);
+    ok(count() === '0:0' && notes() === '0', '   and still nothing is saved or sent');
+    await page.fill('#opNote', 'Here is the drop as discussed.'); await page.waitForFunction(() => /as discussed/.test(document.getElementById('opFrame').shadowRoot.textContent), null, { timeout: 8000 }).catch(() => {});
+    ok(/Here is the drop as discussed\./.test(await mail()) && !/Here is the quote you asked for/.test(await mail()), '5. a note typed beside it appears in the email, in place of the stock opening line', (await mail()).slice(0, 200));
+    await page.click('#oqPrev button:has-text("Back to the quote")'); await sleep(200);
+    ok(await page.locator('#oqPrev[open]').count() === 0 && await page.locator('#qbDialog[open]').count() === 1 && await page.inputValue('#qbNotes') === 'Lead time 5 weeks from approval.' && count() === '0:0', '6. Back to the quote closes the preview and leaves the quote as typed, unsaved');
+    await page.click('#qbDialog button:has-text("Preview and send")'); await ready(); await page.fill('#opNote', 'Sending now.'); await page.click('#opSend');
+    await page.waitForFunction(() => /Sent/.test(document.querySelector('#roomQuotes .oq-card')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+    ok(count() === '1:1' && notes() === '1' && page.said.some(m => /^Sent/.test(m)) && await page.locator('#oqPrev[open]').count() === 0 && await page.locator('#qbDialog[open]').count() === 0, '7. Send to the client saves the quote, sends it, and closes both dialogs', { quotes: count(), notes: notes(), said: page.said });
+    const ver = sql(`select version||':'||status from order_quotes where client_id='${r.clientId}'`);
+    await page.click('#roomQuotes .oq-card button:has-text("Send again")'); await ready();
+    ok(/Layer runner/.test(await mail()) && await page.locator('#oqPrev button', { hasText: /^Close$/ }).count() === 1, "8. a saved quote's Send opens the same preview first (no pop-up asking for a note, then gone)", (await mail()).slice(0, 160));
+    await page.click('#oqPrev button:has-text("Close")'); await sleep(200);
+    ok(sql(`select version||':'||status from order_quotes where client_id='${r.clientId}'`) === ver && notes() === '1', '   and closing it sends nothing again', ver);
+    ok(page.errs.length === 0, '   no page errors', page.errs);
+  } finally { await ctx.close(); }
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);

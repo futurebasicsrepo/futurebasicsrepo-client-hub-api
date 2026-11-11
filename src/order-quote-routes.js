@@ -3,6 +3,8 @@
 //   staff   GET    /v1/admin/clients/:id/quote-builder?requestId=   the room's products (with their price tiers and sizes), what a request names, the room's quotes
 //           POST   /v1/admin/clients/:id/order-quotes             { requestId?, projectId?, title?, lines, extras?, notes?, validUntil? } → a draft
 //           PUT    /v1/admin/order-quotes/:qid                     the same body; a sent quote goes back to draft until it is sent again
+//           POST   /v1/admin/clients/:id/order-quotes/preview      { quoteId?, message?, and the quote's body when it is being edited } → the email as it would be
+//                                                                  sent and who it goes to; nothing is saved and nothing is sent
 //           POST   /v1/admin/order-quotes/:qid/send                { message? } email the client, put it in their hub, open (or update) the deal in Sales
 //           POST   /v1/admin/order-quotes/:qid/payment-link        make the Shopify draft order for an accepted quote (again, if it failed)
 //           DELETE /v1/admin/order-quotes/:qid                     a draft only
@@ -107,6 +109,30 @@ export function registerOrderQuoteRoutes(app, d) {
     if (requestId) await pool.query(`update requests set status='in-progress' where id=$1 and status='submitted'`, [requestId]).catch(() => {});
     return reply.code(201).send({ quote: staffView(row) });
   }
+  // ---- the email a quote is sent as, and who gets it: one place, so what staff are shown before sending is what the client receives ----
+  const quoteEmail = (q, message = '') => { const msg = String(message || '').trim().slice(0, 2000);
+    return { subject: `Your quote ${q.number} from Future Basics: ${usd(q.total_cents)}`, html: hubEmailShell(`Your quote ${q.number}`,
+      `<p>Hi,</p>${msg ? `<p style="white-space:pre-wrap">${emailEscape(msg)}</p>` : `<p>Here is the quote you asked for.</p>`}${linesHtml(q)}${q.valid_until ? `<p style="color:#717177">Valid until ${emailEscape(day(q.valid_until))}.</p>` : ''}${q.notes ? `<p style="white-space:pre-wrap">${emailEscape(q.notes)}</p>` : ''}<p><a href="${clientHubUrl}/#waiting" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#111;color:#fff;text-decoration:none">Review and accept in your hub</a></p><p style="font-size:12px;color:#717177">Accept it and we send the payment link straight away.</p>`) }; };
+  const quoteRecipients = async q => { const c = (await pool.query('select contact_email from clients where id=$1', [q.client_id])).rows[0];
+    const reqAuthor = q.request_id ? (await pool.query('select u.email from requests r join users u on u.id=r.user_id where r.id=$1', [q.request_id])).rows[0] : null;
+    return [...new Set([c?.contact_email, reqAuthor?.email].filter(Boolean).map(e => e.toLowerCase()))]; };
+
+  // The quote as the client would get it, before it goes: a saved quote by its id, or the one being edited by its body. Nothing is written.
+  app.post('/v1/admin/clients/:id/order-quotes/preview', { preHandler: pre }, async (req, reply) => {
+    const cid = req.params.id; if (!UUID.test(String(cid))) return bad(reply, 'Client not found', 404);
+    const b = req.body && typeof req.body === 'object' ? req.body : {}, existing = b.quoteId ? await one(b.quoteId) : null;
+    if (b.quoteId && (!existing || existing.client_id !== cid)) return bad(reply, 'Quote not found', 404);
+    let q = existing;
+    if (Array.isArray(b.lines)) {
+      const c = cleanQuote(b, await roomProducts(cid)); if (c.error) return bad(reply, c.error);
+      const requestId = UUID.test(String(b.requestId || '')) && (await pool.query('select 1 from requests where id=$1 and client_id=$2', [b.requestId, cid])).rowCount ? b.requestId : existing?.request_id || null;
+      const number = existing?.number || quoteNumber(Number((await pool.query(`select count(*)::int n from order_quotes where extract(year from created_at)=extract(year from now())`)).rows[0].n) + 1);
+      q = { id: existing?.id || null, client_id: cid, request_id: requestId, number, status: 'draft', title: String(b.title || '').trim().slice(0, 120) || existing?.title || null, lines: c.value.lines, extras: c.value.extras,
+        total_cents: c.value.totalCents, notes: c.value.notes, valid_until: c.value.validUntil, currency: existing?.currency || 'USD' };
+    }
+    if (!q) return bad(reply, 'Nothing to preview yet: pick a product first');
+    return { ...quoteEmail(q, b.message), to: await quoteRecipients(q), number: q.number, saved: Boolean(existing) && !Array.isArray(b.lines), quote: clientQuote(q) };
+  });
   app.post('/v1/admin/clients/:id/order-quotes', { preHandler: pre }, (req, reply) => saveQuote(req, reply, null));
   app.put('/v1/admin/order-quotes/:qid', { preHandler: pre }, async (req, reply) => {
     const q = await one(req.params.qid); if (!q) return bad(reply, 'Quote not found', 404);
@@ -120,12 +146,9 @@ export function registerOrderQuoteRoutes(app, d) {
   app.post('/v1/admin/order-quotes/:qid/send', { preHandler: pre }, async (req, reply) => {
     let q = await one(req.params.qid); if (!q) return bad(reply, 'Quote not found', 404); if (q.status === 'accepted') return bad(reply, 'This quote is already accepted', 409);
     q = (await pool.query(`update order_quotes set status='sent', sent_at=now(), declined_at=null, reply=null, updated_at=now() where id=$1 returning *`, [q.id])).rows[0];
-    const c = (await pool.query('select name, contact_email, contact_name from clients where id=$1', [q.client_id])).rows[0];
-    const reqAuthor = q.request_id ? (await pool.query('select u.email from requests r join users u on u.id=r.user_id where r.id=$1', [q.request_id])).rows[0] : null;
-    const to = [...new Set([c?.contact_email, reqAuthor?.email].filter(Boolean).map(e => e.toLowerCase()))], msg = String(req.body?.message || '').trim().slice(0, 2000);
+    const to = await quoteRecipients(q), mail = quoteEmail(q, req.body?.message);
     let emailed = 0;
-    for (const addr of to) { try { if (await sendHubEmail({ to: addr, subject: `Your quote ${q.number} from Future Basics: ${usd(q.total_cents)}`, html: hubEmailShell(`Your quote ${q.number}`,
-      `<p>Hi,</p>${msg ? `<p style="white-space:pre-wrap">${emailEscape(msg)}</p>` : `<p>Here is the quote you asked for.</p>`}${linesHtml(q)}${q.valid_until ? `<p style="color:#717177">Valid until ${emailEscape(day(q.valid_until))}.</p>` : ''}${q.notes ? `<p style="white-space:pre-wrap">${emailEscape(q.notes)}</p>` : ''}<p><a href="${clientHubUrl}/#waiting" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#111;color:#fff;text-decoration:none">Review and accept in your hub</a></p><p style="font-size:12px;color:#717177">Accept it and we send the payment link straight away.</p>`) })) emailed++; } catch (e) { log.warn?.({ err: e.message }, 'quote email not sent'); } }
+    for (const addr of to) { try { if (await sendHubEmail({ to: addr, ...mail })) emailed++; } catch (e) { log.warn?.({ err: e.message }, 'quote email not sent'); } }
     await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'order-quote',$2,'order-quote',$3)`, [q.client_id, `Quote ${q.number}: ${usd(q.total_cents)}`, q.id]).catch(() => {});
     const dealId = await trackDeal(q, { stage: 'proposal', kind: 'email_out', text: `Sent quote ${q.number}${q.version > 1 ? ` (version ${q.version})` : ''}: ${usd(q.total_cents)} · ${(q.lines || []).map(l => `${l.quantity} × ${l.title}`).join(', ')}`, actorId: uid(req) });
     return { quote: staffView({ ...(await one(q.id)) }), emailed, dealId };
