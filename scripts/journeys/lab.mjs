@@ -5030,6 +5030,57 @@ await journey('J299', 'Bags have patterns, and a library shoe is drafted as that
   } finally { await K(`/concepts/${made.id}`, { method: 'DELETE' }); }
 });
 
+await journey('J310', 'The supplier catalogue is something to start from: a client with the Lab opens the Sketch library\'s Catalogue, sees 1,846 products and no price, searches "tumbler", opens one in the Studio and its flat opens with no page error; a product on a library sketch, bag and shoe each opens on that; the concept remembers its product; a mug has no pattern and says so; a client without the Lab cannot browse or start', async () => {
+  const noPrice = t => !/costCents/i.test(t) && !/price/i.test(t) && !/\$\s?\d/.test(t);
+  const mk = async tag => { const email = `lab-cat-${tag}-${stamp}@selfserve.test`, st = await call('/v1/public/start', { body: { email, name: `Catalogue ${tag}`, title: 'First piece', photos: [jpeg()] } });
+    const cid = st.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+    sql(`update users set email_verified_at=now() where id='${uid}'`); return { cid, t: await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email }) }; };
+  const withLab = await mk('with'), without = await mk('without');
+  ok((await call(`/v1/admin/clients/${withLab.cid}/lab`, { token: kyleT, method: 'PATCH', body: { action: 'comp' } })).status === 200, 'the Lab is opened on one room');
+  const C = (path, o = {}) => call('/v1/lab' + path, { token: withLab.t, ...o }), N = (path, o = {}) => call('/v1/lab' + path, { token: without.t, ...o }), made = [];
+  try {
+    const all = await C('/catalog?limit=96'); ok(all.status === 200 && all.json.count === 1846 && all.json.total === 1846 && all.json.items.length === 96 && all.json.groups.reduce((a, g) => a + g.count, 0) === 1846, '1. a client with the Lab browses the catalogue: 1,846 products, a page at a time, in groups that add up', [all.status, all.json.count, all.json.items?.length]);
+    ok(all.json.items.every(i => Object.keys(i).sort().join() === 'base,brand,id,name') && noPrice(JSON.stringify(all.json)), '   each product is its id, name, brand and the base it opens on: no cost, no price, no dollar amount');
+    let priced = 0; for (let o = 96; o < 1846; o += 96) if (!noPrice(JSON.stringify((await C(`/catalog?limit=96&offset=${o}`)).json))) priced++; ok(priced === 0, '   and so is every other page of it', priced);
+    const t = await C('/catalog?q=tumbler&limit=12'); ok(t.json.total >= 30 && /tumbler/i.test(t.json.items[0].name) && t.json.items[0].base.kind === 'new' && t.json.groups.some(g => g.name === 'Drinkware'), '2. searching "tumbler" lists tumblers first, on the tumbler product type', [t.json.total, t.json.items[0]]);
+    const start = async q => { const item = (await C(`/catalog?q=${encodeURIComponent(q)}&limit=1`)).json.items[0], r = await C('/concepts/from-catalog', { body: { item: item.id } }); if (r.json.concept?.id) made.push(r.json.concept.id); return { item, r, spec: sql(`select spec::text from lab_concepts where id='${r.json.concept?.id}'`) }; };
+    const tee = await start('Gildan Heavy Cotton T-Shirt'); ok(tee.r.status === 201 && /view=front&template=tee-/.test(tee.r.json.studio) && JSON.parse(tee.spec).catalog?.id === tee.item.id && noPrice(JSON.stringify(tee.r.json)) && noPrice(tee.spec), '3. a tee opens on a library tee sketch, and its concept remembers the product (id, name, brand; no cost)', [tee.r.status, tee.r.json.studio]);
+    const bag = await start('Nike Brasilia Medium Backpack'); ok(bag.r.status === 201 && JSON.parse(bag.spec).libraryBag === 'bag-backpack' && Number(sql(`select count(*) from lab_shoe_drawings where concept_id='${bag.r.json.concept.id}'`)) >= 2, '   a backpack opens on the library backpack, its drawings in place', bag.r.json);
+    const shoe = await start('AQ Running Shoes'); ok(shoe.r.status === 201 && JSON.parse(shoe.spec).libraryShoe === 'footwear-running-daily' && JSON.parse(shoe.spec).catalog?.name === 'AQ Running Shoes', '   a running shoe opens on the library daily trainer', shoe.r.json);
+    const mug = await start('White 11oz Mug'), mid = mug.r.json.concept?.id, f = (await C(`/concepts/${mid}/flats`)).json;
+    ok(mug.r.status === 201 && f.flat?.style === 'mug' && f.flat.m.diameter === 3.25 && f.flat.placements.length === 0 && f.styles.mug.oneSize, '4. a mug opens on the mug\'s flat: its own measurements, one size, and bare (no logo put on it)', [mug.r.status, f.flat?.style, f.flat?.m]);
+    const { placements: _p, check: _c, saved: _s, updatedAt: _u, ...params } = f.flat;
+    const put = await C(`/concepts/${mid}/flats`, { method: 'PUT', body: { ...params, color: '#1f2a44', placements: [{ id: 'art', name: 'Crest', view: 'front', x: 0, y: 1.875, w: 2, h: 2, technique: 'screen print', source: 'extra' }] } });
+    ok(put.status === 200 && !put.json.check.summary.fail && /below the top edge/.test(put.json.where.art), '   a graphic placed in its print area and a new colour save, and the check has no problem', [put.status, put.json.check?.findings]);
+    const pat = await C(`/concepts/${mid}/pattern`); ok(pat.status === 200 && pat.json.kind === 'none' && /not cut and sewn, so it has no pattern and no size run/.test(pat.json.why || ''), '   and its Pattern says plainly a mug has no pattern', [pat.status, pat.json.kind, pat.json.why]);
+    ok((await N('/catalog?q=tumbler')).status === 403 && (await N('/concepts/from-catalog', { body: { item: t.json.items[0].id } })).status === 403, '5. a client without the Lab cannot browse the catalogue or start from it');
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await ctx.addInitScript(x => { try { localStorage.setItem('fb.client.token', x); localStorage.setItem('fb.helper.on', '0'); localStorage.setItem('fb.lab.welcomed', '1'); } catch {} }, withLab.t);
+      const page = await ctx.newPage(), errs = [], bodies = []; page.on('pageerror', e => errs.push(String(e)));
+      page.on('response', async r => { if (/\/v1\/lab\/(catalog|concepts\/from-catalog)/.test(r.url())) { try { bodies.push(await r.text()); } catch {} } });
+      await page.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await page.getByRole('button', { name: 'Catalogue', exact: true }).click(); await page.waitForSelector('#cgal article', { timeout: 15000 });
+      ok(/1,846 products/.test(await page.locator('#cCount').innerText()) && await page.locator('#cgal article').count() === 48, '6. on a phone the Catalogue shows "1,846 products" and a first page of 48 cards, not all of them', await page.locator('#cMsg').innerText());
+      ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, '   and the page does not scroll sideways');
+      await page.fill('#cSearch', 'tumbler'); await page.waitForFunction(() => /^\d+ products?/.test(document.querySelector('#cMsg').textContent) && !/1,846/.test(document.querySelector('#cMsg').textContent));
+      const names = await page.locator('#cgal article b').allInnerTexts(), drawn = await page.evaluate(() => [...document.querySelectorAll('#cgal article img')].slice(0, 8).every(i => i.complete && i.naturalWidth > 0));
+      ok(/tumbler/i.test(names[0]) && drawn, '7. searching "tumbler" lists tumblers, each with the drawing it opens on', names.slice(0, 3));
+      ok(!/\$\s?\d|price/i.test(await page.locator('#secCatalog').innerText()), '   no price anywhere on it');
+      await Promise.all([page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 }), page.locator('#cgal [data-open]').first().click()]); await page.waitForLoadState('networkidle');
+      const cid = new URL(page.url()).searchParams.get('concept'); if (cid) made.push(cid);
+      const textOf = async () => (await Promise.all(page.frames().map(fr => fr.evaluate(() => document.body?.innerText || '').catch(() => '')))).join('\n');
+      let txt = ''; for (let i = 0; i < 24 && !/Tumbler/.test(txt = await textOf()); i++) await page.waitForTimeout(500);
+      const flats = (await Promise.all(page.frames().map(fr => fr.evaluate(() => document.querySelectorAll('svg[data-view]').length).catch(() => 0)))).reduce((a, x) => a + x, 0);
+      ok(/Tumbler/.test(txt) && flats > 0 && !errs.length, '8. Open in the Studio: the tumbler\'s flat opens, with no page error', [page.url(), flats, errs.slice(0, 2)]);
+      ok(bodies.length >= 2 && bodies.every(noPrice), '   and no answer the page received carried a price', bodies.length);
+      const nc = await b.newContext({ viewport: { width: 390, height: 844 } }); await nc.addInitScript(x => { try { localStorage.setItem('fb.client.token', x); } catch {} }, without.t);
+      const np = await nc.newPage(); await np.goto(`${BASE}/lab/sketches?src=catalog`, { waitUntil: 'networkidle' }); await np.waitForTimeout(600);
+      ok(await np.locator('#needSignin').isVisible().catch(() => false) && !(await np.locator('#cgal article').count()), '9. a client without the Lab is shown the way in, not the catalogue');
+    } finally { await b.close(); }
+  } finally { for (const id of made) await K(`/concepts/${id}`, { method: 'DELETE' }); }
+});
+
 await journey('J295', 'Sandals, clogs, slides and mules have patterns: a sandal is straps tucked under a footbed (each strap its length over the foot, split at its buckle, lined), a thong a post and two straps, a clog a vamp on a footbed or a wooden base, a moulded slide one injection mould a size, a mule a closed toe with no back; the Pattern page chooses how each is made', async () => {
   const made = await K('/concepts/from-scratch', { body: { category: 'footwear', style: 'sandal', name: `Scratch sandal ${stamp}` } }), cid = made.json.concept?.id;
   try {

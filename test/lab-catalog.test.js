@@ -67,6 +67,9 @@ test('every one of the 1,846 products gets a base from a rule; the plain-panel f
   assert.equal(s.other, 54, 'the products on the plain panel (change this number with the rules, on purpose)');
   assert.ok(s.other / s.count < .03, `${s.other} of ${s.count} on the fallback is under 3%`);
   assert.deepEqual(s.kinds, { style: 1158, bag: 113, shoe: 30, new: 545 });
+  // the numbers docs/design-lab.md and docs/marketing/video-brief.md quote: change them there with these
+  assert.equal(s.styles.beanie + s.styles.tote, 53, 'on a style drawn from its measurements'); assert.equal(s.kinds.style - 53, 1105, 'on a library sketch'); assert.equal(s.kinds.new - s.other, 491, 'on a product type');
+  assert.equal(Object.keys(GOODS).length - 1, 70, 'product types, besides the plain panel');
 });
 
 test('every base a rule names exists: a library sketch of that style, a library bag, a library shoe or a product type', () => {
