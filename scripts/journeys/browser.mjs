@@ -2372,12 +2372,12 @@ await journey('J305', "Prices are set in one place and nothing is put on a produ
   try {
     await page.goto(`${W}/clients/${r.clientId}#product=${sticker}`, { waitUntil: 'networkidle' }); await page.evaluate(id => window.selectRoom('product', id, 'config'), sticker); await page.waitForSelector(card, { timeout: 15000 });
     await page.evaluate(() => { window.__stayed = true; });
-    ok(await page.$eval(`${card} select`, s => s.value === '' && /Choose a ladder/.test(s.selectedOptions[0].textContent)) && (await rows()).length === 0 && tiersOf(sticker) === '', '4. a product with no prices opens with no ladder chosen and nothing put on it', await page.$eval(`${card} select`, s => s.selectedOptions[0].textContent));
-    await page.selectOption(`${card} select`, lid); await page.waitForSelector(`${card} .lad-preview`, { timeout: 8000 });
+    ok(await page.$eval(`#ladderPick-${sticker}`, s => s.value === '' && /Choose a ladder/.test(s.selectedOptions[0].textContent)) && (await rows()).length === 0 && tiersOf(sticker) === '', '4. a product with no prices opens with no ladder chosen and nothing put on it', await page.$eval(`#ladderPick-${sticker}`, s => s.selectedOptions[0].textContent));
+    await page.selectOption(`#ladderPick-${sticker}`, lid); await page.waitForSelector(`${card} .lad-preview`, { timeout: 8000 });
     const preview = await page.$eval(`${card} .lad-preview`, e => e.innerText.replace(/\s+/g, ' '));
     ok(/42\+/.test(preview) && /\$110\.00/.test(preview) && /100\+/.test(preview) && tiersOf(sticker) === '', "5. choosing a ladder shows its tiers first: the product is still untouched", preview.slice(0, 160));
     await page.click(`${card} .lad-preview .pb.solid`); await page.waitForFunction(c => document.querySelectorAll(`${c} .tt:not(.mini) tr[data-tier]`).length === 2, card, { timeout: 10000 });
-    ok(tiersOf(sticker) === '42:11000,100:2400' && await page.$eval(`${card} select`, s => s.value === ''), '6. Use these tiers puts them on, and the picker goes back to nothing chosen', tiersOf(sticker));
+    ok(tiersOf(sticker) === '42:11000,100:2400' && await page.$eval(`#ladderPick-${sticker}`, s => s.value === ''), '6. Use these tiers puts them on, and the picker goes back to nothing chosen', tiersOf(sticker));
     const inSight = async () => page.$$eval(`${card} .tt:not(.mini) tr[data-tier]`, (els, c) => { const box = document.querySelector(c).getBoundingClientRect(), wrap = document.querySelector(`${c} .tt-wrap`); return els.every(tr => [...tr.querySelectorAll('.tt-acts .pb')].length >= 2 && [...tr.querySelectorAll('.tt-acts .pb')].every(b => { const q = b.getBoundingClientRect(); return q.width > 0 && q.right <= box.right + 0.5 && q.left >= box.left - 0.5; })) && wrap.scrollWidth <= wrap.clientWidth + 1; }, card);
     ok(await inSight(), "7. every tier's Edit and Remove are in sight, with nothing off the table's edge to scroll to");
     // a tier changed in place
@@ -2554,6 +2554,50 @@ await journey('J308', "A product's Commerce tab is today's flow: it shows where 
     ok(/^now: PAYMENT Invoice out \$1,150\.00/i.test(st[3]) && /D308/.test(rows) && /\$1,150\.00/.test(rows) && await page.locator('.cm-rows a[href="https://example.com/pay"]').count() === 1, '7. an invoice that names the product is listed with its amount, state and link, and the Payment step says an invoice is out', { step: st[3], rows });
     await open(other, 'commerce'); ok(await page.locator('.cm-rows').count() === 0, "   and it is not listed under a product it does not name");
     ok(page.errs.length === 0, '   no page errors', page.errs);
+  } finally { await ctx.close(); }
+});
+
+await journey('J309', "The price catalogue gives a starting cost, and the product's price stays its own: Spec & pricing offers the catalogue items closest to the product; the rest are searched by word and category; Use as our cost opens the tier form with the cost and where it came from filled in and nothing saved; a margin button works the wholesale out; the saved tier is the product's and is changed like any other; an item with no price cannot be used; a product nothing resembles is offered none", async () => {
+  const r = await room('309', { wait: false }), W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' }), adm = (path, o = {}) => call(path, { ...o, token: admin });
+  const mk = title => sql(`insert into products(client_id,project_id,title) select client_id,project_id,'${title}' from products where id='${r.id}' returning id`).split('\n')[0].trim(), tee = mk('Sensor Lineup Tee'), pen = mk('Kaweco Steel Pen');
+  const tiersOf = id => sql(`select coalesce(string_agg(min_quantity||':'||unit_cost_cents||':'||wholesale_cents, ',' order by min_quantity),'') from price_tiers where product_id='${id}'`);
+  // the service
+  let x = await adm('/v1/admin/price-catalog?q=carhartt%20jacket');
+  ok(x.status === 200 && x.json.total >= 3 && x.json.items.every(i => /carhartt/i.test(i.name) && /jacket/i.test(i.name) && Number.isInteger(i.costCents)) && x.json.catalogs[0].count === 1846, '1. the catalogue is searched by word: every word typed is in each item found, with its cost; the catalogue has its 1,846 items', { total: x.json?.total, count: x.json?.catalogs?.[0]?.count });
+  x = await adm('/v1/admin/price-catalog?category=Drinkware&limit=500'); ok(x.json.total === 103 && x.json.items.length <= 200 && x.json.items.every(i => i.category === 'Drinkware'), '   and by category; a list is capped, never the whole catalogue', { total: x.json?.total, n: x.json?.items?.length });
+  ok([401, 403].includes((await call('/v1/admin/price-catalog?q=tee', { token: r.token })).status) && (await call('/v1/admin/price-catalog?q=tee')).status === 401, '   it is for staff: a client, or nobody signed in, is refused');
+  const sheet = (await adm(`/v1/admin/products/${tee}/sheet`)).json, none = (await adm(`/v1/admin/products/${pen}/sheet`)).json;
+  ok(sheet.catalog.suggestions.length >= 3 && sheet.catalog.suggestions.every(i => i.section === 'T-Shirts' && i.costCents > 0) && none.catalog.suggestions.length === 0, "2. a tee's sheet carries T-shirts from the catalogue; a steel pen, which nothing in it resembles, carries none", { tee: sheet.catalog?.suggestions?.map(i => i.name), pen: none.catalog?.suggestions });
+  const { ctx, page } = await consoleAt(admin, 1280, 1000), card = `#priceCard-${tee}`;
+  try {
+    await page.goto(`${W}/clients/${r.clientId}#product=${tee}`, { waitUntil: 'networkidle' }); await page.evaluate(id => window.selectRoom('product', id, 'config'), tee); await page.waitForSelector(`${card} .sh-cat`, { timeout: 15000 });
+    const offered = await page.$$eval(`#catSug-${tee} .cat-row`, els => els.map(e => ({ name: e.querySelector('b').textContent, price: e.querySelector('.cat-price').textContent, use: !!e.querySelector('.pb') })));
+    ok(offered.length >= 3 && offered.every(o => /tee|t-shirt/i.test(o.name) && /^\$\d/.test(o.price) && o.use) && /1,846 items/.test(await page.innerText(`${card} .sh-cat`)), '3. the Pricing card offers the closest catalogue items, each with its cost and Use as our cost, and says which catalogue they are from', offered.slice(0, 3));
+    const first = sheet.catalog.suggestions[0];
+    await page.click(`#catSug-${tee} .cat-row .pb`); await page.waitForSelector(`${card} form.tf`, { timeout: 8000 });
+    const form = await page.$eval(`${card} form.tf`, f => ({ min: f.elements.min.value, cost: f.elements.cost.value, wholesale: f.elements.wholesale.value, notes: f.elements.notes.value, focus: document.activeElement?.name }));
+    ok(form.min === '1' && form.cost === (first.costCents / 100).toFixed(2) && form.wholesale === '' && form.notes.includes(first.name) && /OpenWav/.test(form.notes) && form.focus === 'wholesale' && tiersOf(tee) === '', '4. Use as our cost opens the new tier with one unit, the cost and where it came from filled in, the wholesale left to set, and nothing saved yet', form);
+    await page.click(`${card} .tf-chips .pb:has-text("50%")`);
+    const w = await page.$eval(`${card} form.tf`, f => f.elements.wholesale.value), live = await page.$eval(`${card} .tf-live`, e => e.textContent);
+    ok(Number(w) === Math.ceil(first.costCents * 2) / 100 && /our margin 50%/.test(live), '5. a margin button works the wholesale out from the cost, and the form shows the margin it gives', { w, live });
+    await page.fill(`${card} form.tf [name=wholesale]`, '24'); await page.click(`${card} form.tf button[type=submit]`); await page.waitForFunction(c => !document.querySelector(`${c} form.tf`) && document.querySelectorAll(`${c} tr[data-tier]`).length === 1, card, { timeout: 10000 });
+    ok(tiersOf(tee) === `1:${first.costCents}:2400` && (await page.innerText(card)).includes(first.name), "6. changed before it is saved (wholesale $24), the tier is the product's own, with its note saying which catalogue item the cost came from", tiersOf(tee));
+    await page.click(`${card} tr[data-tier="1"] .pb:has-text("Edit")`); await page.fill(`${card} form.tf [name=cost]`, '9.50'); await page.click(`${card} form.tf button[type=submit]`); await page.waitForFunction(c => !document.querySelector(`${c} form.tf`), card, { timeout: 10000 });
+    ok(tiersOf(tee) === '1:950:2400' && (await adm('/v1/admin/price-catalog?q=' + encodeURIComponent(first.name))).json.items.find(i => i.id === first.id)?.costCents === first.costCents, "7. and it is changed like any other tier afterwards; the catalogue's own price is untouched", tiersOf(tee));
+    // search, and an item with no price
+    await page.fill(`#catQ-${tee}`, 'carhartt jacket'); await page.waitForSelector(`#catRes-${tee} .cat-row`, { timeout: 8000 });
+    const found = await page.$$eval(`#catRes-${tee} .cat-row b`, els => els.map(e => e.textContent));
+    ok(found.length >= 3 && found.every(n => /carhartt/i.test(n) && /jacket/i.test(n)), '8. the search box finds catalogue items by word', found);
+    await page.fill(`#catQ-${tee}`, 'karst notebook'); await page.waitForFunction(id => /karst/i.test(document.querySelector(`#catRes-${id} .cat-row b`)?.textContent || ''), tee, { timeout: 8000 });
+    const unpriced = await page.$$eval(`#catRes-${tee} .cat-row`, els => els.filter(e => e.querySelector('.cat-price.none')).map(e => ({ says: e.querySelector('.cat-price').textContent, use: !!e.querySelector('.pb') })));
+    ok(unpriced.length >= 1 && unpriced.every(u => /no price yet|by quote/.test(u.says) && !u.use), '9. an item the catalogue has not priced says so and cannot be used as a cost', unpriced);
+    await page.fill(`#catQ-${tee}`, ''); await page.selectOption(`#catC-${tee}`, 'Pets'); await page.waitForFunction(id => /27 found/i.test(document.querySelector(`#catRes-${id}`)?.innerText || ''), tee, { timeout: 8000 }).catch(() => {});
+    ok(/27 found/i.test(await page.innerText(`#catRes-${tee}`)), '10. a category lists what is in it (Pets: 27)', (await page.innerText(`#catRes-${tee}`)).slice(0, 80));
+    // the pen: nothing offered, and it says so
+    await page.goto(`${W}/clients/${r.clientId}#product=${pen}`, { waitUntil: 'networkidle' }); await page.evaluate(id => window.selectRoom('product', id, 'config'), pen); await page.waitForSelector(`#priceCard-${pen} .sh-cat`, { timeout: 15000 });
+    ok(await page.locator(`#priceCard-${pen} #catSug-${pen} .cat-row`).count() === 0 && /Nothing in the catalogue is close to/.test(await page.innerText(`#catSug-${pen}`)), '11. a product nothing in the catalogue resembles is offered none, and is told to search');
+    ok(page.errs.length === 0, '    no page errors', page.errs);
   } finally { await ctx.close(); }
 });
 
