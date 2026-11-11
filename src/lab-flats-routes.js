@@ -26,7 +26,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { maskFor } from './lab-flat-mask.js';
 import { logoSvg } from './brand-kit.js';
-import { cleanRules } from './lab-library.js';
+import { cleanRules, cleanSurfaces, SURFACE_FIRST } from './lab-library.js';
 import { jobFile } from './lab-jobfile.js';
 import { traceVector } from './lab-vector.js';
 import { shoeSvg, withArt, SHOE_VIEWS, BAG_VIEWS } from './lab-shoe-draw.js';
@@ -134,8 +134,15 @@ export function registerLabFlatsRoutes(app, d) {
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const concept = async id => (UUID.test(String(id)) ? (await pool.query('select c.id, c.name, c.category, c.status, c.spec, c.twist, c.product_id, c.price_cents, c.cost_cents, c.qty, c.updated_at, c.client_id, p.name plan_name, (select name from clients where id=c.client_id) brand from lab_concepts c left join lab_plans p on p.id=c.plan_id where c.id=$1', [id])).rows[0] : null);
   // the techniques a piece may be made with: a Future Basics piece, all of ours; a client's piece, its room's own plus the built-in starter set
-  const techniques = async (cid = null) => (await pool.query('select id, key, kind, name, base, finish, rules from lab_techniques where not archived and ((client_id is null and ($1::uuid is null or builtin)) or client_id=$1) order by builtin desc, name', [UUID.test(String(cid || '')) ? cid : null])).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) }));
-  const techFor = (list, q) => list.find(t => t.id === q.techniqueId) || list.find(t => t.key === PREFERRED[q.technique]) || list.find(t => t.base === q.technique) || list.find(t => t.key === 'plastisol') || { name: q.technique || 'screen print', base: q.technique || 'screen print', rules: cleanRules({}, q.technique) };
+  // (each with what it is made on: cloth where it says nothing; a piece offers the ones made on its own surface, src/lab-flats.js techniqueFits)
+  const techniques = async (cid = null) => (await pool.query('select id, key, kind, name, base, finish, rules, surfaces from lab_techniques where not archived and ((client_id is null and ($1::uuid is null or builtin)) or client_id=$1) order by builtin desc, name', [UUID.test(String(cid || '')) ? cid : null])).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base), surfaces: cleanSurfaces(t.surfaces) || ['cloth'] }));
+  // the technique a placement is made with: the one it names; else, of those made on this piece (style), the usual one for the words it carries
+  // ("embroidery", "screen print"), then the one a graphic on that surface starts with (a mug: sublimation, not a garment's screen print)
+  const techFor = (list, q, style = null) => { const named = list.find(t => t.id === q.techniqueId); if (named) return named;
+    const fit = style && STYLES[style] ? list.filter(t => techniqueFits(t, style)) : list;
+    return fit.find(t => t.key === PREFERRED[q.technique]) || fit.find(t => t.base === q.technique) || (style ? fit.find(t => t.key === SURFACE_FIRST[surfaceOf(style)]) : null) || fit.find(t => t.key === 'plastisol') || (style && surfaceOf(style) !== 'cloth' ? fit[0] : null) || { name: q.technique || 'screen print', base: q.technique || 'screen print', rules: cleanRules({}, q.technique) }; };
+  // the technique a new graphic starts with on each surface, for the page (it places graphics before anything is saved)
+  const firstTechniques = list => Object.fromEntries(Object.entries(SURFACE_FIRST).map(([s, key]) => [s, list.find(t => t.key === key)?.id]).filter(x => x[1]));
   const marks = new Map();
   // a brand mark as a picture, in the colours its placement chose (the lines and lettering, and the cue dot), or in the brand's own
   const markPng = async (mark, colour = '', dot = '') => { const k = `${mark}|${colour}|${dot}`; if (!marks.has(k)) marks.set(k, await sharp(Buffer.from(logoSvg(mark, { ...(colour ? { fill: colour } : {}), ...(dot ? { dot } : {}) }))).resize({ width: 1200 }).png().toBuffer()); return marks.get(k); };
@@ -229,11 +236,11 @@ export function registerLabFlatsRoutes(app, d) {
     // its drawings and what it is built with; no AI
     const ds = c.spec?.drawnStart; if (ds?.front && ds.style === params.style) params = { ...fitToTemplate({ ...params, template: ds.template }), drawn: { template: ds.template, front: ds.front, ...(ds.back ? { back: ds.back } : {}) }, options: { ...(params.options || {}), construction: { ...(ds.construction || {}), ...(params.options?.construction || {}) } } };
     const logo = spec.branding?.logo || {};
-    if (logo.mark && logo.mark !== 'none') { const mark = logo.mark === 'cue' ? 'mark' : logo.mark, base = LOGO_BASE[logo.technique] || 'embroidery', aspect = await aspectOf({ mark }); const t = techFor(list, { technique: base });
+    if (logo.mark && logo.mark !== 'none') { const mark = logo.mark === 'cue' ? 'mark' : logo.mark, base = LOGO_BASE[logo.technique] || 'embroidery', aspect = await aspectOf({ mark }); const t = techFor(list, { technique: base }, params.style);
       placements.push({ id: 'logo', name: 'Future Basics logo', source: 'logo', mark, technique: base, techniqueId: t.id, ...defaultPlacement('logo', params, { aspect, label: logo.placement || '' }) }); }
     // the branding pass keeps a graphic's words; what the studio measured (its layer and size) is read from the concept as saved
     const raw = Array.isArray(c.spec?.graphics) ? c.spec.graphics : [];
-    for (const [i, g0] of (spec.graphics || []).entries()) { if (!g0.art) continue; const r0 = raw.find(x => x.art === g0.art && x.studioLayer) || {}, g = { ...g0, ...(r0.studioLayer ? { placement: r0.placement || g0.placement } : {}), studioLayer: r0.studioLayer, widthIn: r0.widthIn, heightIn: r0.heightIn }; const aspect = await aspectOf({ art: g.art }), t = techFor(list, { techniqueId: g.finish?.id, technique: g.technique });
+    for (const [i, g0] of (spec.graphics || []).entries()) { if (!g0.art) continue; const r0 = raw.find(x => x.art === g0.art && x.studioLayer) || {}, g = { ...g0, ...(r0.studioLayer ? { placement: r0.placement || g0.placement } : {}), studioLayer: r0.studioLayer, widthIn: r0.widthIn, heightIn: r0.heightIn }; const aspect = await aspectOf({ art: g.art }), t = techFor(list, { techniqueId: g.finish?.id, technique: g.technique }, params.style);
       placements.push({ id: g.studioLayer ? 's-' + g.studioLayer : 'g' + i, name: g.name || `Graphic ${i + 1}`, source: g.studioLayer ? 'studio' : 'graphic', ...(g.studioLayer ? { layer: g.studioLayer } : {}), art: g.art, technique: t.base, techniqueId: t.id, ...sized(defaultPlacement('graphic', params, { aspect, label: g.placement || '' }), g, params) }); }
     // a logo that would sit on a graphic goes to the back neck instead
     const lg = placements.find(q => q.source === 'logo');
@@ -244,7 +251,7 @@ export function registerLabFlatsRoutes(app, d) {
   async function check(params, placements, cid = null) {
     const list = await techniques(cid), findings = {}, over = overlapChecks(placements); let fail = 0, warn = 0;
     for (const q of placements) {
-      const t = techFor(list, q), rules = { ...t.rules, techniqueName: t.name }, f = [...placementChecks(q, params, rules), ...(over[q.id] || [])];
+      const t = techFor(list, q, params.style), rules = { ...t.rules, techniqueName: t.name, ...(t.id ? { madeOn: t.surfaces } : {}) }, f = [...placementChecks(q, params, rules), ...(over[q.id] || [])];
       try { const b = await pngOf(q); if (b) f.push(...artFindings(q, await artInfo(b, q.w, q.h, rules), rules, t)); } catch (e) { log.warn?.({ err: e.message }, 'flats artwork check failed'); }
       findings[q.id] = f; fail += f.filter(x => x.level === 'fail').length; warn += f.filter(x => x.level === 'warn').length;
     }
@@ -277,7 +284,7 @@ export function registerLabFlatsRoutes(app, d) {
   async function decorationsOf(c, params, placements) {
     const list = await techniques(c.client_id), out = [], cal = await calibrations();
     for (const q of placements) {
-      const t = techFor(list, q), cols = await coloursOf(q); let coverage = .6;
+      const t = techFor(list, q, params.style), cols = await coloursOf(q); let coverage = .6;
       try { const b = await pngOf(q); if (b) coverage = (await artInfo(b, q.w, q.h, t.rules)).coverage || .6; } catch { /* the usual coverage */ }
       const cost = decorationCost({ base: t.base, rules: t.rules, widthIn: q.w, heightIn: q.h, colours: Math.max(1, cols.length), coverage, qty: c.qty || 300, calibration: calFor(cal, t) });
       out.push({ id: q.id, ...decorationLine({ name: q.name, technique: t.name, base: t.base, widthIn: q.w, heightIn: q.h, colours: Math.max(1, cols.length), pantones: cols.map(x => x.pantone || x.hex), cost, view: q.view, placement: describe(q, params) }),
@@ -306,13 +313,13 @@ export function registerLabFlatsRoutes(app, d) {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
     const r = (await pool.query('select style, params, placements, check_result, checked_at, updated_at from lab_flats where concept_id=$1', [c.id])).rows[0];
     if (r) r.placements = upgradePlacements(r.params, r.placements); // a graphic saved on a cup's other side before its wrap: on the back beside the front
-    const list = (await techniques(c.client_id)).map(t => ({ id: t.id, name: t.name, kind: t.kind, base: t.base, rules: t.rules }));
+    const all = await techniques(c.client_id), list = all.map(t => ({ id: t.id, name: t.name, kind: t.kind, base: t.base, rules: t.rules, surfaces: t.surfaces }));
     // a saved flat that does not match its picture (another garment, another sketch, or a cloth colour far from the picture's) says so, and
     // offers to redraw it from the picture
-    if (r) return shape(c, { ...r.params, placements: r.placements, check: r.check_result, saved: true, updatedAt: r.updated_at }, { techniques: list, picture: await mismatch(c, r.params) });
+    if (r) return shape(c, { ...r.params, placements: r.placements, check: r.check_result, saved: true, updatedAt: r.updated_at }, { techniques: list, firstTechnique: firstTechniques(all), picture: await mismatch(c, r.params) });
     const init = await initial(c);
-    if (!init) return shape(c, null, { techniques: list, unsupported: looksLikeFootwear(c) && c.category !== 'footwear' ? `This piece reads as footwear, but it sits in a ${c.category} line, so it is not drawn as ${c.category}. A shoe is drawn in panels when it sits in a footwear line: move it there, or change the concept's words.` : `Flats are not drawn for ${c.category} yet. They cover tops, hoodies, sweatshirts, jackets, pants, shorts, caps, beanies and totes.` });
-    return shape(c, { ...init, check: await check(init, init.placements, c.client_id), saved: false }, { techniques: list, picture: await mismatch(c, init) });
+    if (!init) return shape(c, null, { techniques: list, firstTechnique: firstTechniques(all), unsupported: looksLikeFootwear(c) && c.category !== 'footwear' ? `This piece reads as footwear, but it sits in a ${c.category} line, so it is not drawn as ${c.category}. A shoe is drawn in panels when it sits in a footwear line: move it there, or change the concept's words.` : `Flats are not drawn for ${c.category} yet. They cover tops, hoodies, sweatshirts, jackets, pants, shorts, caps, beanies and totes.` });
+    return shape(c, { ...init, check: await check(init, init.placements, c.client_id), saved: false }, { techniques: list, firstTechnique: firstTechniques(all), picture: await mismatch(c, init) });
   });
   // the flat drawn again from the picture (not saved): the garment, fit and colour the picture shows; the graphics come along, the ones added
   // on the flats alone included
@@ -609,7 +616,7 @@ export function registerLabFlatsRoutes(app, d) {
     let body = svgs.map((s, i) => s.replace('<svg ', `<svg x="${60 + i * colW}" y="120" width="${colW - 20}" height="520" preserveAspectRatio="xMidYMid meet" `)).join('');
     y = 680; body += T(60, y, 20, 'Placements', { w: 600 }); y += 12;
     const lv = q => (ck.findings[q.id] || []).some(f => f.level === 'fail') ? ['Cannot be made as drawn', '#a02a20'] : (ck.findings[q.id] || []).some(f => f.level === 'warn') ? ['Check', '#8a5a00'] : ['Ready', '#17603a'];
-    pl.forEach((q, i) => { const t = techFor(list, q); y += 30; body += T(60, y, 14, `${i + 1}. ${q.name}`, { w: 600 }) + T(360, y, 14, `${t.name} · ${fmtCm(q.w)} × ${fmtCm(q.h)}`) + T(1640, y, 13, lv(q)[0], { a: 'end', c: lv(q)[1], w: 600 }); y += 20; body += T(76, y, 13, `${sideOf(q, p)}: ${describe(q, p)}`, { c: '#45454c' });
+    pl.forEach((q, i) => { const t = techFor(list, q, p.style); y += 30; body += T(60, y, 14, `${i + 1}. ${q.name}`, { w: 600 }) + T(360, y, 14, `${t.name} · ${fmtCm(q.w)} × ${fmtCm(q.h)}`) + T(1640, y, 13, lv(q)[0], { a: 'end', c: lv(q)[1], w: 600 }); y += 20; body += T(76, y, 13, `${sideOf(q, p)}: ${describe(q, p)}`, { c: '#45454c' });
       if (q.grade) { y += 18; body += T(76, y, 13, `Artwork by size: ${gradeWords(q)}`, { c: '#45454c' }); } });
     if (p.allover) { y += 30; body += T(60, y, 14, `All over: ${p.allover.name}`, { w: 600 }) + T(360, y, 14, `${p.allover.base} · a ${p.allover.type} repeat of ${fmt(p.allover.w)} × ${fmt(p.allover.h)}`); }
     if (!pl.length) { y += 30; body += T(60, y, 14, 'Nothing placed on this piece.', { c: '#727278' }); }
@@ -642,12 +649,12 @@ export function registerLabFlatsRoutes(app, d) {
     const room = (y, need) => { if (y + need <= b.bodyBottom) return y; doc.addPage(); return b.bodyTop; };
     for (const [i, q] of s.pl.entries()) {
       if (i) doc.addPage();
-      const t = techFor(list, q), n = notes.get(t.id) || {}, dd = decos.find(x => x.id === q.id), y0 = b.bodyTop;
+      const t = techFor(list, q, s.p.style), n = notes.get(t.id) || {}, dd = decos.find(x => x.id === q.id), y0 = b.bodyTop;
       doc.fillColor(DIM).font('MONO').fontSize(8.5).text(safe(`${String(i + 1).padStart(2, '0')} / ${String(s.pl.length).padStart(2, '0')}  ·  ${sideOf(q, s.p).toUpperCase()}`), L, y0, { characterSpacing: 1 });
       doc.fillColor(INK).font('SG-B').fontSize(20).text(safe(q.name), L, doc.y + 4, { width: CW });
       doc.fillColor(DIM).font('SG').fontSize(10.5).text(safe(`${c.name} · made as ${t.name}`), L, doc.y + 2, { width: CW });
       let y = doc.y + 12; const col = CW / 4;
-      fact(b, 'Width', fmtCm(q.w), L, y, col); fact(b, 'Height', fmtCm(q.h), L + col, y, col); fact(b, 'Colours', String(dd?.colours ?? '—'), L + col * 2, y, col); (factory ? fact(b, 'Side', sideOf(q, s.p), L + col * 3, y, col) : fact(b, 'Cost per piece', dd ? `$${(dd.perPieceCents / 100).toFixed(2)}` : '—', L + col * 3, y, col)); y += 46;
+      fact(b, 'Width', fmtCm(q.w), L, y, col); fact(b, 'Height', fmtCm(q.h), L + col, y, col); fact(b, 'Colours', String(dd?.colours ?? '—'), L + col * 2, y, col); (factory ? fact(b, 'Side', sideOf(q, s.p), L + col * 3, y, col) : fact(b, 'Cost per piece', dd?.unpriced ? 'No estimate yet' : dd ? `$${(dd.perPieceCents / 100).toFixed(2)}` : '—', L + col * 3, y, col)); y += 46;
       // the artwork, and the flat with the placement on it
       const art = s.hrefs[q.id] ? Buffer.from(s.hrefs[q.id].split(',')[1], 'base64') : null, bw = CW * .48, bh = 140; // low enough that a placement with several threads and a check still fits its one page
       doc.rect(L, y, bw, bh).fill('#f3f2ee'); if (art) { try { doc.image(art, L + 10, y + 10, { fit: [bw - 20, bh - 20], align: 'center', valign: 'center' }); } catch { /* left blank */ } } doc.rect(L, y, bw, bh).lineWidth(.6).strokeColor(LINE).stroke();
@@ -673,7 +680,7 @@ export function registerLabFlatsRoutes(app, d) {
       doc.fillColor(DIM).font('MONO').fontSize(8.5).text('ALL OVER', L, y0, { characterSpacing: 1 }); doc.fillColor(INK).font('SG-B').fontSize(20).text(safe(ao.name), L, doc.y + 4, { width: CW });
       doc.fillColor(DIM).font('SG').fontSize(10.5).text(safe(`${c.name} · ${ao.base}, a ${ao.type} repeat`), L, doc.y + 2, { width: CW });
       let y = doc.y + 12; const col = CW / 4;
-      fact(b, 'Repeat width', fmtCm(ao.w), L, y, col); fact(b, 'Repeat height', fmtCm(ao.h), L + col, y, col); fact(b, 'Colours', String(cols.length || '—'), L + col * 2, y, col); (factory ? fact(b, 'Side', 'All over', L + col * 3, y, col) : fact(b, 'Cost per piece', dd ? `$${(dd.perPieceCents / 100).toFixed(2)}` : '—', L + col * 3, y, col)); y += 46;
+      fact(b, 'Repeat width', fmtCm(ao.w), L, y, col); fact(b, 'Repeat height', fmtCm(ao.h), L + col, y, col); fact(b, 'Colours', String(cols.length || '—'), L + col * 2, y, col); (factory ? fact(b, 'Side', 'All over', L + col * 3, y, col) : fact(b, 'Cost per piece', dd?.unpriced ? 'No estimate yet' : dd ? `$${(dd.perPieceCents / 100).toFixed(2)}` : '—', L + col * 3, y, col)); y += 46;
       const bw = CW * .48, bh = 220, tile = s.alloverHref ? Buffer.from(s.alloverHref.split(',')[1], 'base64') : null;
       doc.rect(L, y, bw, bh).fill('#f3f2ee'); if (tile) { try { const t3 = await sharp({ create: { width: 900, height: 900, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: await sharp(tile).resize(300, 300, { fit: 'fill' }).png().toBuffer(), tile: true, left: 0, top: 0 }]).png().toBuffer(); doc.image(t3, L + 10, y + 10, { fit: [bw - 20, bh - 20], align: 'center', valign: 'center' }); } catch { /* left blank */ } }
       doc.rect(L, y, bw, bh).lineWidth(.6).strokeColor(LINE).stroke();
@@ -728,7 +735,7 @@ export function registerLabFlatsRoutes(app, d) {
     const S = STYLES[p.style], tpl = templateOf(p), edits = p.edits || [];
     const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: washShrink(p) ? `From the flats; finished, after the wash (allow ${washShrink(p)}% shrinkage)` : 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
     const construction = [{ area: 'Drawing', detail: `${FITS[p.fit] || p.fit} fit ${S.label.toLowerCase()}, drawn from the ${tpl ? `"${tpl.label}" flat sketch` : 'measurements'}; sample size M.` },
-      ...pl.map(q => ({ area: `${sideOf(q, p)} · ${q.name}`, detail: `${techFor(list, q).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.${q.grade ? ` Artwork by size: ${gradeWords(q)}.` : ''}` })),
+      ...pl.map(q => ({ area: `${sideOf(q, p)} · ${q.name}`, detail: `${techFor(list, q, p.style).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.${q.grade ? ` Artwork by size: ${gradeWords(q)}.` : ''}` })),
       ...pl.filter(q => q.inks).map(q => ({ area: `Inks by colourway · ${q.name}`, detail: Object.entries(q.inks).map(([cw, m]) => `on ${(cleanColourways(c.spec?.colourways).find(x => x.hex === cw)?.name) || cw}: ${Object.entries(m).filter(([a, b2]) => a !== b2).map(([a, b2]) => `${pantoneOf(a)} changed to ${pantoneOf(b2)}`).join(', ') || 'as drawn'}`).join('; ') })),
       ...(p.crop ? [{ area: 'Cropped body', detail: `Cropped ${fmtCm(p.crop)} shorter than the sketch's body, taken out above the hem band so the band and hem finish stay as drawn; the sleeves keep their length. Body length (sample M) ${fmtCm(p.m.length)}.` }] : []),
       ...(necklineWords(p) ? [{ area: 'Neckline', detail: necklineWords(p) }] : []),
@@ -737,7 +744,7 @@ export function registerLabFlatsRoutes(app, d) {
       ...edits.map(e => ({ area: e.type === 'stitch' ? 'Stitching' : e.type === 'block' ? 'Colour block' : e.type === 'ai' ? 'Redrawn area' : e.type === 'part' ? (e.name || 'Add-on part') : (DETAILS[e.kind] || 'Detail'), detail: describeEdit(e, p) }))];
     const threads = new Map(); for (const e of edits) if (e.thread) threads.set(e.thread, [...(threads.get(e.thread) || []), e.type === 'stitch' ? 'stitch line' : (DETAILS[e.kind] || 'detail').toLowerCase()]);
     const decos = await decorationsOf(c, p, pl).catch(() => []), decoOf = q => decos.find(x => x.id === q.id);
-    const bom = [...pl.map(q => { const dd = decoOf(q); return { component: `Decoration · ${q.name}`, material: techFor(list, q).name, spec: dd ? `${q.grade ? gradeWords(q) : `${fmtCm(q.w)} × ${fmtCm(q.h)}`}, ${dd.colours} colour${dd.colours === 1 ? '' : 's'}${dd.basis ? `; ${dd.basis}` : ''}`.slice(0, 200) : '', color: dd ? dd.pantones.join(', ').slice(0, 120) : '', placement: describe(q, p).slice(0, 160), qty: '1', unit: 'pc', ...(dd ? { cost: (dd.perPieceCents / 100).toFixed(2) } : {}) }; }),
+    const bom = [...pl.map(q => { const dd = decoOf(q); return { component: `Decoration · ${q.name}`, material: techFor(list, q, p.style).name, spec: dd ? `${q.grade ? gradeWords(q) : `${fmtCm(q.w)} × ${fmtCm(q.h)}`}, ${dd.colours} colour${dd.colours === 1 ? '' : 's'}${dd.basis ? `; ${dd.basis}` : ''}`.slice(0, 200) : '', color: dd ? dd.pantones.join(', ').slice(0, 120) : '', placement: describe(q, p).slice(0, 160), qty: '1', unit: 'pc', ...(dd && !dd.unpriced ? { cost: (dd.perPieceCents / 100).toFixed(2) } : {}) }; }),
       ...decos.filter(d2 => d2.allover).map(d2 => ({ component: `All-over print · ${d2.name}`, material: d2.technique, spec: `${d2.placement}; ${d2.colours} colour${d2.colours === 1 ? '' : 's'}${d2.basis ? `; ${d2.basis}` : ''}`.slice(0, 200), color: d2.pantones.join(', ').slice(0, 120), placement: 'All panels', qty: '1', unit: 'pc', cost: (d2.perPieceCents / 100).toFixed(2) })),
       ...[...threads].map(([hex, where]) => ({ component: 'Contrast thread', material: 'Polyester sewing thread', color: hex, placement: [...new Set(where)].join(', ').slice(0, 160), qty: '1', unit: 'cone' })),
       ...edits.filter(e => e.type === 'block').map(e => ({ component: `Colour block · ${e.name || 'panel'}`, material: 'Self fabric', color: e.color, placement: viewLabel(p.style, e.view).toLowerCase() }))];
@@ -839,7 +846,7 @@ export function registerLabFlatsRoutes(app, d) {
       // a layer put on the picture from the flats (fromFlat) takes that placement over: same spot, from then on one record drawn on both
       const params = r.params, old = upgradePlacements(r.params, r.placements), claimed = new Set(graphics.map(g => g.fromFlat).filter(Boolean)), keep = old.filter(q => q.source !== 'studio' && !claimed.has(q.id)), studio = [];
       for (const g of graphics) {
-        const prev = old.find(q => q.source === 'studio' && q.layer === g.studioLayer) || (g.fromFlat ? old.find(q => q.id === g.fromFlat && q.source !== 'studio') : null), t = techFor(list, { techniqueId: g.finish?.id, technique: g.technique });
+        const prev = old.find(q => q.source === 'studio' && q.layer === g.studioLayer) || (g.fromFlat ? old.find(q => q.id === g.fromFlat && q.source !== 'studio') : null), t = techFor(list, { techniqueId: g.finish?.id, technique: g.technique }, params.style);
         const base = prev ? { view: prev.view, x: prev.x, y: prev.y - prev.h / 2 + g.heightIn / 2, w: g.widthIn, h: g.heightIn } : sized(defaultPlacement('graphic', params, { aspect: g.widthIn / g.heightIn, label: g.placement }), g, params);
         // a brand mark stays one (its colours too), so the flats keep offering its colour; anything else is the studio's picture
         studio.push({ ...(prev || {}), mark: g.brand?.mark, colour: g.brand?.colour, dot: g.brand?.dot, added: undefined, id: 's-' + g.studioLayer, name: g.name, source: 'studio', layer: g.studioLayer, art: g.art, technique: t.base, techniqueId: t.id, ...base });
@@ -890,7 +897,7 @@ export function registerLabFlatsRoutes(app, d) {
     const slug = v => String(v || 'graphic').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'graphic';
     for (const [i, q] of s.pl.entries()) {
       const png = await pngOf(q), dir = `decorations/${String(i + 1).padStart(2, '0')}-${slug(q.name)}`; if (!png) { notes.push(`${q.name}: no artwork file to make it from`); continue; }
-      const t0 = techFor(list, q), x = extra.get(t0.id) || {}, t = { ...t0, kind: t0.kind || (/embroid/i.test(t0.base || '') ? 'embroidery' : 'print'), factoryNote: x.factory_note || '', artGuide: x.art_guide || '' };
+      const t0 = techFor(list, q, s.p.style), x = extra.get(t0.id) || {}, t = { ...t0, kind: t0.kind || (/embroid/i.test(t0.base || '') ? 'embroidery' : 'print'), factoryNote: x.factory_note || '', artGuide: x.art_guide || '' };
       try {
         const r = await jobFile(png, { name: q.name, technique: t, widthIn: Number(q.w) || 4, garmentColour: /^#[0-9a-f]{6}$/i.test(String(s.p.color || '')) ? s.p.color : '' });
         for (const f of r.files) out.push({ name: `${dir}/${f.name}`, data: f.data });
@@ -903,7 +910,7 @@ export function registerLabFlatsRoutes(app, d) {
       if (g.art && placed.has(g.art)) continue;
       const png = g.art ? (await pool.query('select png from lab_art where id=$1', [g.art])).rows[0]?.png : g.svg ? await sharp(Buffer.from(g.svg), { density: 300 }).resize({ width: 3000, withoutEnlargement: true }).png().toBuffer().catch(() => null) : null;
       if (!png) continue;
-      const t0 = techFor(list, { technique: g.technique }), x = extra.get(t0.id) || {}, t = { ...t0, kind: t0.kind || (/embroid/i.test(t0.base || '') ? 'embroidery' : 'print'), factoryNote: x.factory_note || '', artGuide: x.art_guide || '' }, dir = `decorations/not-placed-${String(i + 1).padStart(2, '0')}-${slug(g.name)}`;
+      const t0 = techFor(list, { technique: g.technique }, s.p.style), x = extra.get(t0.id) || {}, t = { ...t0, kind: t0.kind || (/embroid/i.test(t0.base || '') ? 'embroidery' : 'print'), factoryNote: x.factory_note || '', artGuide: x.art_guide || '' }, dir = `decorations/not-placed-${String(i + 1).padStart(2, '0')}-${slug(g.name)}`;
       try { const r = await jobFile(png, { name: g.name, technique: t, widthIn: 10, garmentColour: /^#[0-9a-f]{6}$/i.test(String(s.p.color || '')) ? s.p.color : '' }); for (const f of r.files) out.push({ name: `${dir}/${f.name}`, data: f.data }); notes.push(`${g.name}: not placed on the flats yet, so its files are made at 10 in wide; the size on the garment comes with the next version`); }
       catch (e) { notes.push(`${g.name}: the job file could not be made (${String(e.message).slice(0, 120)})`); }
     }
@@ -941,9 +948,9 @@ export function registerLabFlatsRoutes(app, d) {
       const b = await pngOf(q).catch(() => null); if (!b) continue;
       const art = await sharp(b).ensureAlpha().resize({ width: 640, height: 640, fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).extend({ top: 64, bottom: 64, left: 64, right: 64, background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer().then(x => sharp(x).flatten({ background: ground }).png().toBuffer()).catch(() => null); if (!art) continue; // sharp flattens before it resizes, so the ground goes on after
       const where = sideOf(q, s.p).toLowerCase(), view = where === 'back' ? 'back' : 'front'; // a graphic on a cup's wrap goes with the front picture; its words say the wrap
-      out.graphics.push({ view, name: String(q.name || 'Graphic').slice(0, 80), art, words: `${q.name || 'Graphic'}: ${techFor(list, q).name}, ${fmt(q.w)} wide × ${fmt(q.h)} tall, on the ${where}, ${describe(q, s.p)}` });
+      out.graphics.push({ view, name: String(q.name || 'Graphic').slice(0, 80), art, words: `${q.name || 'Graphic'}: ${techFor(list, q, s.p.style).name}, ${fmt(q.w)} wide × ${fmt(q.h)} tall, on the ${where}, ${describe(q, s.p)}` });
       // the art itself (on clear), for placing it on a turn by hand
-      (out.placed = out.placed || []).push({ id: q.id, view, name: String(q.name || 'Graphic').slice(0, 80), technique: techFor(list, q).name, png: b, aspect: q.w && q.h ? q.w / q.h : 1 });
+      (out.placed = out.placed || []).push({ id: q.id, view, name: String(q.name || 'Graphic').slice(0, 80), technique: techFor(list, q, s.p.style).name, png: b, aspect: q.w && q.h ? q.w / q.h : 1 });
     }
     // the parts in their own colour (a belt loop, a pocket, a yoke coloured on the Garment tab): named, with their colour and side, so every turn
     // that faces them keeps them in that colour

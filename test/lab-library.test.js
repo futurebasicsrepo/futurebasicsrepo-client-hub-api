@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BUILTIN_TECHNIQUES, TECHNIQUE_KINDS, EFFECTS, cleanFinish, cleanTechnique, realPrompt } from '../src/lab-library.js';
+import { BUILTIN_TECHNIQUES, TECHNIQUE_KINDS, TECHNIQUE_BASES, PRODUCT_TECHNIQUES, EFFECTS, cleanFinish, cleanTechnique, realPrompt } from '../src/lab-library.js';
 import { GRAPHIC_TECHNIQUES, cleanGraphics } from '../src/lab-concepts.js';
 
 test('the starting techniques cover every kind, and each is complete', () => {
   for (const k of TECHNIQUE_KINDS) assert.ok(BUILTIN_TECHNIQUES.some(t => t.kind === k.id), k.id);
   assert.equal(new Set(BUILTIN_TECHNIQUES.map(t => t.key)).size, BUILTIN_TECHNIQUES.length, 'keys are unique');
   for (const t of BUILTIN_TECHNIQUES) {
-    assert.ok(GRAPHIC_TECHNIQUES.includes(t.base), `${t.key} goes on the tech pack as a known technique`);
+    // a known technique: a garment's (what the concept assistant chooses from) for one made on cloth, a product type's for one that is not (test/lab-product-techniques.test.js)
+    assert.ok(TECHNIQUE_BASES.includes(t.base), `${t.key} goes on the tech pack as a known technique`);
+    assert.equal(GRAPHIC_TECHNIQUES.includes(t.base), !PRODUCT_TECHNIQUES.includes(t.base)); if (!t.surfaces || t.surfaces.includes('cloth')) assert.ok(GRAPHIC_TECHNIQUES.includes(t.base), `${t.key} is made on cloth as a garment technique`);
     assert.ok(EFFECTS.includes(t.finish.effect), t.key);
     assert.ok(t.prompt.length > 40 && t.summary.length > 10, `${t.key} says how it looks`);
     assert.deepEqual(cleanFinish(t.finish), t.finish, `${t.key} keeps its finish as written`);
