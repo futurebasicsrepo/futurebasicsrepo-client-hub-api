@@ -173,7 +173,12 @@ function checkHeadwear(pat, m) {
     seams.push(seam('Crown seams: panel to panel', edge(P, 'tl', 'bl'), edge(P, 'tr', 'br'), { why: 'the six panels are sewn side to side from the button to the band; every side the same length' }));
     if (B.brim) { const inner = edge(B.brim, 'i0', 'i1');
       seams.push(seam('Brim onto the crown', 2 * base, inner, { ease: [0, base], why: 'across the two front panels and up to half of each side panel' }));
-      const sb = piece(pat, 'sweatband'); if (sb) seams.push(seam('Sweatband round the head opening', head - 2.25 + 1, lengthOf(sb), { ease: [-.25, .25], why: 'the head opening less the 2¼ in back opening, ½ in turned back at each end' }));
+      // the head opening, measured: the foot of every panel as cut (the two back panels' feet are short by the back opening)
+      const footOf = id => { const q = piece(pat, id); if (!q) return null; const y1 = boundsOf(q.sew).y1; return q.sew.reduce((a, pt, i) => { const nx = q.sew[(i + 1) % q.sew.length]; return a + (Math.abs(pt[1] - y1) < .01 && Math.abs(nx[1] - y1) < .01 ? dist(pt, nx) : 0); }, 0); };
+      const feet = ['panel-front', 'panel-side', 'panel-back'].map(footOf), sb = piece(pat, 'sweatband');
+      if (sb && feet.every(f => f != null)) { const open = 2 * (feet[0] + feet[1] + feet[2]);
+        seams.push(seam('Sweatband round the head opening', open + 1, lengthOf(sb), { ease: [-.25, .25], why: 'the feet of the six panels as cut (the back two short by the back opening), ½ in turned back at each end' }));
+        meas.push(measure('Back opening, across the two back panels', 2 * (feet[0] - feet[2]), 2.25, .25)); }
       const bd = piece(pat, 'brim-board'), bs = piece(pat, 'brim'); if (bd && bs) { const n = bd.sew.filter(q => inside(bs.sew, q)).length; seams.push({ name: 'Brim board inside the brim', ok: n === bd.sew.length, a: bd.sew.length, b: n, diff: n - bd.sew.length, range: [0, 0], why: 'every point of the board inside the brim it is sewn into' }); }
       // the brim's length at the centre front, from the seam (the inner edge, bowed toward the crown) to its edge; its width side to side
       const bb = boundsOf(B.brim.sew); meas.push(measure('Brim length at the centre front', B.brim.at.tip[1] - (B.brim.bow || 0), m.brimLength, .125)); meas.push(measure('Brim width', bb.w, m.brimWidth, .25)); }
@@ -181,25 +186,42 @@ function checkHeadwear(pat, m) {
     // the crown's height back off the panel: the panel runs a quarter of the dome round, a quarter-ellipse of the head's radius and the height
     const a = head / (2 * Math.PI), q = b => Math.PI / 4 * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b))); let lo = .5, hi = 12; for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (q(mid) < ph) lo = mid; else hi = mid; }
     meas.push(measure('Crown height', lo, m.crownHeight, .25));
+    // the six panels round the dome: at a quarter, half and three quarters of the way down, together as wide as the crown is round there
+    if (m.crownHeight) { const N = 200, tab = [[0, 0]]; for (let i = 1; i <= N; i++) { const t0 = (i - 1) / N * Math.PI / 2, t1 = i / N * Math.PI / 2; tab.push([t1, tab[i - 1][1] + Math.hypot(a * (Math.sin(t1) - Math.sin(t0)), m.crownHeight * (Math.cos(t0) - Math.cos(t1)))]); }
+      const y0 = P.at.tl[1], total = tab[N][1];
+      for (const [f, word] of [[.25, 'a quarter'], [.5, 'half'], [.75, 'three quarters']]) { const t = tab.find(([, sl]) => sl >= f * total)[0], sp = spanAt(P.sew, y0 + f * ph);
+        seams.push(seam(`Six panels round the dome, ${word} of the way down`, 2 * Math.PI * a * Math.sin(t), sp ? 6 * (sp[1] - sp[0]) : null, { ease: [-.25, .25], why: 'together the six panels are as wide as the crown is round there, so they lie round it' })); } }
+    const tape = (pat.trims || []).find(t => /seam tape/i.test(t.item)), tapeIn = tape ? Number(String(tape.qty).match(/[\d.]+/)?.[0]) : null;
+    if (tapeIn != null) { const side = edge(P, 'tl', 'bl'); meas.push({ ...measure('Crown seam tape, against the six crown seams', tapeIn, 6 * side, 0), tol: 0, rule: 'at least', ok: tapeIn >= 6 * side - 1e-6 }); }
   } else if (B.band) { // a bucket hat: the crown oval onto the band's top, the brim onto the band's foot
-    const band = B.band, brim = B.brim, foot = 2 * dist(band.at.b0, band.at.b1); /* the band's foot is straight; each seam's edges walked inside its own call */
+    const band = B.band, brim = B.brim; /* the band and the brim are parts of rings: every edge is walked along its curve */
     seams.push(seam('Crown top onto the side band', perimeter(B.crown.sew), 2 * edge(band, 't0', 't1'), { ease: [-.25, .25], why: 'the oval crown eased into the band, within ¼ in' }));
     seams.push(seam('Side band seams', edge(band, 't0', 'b0'), edge(band, 't1', 'b1'), { why: 'the two halves of the band sewn at the sides' }));
     seams.push(seam('Brim onto the side band', 2 * edge(band, 'b0', 'b1'), 2 * edge(brim, 'i0', 'i1'), { why: 'the brim\'s inner edge is the band\'s foot' }));
     seams.push(seam('Brim seams', edge(brim, 'i0', 'o0'), edge(brim, 'i1', 'o1'), { why: 'the two halves of the brim sewn at the sides' }));
-    meas.push(measure('Head size (at the brim seam)', foot, HEAD, .5)); meas.push(measure('Crown height', boundsOf(band.sew).h, m.crownHeight, .25)); meas.push(measure('Brim length', boundsOf(brim.sew).h, m.brimLength, .125));
+    meas.push(measure('Head size (at the brim seam)', 2 * edge(band, 'b0', 'b1'), HEAD, .5)); meas.push(measure('Crown height, up the band', edge(band, 't0', 'b0'), m.crownHeight, .25));
+    meas.push(measure('Brim length at the side seams', edge(brim, 'i0', 'o0'), m.brimLength, .125));
+    // the brim is the same length all round: its outer edge is a constant distance from its inner edge (measured at the middle of the half)
+    const mid = brim.sew[near(brim.sew, brim.at.i0) === 0 ? Math.floor((near(brim.sew, brim.at.i1)) / 2) : 0], outer = brim.sew.slice(near(brim.sew, brim.at.o1), near(brim.sew, brim.at.o0) + 1);
+    if (mid && outer.length > 1) meas.push(measure('Brim length at the centre', Math.min(...outer.map((q, i) => i ? toSeg(mid, outer[i - 1], q) : Infinity)), m.brimLength, .125));
   }
   return { seams, meas };
 }
+// the width of one petal of a beanie's crown: between the first two points where its top edge comes down to the petals' feet
+const spanOfTop = (P, y) => { const xs = P.filter(q => Math.abs(q[1] - y) < .01).map(q => q[0]).sort((u, v) => u - v); return xs.length > 1 ? xs[1] - xs[0] : null; };
 function checkBeanie(pat, m) {
   const b = piece(pat, 'body'), bb = boundsOf(b.sew), circ = bb.w;
   return { seams: [seam('Stretched onto the head', HEAD, circ, { ease: [-HEAD * .25, -HEAD * .1], why: 'a rib beanie is knitted 10 to 25% smaller round than the head it stretches onto' })],
-    meas: [measure('Flat width', circ / 2, m.width, .25), measure('Length, the cuff turned up', bb.h - m.cuff, m.height, .25), measure('Cuff', m.cuff, m.cuff, .125)] };
+    meas: [measure('Flat width', circ / 2, m.width, .25), measure('Length, the cuff turned up', b.at ? b.at.foldL[1] - bb.y0 : null, m.height, .25), measure('Cuff, from its fold to the edge', b.at ? b.at.hemL[1] - b.at.foldL[1] : null, m.cuff, .125),
+      // the crown: four petals, their feet making the whole round, each no taller than it is wide (so they close flat into the crown)
+      measure('Crown petals, across their feet', b.at ? 4 * (spanOfTop(b.sew, b.at.tipL[1]) || 0) : null, circ, .25)] };
 }
 function checkTote(pat, m) {
   const b = piece(pat, 'body'), h = piece(pat, 'handle'), bb = boundsOf(b.sew), hb = h ? boundsOf(h.sew) : null, seams = [], meas = [];
-  seams.push(seam('Side seams: front to back', bb.h / 2, bb.h / 2, { why: 'one piece folded at the bottom, the two sides of each side seam the same length' }));
-  meas.push(measure('Width', bb.w, m.width, .25), measure('Height, the top turned back', bb.h / 2 - 1.5, m.height, .25));
+  // one piece folded at the bottom: each side seam is the edge above the fold sewn to the edge below it (walked off the outline)
+  seams.push(seam('Side seam: front to back, one side', b.at ? edge(b, 'tl', 'fl') : null, b.at ? edge(b, 'fl', 'bl') : null, { why: 'folded at the bottom, the front edge of the side seam against the back edge' }));
+  seams.push(seam('Side seam: front to back, the other side', b.at ? edge(b, 'tr', 'fr') : null, b.at ? edge(b, 'fr', 'br') : null));
+  meas.push(measure('Width', bb.w, m.width, .25), measure('Height, the top turned back', b.at ? edge(b, 'tl', 'fl') - 1.5 : null, m.height, .25));
   if (hb) meas.push(measure('Handle drop', (hb.w - 3) / 2, m.handleDrop, .5), measure('Handle width, folded in four', hb.h / 4, m.handleWidth, .125));
   return { seams, meas };
 }

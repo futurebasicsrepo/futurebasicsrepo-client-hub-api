@@ -54,6 +54,31 @@ test('every bag sews together and is the size it says', () => {
   }
 });
 
+test('headwear is cut to the shape it is sewn into: cap panels a sixth of the dome, a bucket hat\'s band and brim parts of rings, a beanie\'s crown and cuff on the piece', () => {
+  const made = style => { const p = defaultParams(style), pat = garmentPattern(p, 'One size'), m = measurementsFor(p, 'M'); return { pat, m, style, c: constructionCheck(pat, { m, style }) }; };
+  const bad = c => [...c.seams, ...c.meas].filter(x => x.ok === false).map(x => x.name);
+  const cap = made('cap'); assert.ok(cap.c.ok, failsOf(cap.c).join('; '));
+  assert.equal(cap.c.seams.filter(x => /round the dome/.test(x.name) && x.ok).length, 3, 'the six panels are walked round the dome at three heights');
+  const back = cap.pat.pieces.find(q => q.id === 'panel-back'), front = cap.pat.pieces.find(q => q.id === 'panel-front'), foot = q => Math.max(...q.sew.filter(([, y]) => y > Math.max(...q.sew.map(v => v[1])) - .01).map(([x]) => x)) - Math.min(...q.sew.filter(([, y]) => y > Math.max(...q.sew.map(v => v[1])) - .01).map(([x]) => x));
+  assert.ok(Math.abs(foot(front) - foot(back) - 1.125) < .01, 'the back opening is cut from each back panel\'s foot');
+  // a panel drawn wider than a sixth of the dome (as it used to be) is caught
+  const fat = made('cap'); fat.pat.block.panel.sew = fat.pat.block.panel.sew.map(([x, y]) => { const ph = fat.pat.block.panel.at.br[1], f = y / ph; return [x * (1 + .45 * (1 - f)), y]; });
+  assert.ok(bad(constructionCheck(fat.pat, { m: fat.m, style: 'cap' })).some(n => /round the dome/.test(n)), 'panels too wide towards the button are caught');
+  const bk = made('bucket'); assert.ok(bk.c.ok, failsOf(bk.c).join('; '));
+  const brim = bk.pat.block.brim, bw = Math.max(...brim.sew.map(([x]) => x)) - Math.min(...brim.sew.map(([x]) => x));
+  assert.ok(bw < 16 && bk.c.meas.some(x => /at the centre/.test(x.name) && x.ok) && bk.c.meas.some(x => /at the side seams/.test(x.name) && x.ok), 'the brim is half a ring, the same length at its seams as at its centre');
+  // a straight-sided brim (as it used to be: longer at its ends than its middle) is caught
+  const flat = made('bucket'), b = flat.pat.block.brim; b.sew = [[0, 0], [11.5, 0], [14.5, 2.25], [-3, 2.25]]; b.at = { i0: [0, 0], i1: [11.5, 0], o1: [14.5, 2.25], o0: [-3, 2.25] };
+  assert.ok(bad(constructionCheck(flat.pat, { m: flat.m, style: 'bucket' })).some(n => /Brim length at the side seams/.test(n)), 'a trapezoid brim is caught');
+  const bn = made('beanie'); assert.ok(bn.c.ok, failsOf(bn.c).join('; '));
+  const body = bn.pat.pieces.find(q => q.id === 'body'); assert.ok(body.notches.length === 2 && body.sew.length > 20, 'the cuff fold is marked and the crown is petals');
+  const short = made('beanie'); short.pat.pieces.find(q => q.id === 'body').at.foldL = [0, short.pat.pieces.find(q => q.id === 'body').at.foldL[1] + 1];
+  assert.ok(bad(constructionCheck(short.pat, { m: short.m, style: 'beanie' })).some(n => /Cuff/.test(n)), 'a cuff fold in the wrong place is caught');
+  const tt = made('tote'); assert.ok(tt.c.ok && tt.c.seams.length === 2, failsOf(tt.c).join('; '));
+  const skew = made('tote'), tb = skew.pat.pieces.find(q => q.id === 'body'); tb.sew = tb.sew.map(([x, y]) => [x, y > 30 ? y + 1 : y]); tb.at.bl = [tb.at.bl[0], tb.at.bl[1] + 1]; tb.at.br = [tb.at.br[0], tb.at.br[1] + 1];
+  assert.ok(bad(constructionCheck(skew.pat, { m: skew.m, style: 'tote' })).some(n => /Side seam/.test(n)), 'a tote whose back is longer than its front is caught');
+});
+
 test('a bag is put together from its pieces: every seam walked, every edge used once, every zip in its opening', () => {
   const pc = (p, id) => p.pieces.find(q => q.id === id), names = c => [...c.seams, ...c.meas].filter(x => x.ok === false).map(x => x.name).concat(c.missing.map(x => 'Missing ' + x.need));
   // every kind, at its own size and at smaller, larger, shallower and deeper ones: a bag is sized by whoever designs it

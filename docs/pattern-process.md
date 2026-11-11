@@ -35,9 +35,9 @@ Every pull request runs `npm test` and `npm run pattern:proof` in GitHub Actions
    - tops: chest, length, shoulder, neck, sleeve
    - bottoms: waist, hip, rise, inseam, thigh, opening, sweep
    - bags: width, height, depth; a pocket or sleeve inside its panel; handle and strap ends clear of the seams; how far a flap comes down the front; how high a handle rises; how far the shoulder straps let out; binding tape against the seams it binds
-   - a six-panel cap: head size, crown height (read back off the panel), brim length at the centre front and brim width
-   - a bucket hat: head size at the brim seam, crown height, brim length
-   - a beanie: flat width and length; it must also be knitted 10 to 25% smaller round than a 22¾ in head
+   - a six-panel cap: head size, crown height (read back off the panel), the six panels across against the dome's round at three heights, the back opening, brim length at the centre front and brim width, the seam tape against the six crown seams
+   - a bucket hat: head size at the brim seam, crown height up the band, brim length at the side seams and at the centre
+   - a beanie: flat width and length, the cuff from its marked fold, the crown's petals across their feet; it must also be knitted 10 to 25% smaller round than a 22¾ in head
    - a tote: width, height with the top turned back, handle drop and handle width
 4. **Clean outlines.** No cut piece crosses itself or has a corner sharper than 20°.
 5. **Everything it is made with.** Each feature calls for the parts and trims a factory needs (`missingComponents`):
