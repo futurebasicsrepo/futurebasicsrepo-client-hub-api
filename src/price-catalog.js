@@ -35,6 +35,8 @@ const lastWord = text => wordsOf(text).filter(w => !/^v?\d+$/.test(w)).pop() || 
 export const productHead = title => lastWord(String(title || '').replace(/["“”][^"“”]*["“”]/g, ' ').split(/\s[—–-]\s/)[0].split(':').pop());
 export const itemHead = name => { const parts = String(name || '').replace(/\([^)]*\)/g, ' ').split(/\s-\s/).filter(p => /[a-z]{3}/i.test(p)); return lastWord(parts.filter(p => !/^\s*\S*\d\S*\s*$/.test(p)).pop() || parts.pop() || ''); };
 const sameAs = (a, b) => a === b || (GROUP.has(a) && GROUP.get(a) === GROUP.get(b));
+// every word wanted is among an item's words: the word itself, a word that stands for its like, or the start of one ("tum" finds tumblers)
+export const wordsMatch = (words, want) => want.every(w => words.some(x => sameAs(x, w) || (w.length > 2 && x.startsWith(w))));
 const view = (i, catalogs) => ({ id: i.id, name: i.name, brand: i.brand, category: i.category, section: i.section, costCents: i.costCents, price: i.price, catalog: i.catalog, catalogTitle: catalogs.find(c => c.key === i.catalog)?.title || '' });
 const byPrice = (a, b) => (a.costCents == null) - (b.costCents == null) || (a.price === 'projected') - (b.price === 'projected') || (a.costCents || 0) - (b.costCents || 0) || a.name.localeCompare(b.name);
 
@@ -42,7 +44,7 @@ const byPrice = (a, b) => (a.costCents == null) - (b.costCents == null) || (a.pr
 // with a price come first (this is a list to price from), then the ones that say the very word, then the cheapest.
 export function searchCatalog({ q = '', category = '', limit = 30 } = {}, catalogs = loadCatalogs()) {
   const want = wordsOf(q), all = catalogs.flatMap(c => c.items).filter(i => !category || i.category === category);
-  const hits = want.length ? all.filter(i => want.every(w => i.words.some(x => sameAs(x, w) || (w.length > 2 && x.startsWith(w))))) : all;
+  const hits = want.length ? all.filter(i => wordsMatch(i.words, want)) : all;
   const sorted = want.length ? [...hits].sort((a, b) => (a.costCents == null) - (b.costCents == null) || want.filter(w => b.words.includes(w)).length - want.filter(w => a.words.includes(w)).length || byPrice(a, b)) : [...hits].sort((a, b) => a.section.localeCompare(b.section) || a.name.localeCompare(b.name));
   return { total: hits.length, items: sorted.slice(0, Math.max(1, Math.min(200, Number(limit) || 30))).map(i => view(i, catalogs)) };
 }
