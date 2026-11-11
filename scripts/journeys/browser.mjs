@@ -2426,7 +2426,7 @@ await journey('J305', "Prices are set in one place and nothing is put on a produ
   } finally { await n.ctx.close(); }
 });
 
-await journey('J306', "The product page reads in order at every width: the stage names are whole (never cut to 'Conc' and 'Deve'), the actions sit in one card of named rows, the tiles open the thing that fills them, Commerce says what it is for and offers the next step, and a file shows its picture in the list and opens bigger without a download", async () => {
+await journey('J306', "The product page reads in order at every width: the stage names are whole (never cut to 'Conc' and 'Deve'), the actions sit in one card of named rows, the tiles open the thing that fills them, Commerce says where the product stands and offers the next step, and a file shows its picture in the list and opens bigger without a download", async () => {
   const r = await room('306'), W = 'http://work.localhost:3123';
   const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
   sql(`delete from product_configurations where product_id='${r.id}'`);
@@ -2453,9 +2453,9 @@ await journey('J306', "The product page reads in order at every width: the stage
     await page.click('.pf-tile:has-text("Price")'); await page.waitForSelector(`#priceCard-${r.id} form.tf`, { timeout: 10000 }).catch(() => {});
     ok(await page.locator(`#priceCard-${r.id} form.tf [name=min]`).count() === 1 && await page.evaluate(() => document.activeElement?.name === 'min'), '2. with no prices, the Price tile opens Spec & pricing on the first tier, ready to type');
     await open('commerce');
-    const com = await page.$eval('.commerce-empty', e => e.innerText.replace(/\s+/g, ' '));
-    ok(/No quote yet/.test(com) && /Shopify draft order/.test(com) && await page.locator('.commerce-empty .tools button', { hasText: 'Add prices' }).count() === 1, '3. Commerce with no quote says what the tab is for and offers the step that is missing (prices first)', com.slice(0, 200));
-    await page.click('.commerce-empty .tools button'); await page.waitForSelector(`#priceCard-${r.id} form.tf`, { timeout: 10000 }).catch(() => {}); ok(await page.locator(`#priceCard-${r.id} form.tf`).count() === 1, '   and that button lands on the prices');
+    const com = await page.$eval('.cm', e => e.innerText.replace(/\s+/g, ' '));
+    ok(/Not priced/i.test(com) && /Not quoted/i.test(com) && /no prices yet/.test(com) && await page.locator('.cm-next button', { hasText: 'Add prices' }).count() === 1, '3. Commerce on a product with no prices says where it stands (not priced, not quoted) and offers the step that is missing (prices first)', com.slice(0, 200));
+    await page.click('.cm-next button'); await page.waitForSelector(`#priceCard-${r.id} form.tf`, { timeout: 10000 }).catch(() => {}); ok(await page.locator(`#priceCard-${r.id} form.tf`).count() === 1, '   and that button lands on the prices');
     // files: listed as the tab opens, each with its picture or its kind
     await open('assets'); await page.waitForSelector('.frow', { timeout: 15000 }); await page.waitForFunction(() => [...document.querySelectorAll('.arow .fthumb[data-pic], .frow .fthumb[data-pic]')].every(b => b.querySelector('img')?.naturalWidth > 0), null, { timeout: 15000 }).catch(() => {});
     const f = await page.evaluate(() => ({ rows: document.querySelectorAll('.frow').length, shown: [...document.querySelectorAll('.fthumb[data-pic]')].map(b => b.querySelector('img')?.naturalWidth > 0), pdf: [...document.querySelectorAll('.fthumb.doc span')].map(e => e.textContent), asset: !!document.querySelector('.arow .fthumb[data-pic] img'), size: [...document.querySelectorAll('.fthumb')].map(b => Math.round(b.getBoundingClientRect().width)) }));
@@ -2509,6 +2509,50 @@ await journey('J307', "A quote is seen before it is sent: the builder's Preview 
     ok(/Layer runner/.test(await mail()) && await page.locator('#oqPrev button', { hasText: /^Close$/ }).count() === 1, "8. a saved quote's Send opens the same preview first (no pop-up asking for a note, then gone)", (await mail()).slice(0, 160));
     await page.click('#oqPrev button:has-text("Close")'); await sleep(200);
     ok(sql(`select version||':'||status from order_quotes where client_id='${r.clientId}'`) === ver && notes() === '1', '   and closing it sends nothing again', ver);
+    ok(page.errs.length === 0, '   no page errors', page.errs);
+  } finally { await ctx.close(); }
+});
+
+await journey('J308', "A product's Commerce tab is today's flow: it shows where the product stands (priced, quoted, under agreement, paid) from the room's quotes and its project's agreement; Quote this product opens the quote builder with it picked at its tier's quantity; sending leaves you on the product, with the quote and this product's own line listed; the Overview tile and the pricing table's Quote button go the same way; an invoice naming the product is listed", async () => {
+  const r = await room('308'), W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' }), adm = (path, o = {}) => call(path, { ...o, token: admin });
+  for (const [q, w] of [[50, 2300], [250, 1900]]) await adm(`/v1/admin/products/${r.id}/price-tiers`, { body: { minQuantity: q, unitCostCents: 900, wholesaleCents: w, srpCents: 5400 } });
+  const other = sql(`insert into products(client_id,project_id,title) select client_id,project_id,'Cap' from products where id='${r.id}' returning id`).split('\n')[0].trim();
+  const room1 = (await adm(`/v1/admin/clients/${r.clientId}`)).json;
+  ok(Array.isArray(room1.orderQuotes) && room1.orderQuotes.length === 0, "   the room's data carries its order quotes (none yet)", Object.keys(room1).slice(0, 4));
+  const { ctx, page } = await consoleAt(admin, 1280, 950);
+  try {
+    const open = async (id, tab) => { await page.goto(`${W}/clients/${r.clientId}#product=${id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('.pf-tile', { timeout: 15000 }); if (tab) { await page.evaluate(([i, t]) => window.selectRoom('product', i, t), [id, tab]); await sleep(300); } };
+    const steps = () => page.$$eval('.cm-step', els => els.map(e => `${e.className.replace('cm-step ', '')}: ${e.innerText.replace(/\s+/g, ' ')}`));
+    await open(r.id, 'commerce');
+    let st = await steps();
+    ok(st.length === 4 && /^ok: PRICE 2 tiers/i.test(st[0]) && /^todo: QUOTE Not quoted/i.test(st[1]) && /^todo: AGREEMENT None yet/i.test(st[2]) && /^todo: PAYMENT/i.test(st[3]), '1. Commerce opens on where the product stands: priced; not quoted; no agreement; nothing due', st);
+    ok(/Priced and not yet quoted/.test(await page.innerText('.cm-next')) && await page.locator(`.cm a[href="/contracts?project=${r.projectId}"]`).count() === 1, "   it names the next step, and the agreement section starts one for this product's project");
+    await page.click('.cm-next button:has-text("Quote this product")'); await page.waitForSelector('#qbDialog[open]', { timeout: 8000 });
+    const picked = await page.evaluate(() => ({ names: [...document.querySelectorAll('#qbDialog .qb-row.on .qb-pick b')].map(e => e.textContent), qty: document.querySelector('#qbDialog .qb-row.on input[type=number]')?.value }));
+    ok(picked.names.join() === 'Layer runner' && picked.qty === '50', "2. Quote this product opens the quote builder with this product picked, at its first tier's quantity", picked);
+    await page.click('#qbDialog button:has-text("Preview and send")'); await page.waitForSelector('#oqPrev[open] #opSend:not([disabled])', { timeout: 10000 }); await page.click('#opSend');
+    await page.waitForFunction(() => /waiting on them/i.test(document.querySelector('.cm .oq-card')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+    const card = (await page.innerText('.cm .oq-card').catch(() => '')).replace(/\s+/g, ' ');
+    ok(await page.locator('.cm').count() === 1 && /This product: 50 × \$23\.00 = \$1,150\.00/.test(card) && /Send again/.test(card), "3. after it is sent the page is still the product's Commerce tab, now listing the quote with this product's own line and its buttons", card.slice(0, 220));
+    st = await steps(); ok(/^now: QUOTE Sent/i.test(st[1]) && /Q-\d{4}-\d{4} · 50 units/.test(st[1]) && /Commerce · 1/.test(await page.$eval(`#workflow-${r.id} .ptabs button:nth-child(3)`, b => b.textContent)), '   the Quote step reads Sent with its number, and the tab counts it', st[1]);
+    // a second product in the same quote: each product's tab shows its own line
+    const qid = sql(`select id from order_quotes where client_id='${r.clientId}'`);
+    await adm(`/v1/admin/order-quotes/${qid}`, { method: 'PUT', body: { lines: [{ productId: r.id, quantity: 250, unitCents: 1900 }, { productId: other, quantity: 30, unitCents: 1600 }] } });
+    await open(other, 'commerce'); const oc = (await page.innerText('.cm .oq-card')).replace(/\s+/g, ' ');
+    ok(/This product: 30 × \$16\.00 = \$480\.00/.test(oc) && /Whole quote \$5,230\.00 · 2 products/.test(oc) && /Draft/i.test(oc), "4. a product in a quote with others shows its own line and the whole quote's total; an edited quote is a draft again", oc.slice(0, 220));
+    await open(r.id); const tile = (await page.innerText('.pf-tile:has-text("Quote")')).replace(/\s+/g, ' ');
+    ok(/Draft/i.test(tile) && /250 × \$19\.00/.test(tile), "5. the Overview's Quote tile shows the quote this product is in", tile);
+    await page.click('.pf-tile:has-text("Quote")'); await sleep(300); ok(await page.locator('.cm .oq-card').count() === 1, '   and opens Commerce');
+    await page.evaluate(id => window.selectRoom('product', id, 'config'), r.id); await page.waitForSelector(`#priceCard-${r.id} tr[data-tier="250"]`, { timeout: 15000 });
+    await page.click(`#priceCard-${r.id} tr[data-tier="250"] .pb:has-text("Quote")`); await page.waitForSelector('#qbDialog[open]', { timeout: 8000 });
+    ok(await page.$eval('#qbDialog .qb-row.on input[type=number]', i => i.value) === '250' && await page.locator('#editorModal[open]').count() === 0, "6. a tier's Quote button opens the same builder at that tier's quantity (not the old one-product quote form)");
+    await page.evaluate(() => document.getElementById('qbDialog').close());
+    // money that names the product
+    sql(`insert into invoices(client_id,project_id,number,amount_cents,currency,status,external_url,kind,product_ids) values('${r.clientId}','${r.projectId}','D308',115000,'USD','due','https://example.com/pay','invoice',array['${r.id}']::uuid[])`);
+    await open(r.id, 'commerce'); st = await steps(); const rows = (await page.innerText('.cm-rows').catch(() => '')).replace(/\s+/g, ' ');
+    ok(/^now: PAYMENT Invoice out \$1,150\.00/i.test(st[3]) && /D308/.test(rows) && /\$1,150\.00/.test(rows) && await page.locator('.cm-rows a[href="https://example.com/pay"]').count() === 1, '7. an invoice that names the product is listed with its amount, state and link, and the Payment step says an invoice is out', { step: st[3], rows });
+    await open(other, 'commerce'); ok(await page.locator('.cm-rows').count() === 0, "   and it is not listed under a product it does not name");
     ok(page.errs.length === 0, '   no page errors', page.errs);
   } finally { await ctx.close(); }
 });
