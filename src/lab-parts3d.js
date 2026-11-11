@@ -9,6 +9,8 @@
 //   - mechanical by shape and material: housings with bevelled edges and the bosses inside, clear parts that transmit, brushed and anodised
 //     metal, painted steel, MDF with its grain, silicone and rubber, knurled knobs, screws with threads, grille cloth, keypads
 // Conventions: a builder works in the part's own frame, its face (the side that shows, or the opening of a socket) toward +z, centred.
+import { meshOf } from './lab-assembly.js';
+
 export function makeKit(THREE, { maxAniso = 8 } = {}) {
   const T = THREE, texCache = new Map(), PI = Math.PI;
   // ---- textures, drawn on canvases (no files to fetch) ----
@@ -120,8 +122,7 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
   const helix = (R, r, len, turns, m) => { const pts = []; for (let i = 0; i <= turns * 24; i++) { const a = i / 24 * PI * 2; pts.push(new T.Vector3(Math.cos(a) * R, Math.sin(a) * R, -len / 2 + len * i / (turns * 24))); } return mesh(new T.TubeGeometry(new T.CatmullRomCurve3(pts), turns * 24, r, 6), m); };
   const group = (...kids) => { const g = new T.Group(); for (const k of kids.flat()) if (k) g.add(k); return g; };
   // a part's openings and bosses (worked out by src/lab-assembly.js) in its own frame: x and y across it, z along its axis. Only openings along
-  // the axis (through a floor, or through a solid part) are drawn; windows in a housing's side walls are in the part's solid (its STL and
-  // STEP) but not in this picture.
+  // the axis (through a floor, or through a solid part) are cut here; a housing with windows in its side walls is drawn from its solid (solidGeo).
   const inFrame = (p, v) => (p.axis === 'y' ? [v[0], -v[2], v[1]] : p.axis === 'x' ? [v[1], v[2], v[0]] : [v[0], v[1], v[2]]);
   const holesOf = (p, w, d, round) => (p.cuts || []).filter(c => c.axis === (p.axis || 'z')).map(c => { const a = inFrame(p, c.at), s = inFrame(p, c.size).map(Math.abs), hw = s[0] / 2, hd = s[1] / 2;
     const fits = round ? [[1, 1], [1, -1], [-1, 1], [-1, -1]].every(([i, j]) => ((a[0] + i * hw) / (w / 2 - .3)) ** 2 + ((a[1] + j * hd) / (d / 2 - .3)) ** 2 <= 1) : Math.abs(a[0]) + hw <= w / 2 - .3 && Math.abs(a[1]) + hd <= d / 2 - .3; if (!fits || hw < .1 || hd < .1) return null;
@@ -358,7 +359,22 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
     ttmotor: motor, cartridge, phono: (p, s) => chip(p, s, 'phono'), dcjack, hpdriver: (p, s) => driver(p, s), pbms: (p, s) => chip(p, s, 'pbms'), li18650: cells18650, ledcob: ledCob, leddrv: (p, s) => chip(p, s, 'leddrv'), touch: (p, s) => chip(p, s, 'touch')
   };
   // ---- the mechanical parts ----
+  // A housing with windows in its side walls (a socket's opening, a notch for keys, a tube through a ring) is drawn from the part's own solid
+  // (meshOf, src/lab-assembly.js): its walls with the windows cut, its floor with its openings, its bosses. Edges sharper than 35° stay sharp.
+  function solidGeo(p) {
+    const tri = meshOf({ ...p, at: [0, 0, 0] }), n = tri.length / 3, pos = new Float32Array(tri.length), nor = new Float32Array(tri.length), fn = new Float32Array(tri.length / 3), by = new Map();
+    for (let i = 0; i < n; i++) { const v = inFrame(p, [tri[i * 3], tri[i * 3 + 1], tri[i * 3 + 2]]); pos[i * 3] = v[0]; pos[i * 3 + 1] = v[1]; pos[i * 3 + 2] = v[2]; }
+    for (let f = 0; f < n / 3; f++) { const a = f * 9, ux = pos[a + 3] - pos[a], uy = pos[a + 4] - pos[a + 1], uz = pos[a + 5] - pos[a + 2], vx = pos[a + 6] - pos[a], vy = pos[a + 7] - pos[a + 1], vz = pos[a + 8] - pos[a + 2];
+      fn[f * 3] = uy * vz - uz * vy; fn[f * 3 + 1] = uz * vx - ux * vz; fn[f * 3 + 2] = ux * vy - uy * vx; // not unit length: a larger face weighs more
+      for (let k = 0; k < 3; k++) { const key = `${Math.round(pos[a + k * 3] * 1e3)},${Math.round(pos[a + k * 3 + 1] * 1e3)},${Math.round(pos[a + k * 3 + 2] * 1e3)}`; (by.get(key) || by.set(key, []).get(key)).push(f); } }
+    const cos = Math.cos(35 * PI / 180), len = f => Math.hypot(fn[f * 3], fn[f * 3 + 1], fn[f * 3 + 2]) || 1;
+    for (let f = 0; f < n / 3; f++) for (let k = 0; k < 3; k++) { const i = f * 9 + k * 3, key = `${Math.round(pos[i] * 1e3)},${Math.round(pos[i + 1] * 1e3)},${Math.round(pos[i + 2] * 1e3)}`, lf = len(f); let x = 0, y = 0, z = 0;
+      for (const g of by.get(key)) { if ((fn[f * 3] * fn[g * 3] + fn[f * 3 + 1] * fn[g * 3 + 1] + fn[f * 3 + 2] * fn[g * 3 + 2]) / (lf * len(g)) < cos) continue; x += fn[g * 3]; y += fn[g * 3 + 1]; z += fn[g * 3 + 2]; }
+      const l = Math.hypot(x, y, z) || 1; nor[i] = x / l; nor[i + 1] = y / l; nor[i + 2] = z / l; }
+    const g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setAttribute('normal', new T.BufferAttribute(nor, 3)); g.setAttribute('uv', new T.BufferAttribute(new Float32Array(n * 2), 2)); return g;
+  }
   function housing(p, [w, d, h], m) {
+    if ((p.cuts || []).some(c => c.axis !== (p.axis || 'z'))) return group(mesh(solidGeo(p), m));
     const round = ['cup', 'ring'].includes(p.shape), t = Math.min(p.wall || 2, Math.min(w, d) / 2 - .3), r = p.r ?? 2, out = round ? ell(w, d) : rr(w, d, r), inn = round ? ell(w - 2 * t, d - 2 * t) : rr(w - 2 * t, d - 2 * t, Math.max(r - t, .2));
     const ring = round ? ell(w, d) : rr(w, d, r); ring.holes.push(hole(inn)); const bev = Math.min(.8, t * .35), g = group(mesh(extrude(ring, h, bev), m));
     if (p.shape === 'ring') { if (/port/i.test(p.name)) g.add(mesh(lathe([[w / 2 - t, h / 2], [w / 2 + 4, h / 2 + .01], [w / 2 + 4, h / 2 - 1.5], [w / 2, h / 2 - 3]], 64), m)); return g; }
@@ -379,6 +395,7 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
     if (p.shape === 'pcb') return null;
     if (['shell', 'cup', 'ring'].includes(p.shape)) return housing(p, dims, m);
     if (p.shape === 'ball') return group(mesh(new T.SphereGeometry(.5, 64, 32).scale(w, d, h), m));
+    if (p.shape === 'cyl' && p.flange) { const k = p.flange.body / Math.min(w, d), ft = p.flange.t, s = p.flange.end === '+' ? 1 : -1; return group(mesh(rcyl(w, d, ft, Math.min(.4, ft / 4)), m, 0, 0, s * (h / 2 - ft / 2)), mesh(rcyl(w * k, d * k, h - ft, .4), m, 0, 0, -s * ft / 2)); }
     const thru = p.shape === 'box' || p.shape === 'cyl' ? holesOf(p, w, d, p.shape === 'cyl') : []; // a baffle's driver openings, a panel's, a plate's
     if (thru.length) { const sh = p.shape === 'cyl' ? ell(w, d) : rr(w, d, p.r ?? 1); sh.holes.push(...thru); return group(mesh(extrude(sh, h, Math.min(.6, h / 4)), m)); }
     if (p.shape === 'cyl') { const b = Math.min(1, h / 4, Math.min(w, d) / 6); return group(mesh(rcyl(w, d, h, b), m)); }
