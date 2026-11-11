@@ -7,10 +7,12 @@
 //   POST   /v1/admin/products/:id/apply-ladder                { ladderId, replace? } a saved ladder's tiers onto this product
 //   DELETE /v1/admin/products/:id/price-tiers/:tid
 //   POST   /v1/admin/products/:id/studio                      the product's Design Lab concept (made the first time, from the tech pack) → { conceptId, studio }
+//   PATCH  /v1/admin/products/:id/price-tiers/:tid            one tier changed in place (its quantity too); DELETE removes it
 //   GET    /v1/admin/price-ladders   POST { name, kind?, tiers } or { name, kind?, productId }   DELETE /v1/admin/price-ladders/:lid
+//   PATCH  /v1/admin/price-ladders/:lid                       { name?, kind?, tiers? } a ladder renamed, or its tiers changed
 //
 // Tables: product_configurations and price_tiers (src/db.js), price_ladders (src/db.js).
-import { specFromTechPack, configFromSpec, makeLines, tierView, tiersToCopy, rankPast, cleanLadder, kindOf, labCategoryOf, conceptSpecOf, productPictureOf } from './product-sheet.js';
+import { specFromTechPack, configFromSpec, makeLines, tierView, tiersToCopy, rankPast, cleanLadder, cleanTier, kindOf, labCategoryOf, conceptSpecOf, productPictureOf } from './product-sheet.js';
 import sharp from 'sharp';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -88,6 +90,19 @@ export function registerProductSheetRoutes(app, { pool, authenticate, adminOnly,
     return { tiers: (await tiersOf(p.id)).map(tierView) };
   });
 
+  // One tier changed in place. A quote built from it keeps the numbers it quoted (it holds its own copy), so the tier is free to change.
+  app.patch('/v1/admin/products/:id/price-tiers/:tid', { preHandler: pre }, async (req, reply) => {
+    const p = await productOf(req.params.id); if (!p || !UUID.test(String(req.params.tid || ''))) return bad(reply, 'Price tier not found', 404);
+    const was = (await pool.query('select * from price_tiers where id=$1 and product_id=$2', [req.params.tid, p.id])).rows[0]; if (!was) return bad(reply, 'Price tier not found', 404);
+    const c = cleanTier({ ...tiersToCopy([was])[0], ...(req.body && typeof req.body === 'object' ? req.body : {}) }); if (c.error) return bad(reply, c.error);
+    const t = c.value;
+    if ((await pool.query('select 1 from price_tiers where product_id=$1 and min_quantity=$2 and id<>$3', [p.id, t.minQuantity, was.id])).rowCount) return bad(reply, `Another tier already starts at ${t.minQuantity} units. Change that one, or remove it first.`, 409);
+    await pool.query(`update price_tiers set min_quantity=$2,max_quantity=$3,unit_cost_cents=$4,wholesale_cents=$5,srp_cents=$6,setup_cents=$7,freight_cents=$8,lead_time_days=$9,notes=$10,updated_at=now() where id=$1`,
+      [was.id, t.minQuantity, t.maxQuantity, t.unitCostCents, t.wholesaleCents, t.srpCents, t.setupCents, t.freightCents, t.leadTimeDays, t.notes]);
+    await log(p, req, `Changed the ${t.minQuantity}+ price tier`);
+    return { tiers: (await tiersOf(p.id)).map(tierView) };
+  });
+
   app.delete('/v1/admin/products/:id/price-tiers/:tid', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(String(req.params.tid || ''))) return bad(reply, 'Price tier not found', 404);
     if ((await pool.query('select 1 from quotes where price_tier_id=$1', [req.params.tid])).rowCount) return bad(reply, 'A quote was built from this tier, so it stays. Add a new tier instead.', 409);
@@ -128,6 +143,16 @@ export function registerProductSheetRoutes(app, { pool, authenticate, adminOnly,
       [String(p.title || 'Product').slice(0, 120), labCategoryOf(p, spec), conceptSpecOf(p, spec), actor, p.client_id, p.id, image, thumb])).rows[0];
     log(p, req, 'Opened in the Design Studio');
     return reply.code(201).send({ conceptId: r.id, studio: `/lab/studio?concept=${r.id}`, created: true });
+  });
+  // A ladder renamed, or its tiers changed. Products priced from it earlier keep the tiers they were given: a ladder is copied, never linked.
+  app.patch('/v1/admin/price-ladders/:lid', { preHandler: pre }, async (req, reply) => {
+    const was = UUID.test(String(req.params.lid || '')) ? (await pool.query('select * from price_ladders where id=$1', [req.params.lid])).rows[0] : null; if (!was) return bad(reply, 'Price ladder not found', 404);
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    if (Array.isArray(b.tiers)) for (const t of b.tiers) { const one = cleanTier(t); if (one.error) return bad(reply, one.error); }
+    const c = cleanLadder({ name: b.name ?? was.name, kind: b.kind ?? was.kind, tiers: Array.isArray(b.tiers) ? b.tiers : was.tiers }); if (c.error) return bad(reply, c.error);
+    if ((await pool.query('select 1 from price_ladders where lower(name)=lower($1) and id<>$2', [c.value.name, was.id])).rowCount) return bad(reply, `Another ladder is already called "${c.value.name}"`, 409);
+    await pool.query('update price_ladders set name=$2, kind=$3, tiers=$4, updated_at=now() where id=$1', [was.id, c.value.name, c.value.kind, JSON.stringify(c.value.tiers)]);
+    return { ladder: { id: was.id, name: c.value.name, kind: c.value.kind || '', tiers: c.value.tiers.map(tierView) } };
   });
   app.delete('/v1/admin/price-ladders/:lid', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(String(req.params.lid || ''))) return bad(reply, 'Price ladder not found', 404);
