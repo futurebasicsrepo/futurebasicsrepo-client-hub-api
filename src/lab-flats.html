@@ -44,7 +44,8 @@ header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px
 .tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}.seg button{border:0;background:none;padding:6px 14px;font-weight:600;cursor:pointer;font-size:13px}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
 .canvas{background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;touch-action:none;position:relative}
-.canvas>svg{display:block;width:100%;height:auto;max-height:calc(100vh - 220px)}
+:is(.canvas,.fzw)>svg{display:block;width:100%;height:auto;max-height:calc(100vh - 220px)}
+.fzw{height:100%}
 .mkw{position:absolute;overflow:hidden;pointer-events:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.mkw.on{pointer-events:auto;cursor:crosshair}.mkw.on.hand{cursor:grab}.mkw canvas{position:absolute;display:block}
 .canvas,.canvas svg{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .fzc{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:999px;padding:2px 4px;background:#fff;font:600 12px 'IBM Plex Mono',monospace}.fzc button{border:0;background:none;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;font-weight:700}.fzc button:hover{background:var(--fog)}.fzc span{min-width:44px;text-align:center}
@@ -81,7 +82,7 @@ textarea.t{min-height:64px;resize:vertical}
 @media(max-width:980px){.wrap{grid-template-columns:1fr}.side{border-left:0;border-top:1px solid var(--line)}.pane{max-height:none}}
 /* inside the Design workspace: its header and bar are the workspace's own; compact is the side-by-side view, the drawing alone */
 [data-embed] header,[data-embed] .bar,[data-embed] #pickC{display:none!important}
-[data-embed] .wrap{min-height:100vh}[data-embed] .pane{max-height:calc(100vh - 46px)}[data-embed] .canvas>svg{max-height:calc(100vh - 150px)}
+[data-embed] .wrap{min-height:100vh}[data-embed] .pane{max-height:calc(100vh - 46px)}[data-embed] :is(.canvas,.fzw)>svg{max-height:calc(100vh - 150px)}
 [data-embed=full] .tools .seg{display:none}
 .newgfx{display:grid;gap:6px;border:1px dashed rgba(20,20,22,.22);border-radius:12px;padding:10px 12px;margin:8px 0}
 /* the Design workspace's layout: the panel folds away, Focus trims the words around the drawing so it gets the room */
@@ -93,13 +94,13 @@ textarea.t{min-height:64px;resize:vertical}
 [data-embed][data-focus] .stage{position:absolute;inset:0;padding:0;display:block}
 [data-embed][data-focus] .canvas{position:absolute;left:max(78px,var(--pal-l,0px));right:calc(14px + var(--pal-r,0px));top:max(116px,var(--pal-t,0px));bottom:calc(70px + var(--pal-b,0px));border:0;border-radius:0;background:transparent}
 [data-embed][data-focus][data-panel=on] .canvas{right:calc(372px + var(--pal-r,0px))}
-[data-embed][data-focus] .canvas>svg{width:100%;height:100%;max-height:none}
+[data-embed][data-focus] :is(.canvas,.fzw)>svg{width:100%;height:100%;max-height:none}
 [data-embed][data-focus] :is(.tools,.side){background:var(--glass);-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8);border:1px solid var(--glass-line);outline:1px solid var(--glass-edge);box-shadow:var(--glass-shadow)}
 [data-embed][data-focus] .tools{position:absolute;z-index:30;bottom:calc(12px + var(--pal-b,0px));left:max(78px,var(--pal-l,0px));right:calc(14px + var(--pal-r,0px));width:max-content;max-width:calc(100% - 92px);margin-inline:auto;border-radius:999px;padding:5px 12px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
 [data-embed][data-focus][data-panel=on] .tools{right:calc(372px + var(--pal-r,0px));max-width:calc(100% - 450px)}
 [data-embed][data-focus] .side{position:absolute;z-index:31;right:calc(10px + var(--pal-r,0px));top:66px;bottom:calc(10px + var(--pal-b,0px));width:350px;border-radius:24px;overflow:hidden}
 [data-embed][data-focus] .side>.tabs{background:transparent}[data-embed][data-focus] .pane{max-height:none;height:100%}
-[data-embed][data-focus] .stage>p.msg,[data-embed][data-focus] .status.ok{display:none}[data-embed][data-focus] .stage{padding-top:8px;padding-bottom:8px;gap:8px}[data-embed][data-focus] .canvas>svg{max-height:calc(100vh - 70px)}
+[data-embed][data-focus] .stage>p.msg,[data-embed][data-focus] .status.ok{display:none}[data-embed][data-focus] .stage{padding-top:8px;padding-bottom:8px;gap:8px}[data-embed][data-focus] :is(.canvas,.fzw)>svg{max-height:calc(100vh - 70px)}
 /* Simple, set by the Design workspace: the essentials; Pro shows everything */
 [data-level=simple] .lv-pro{display:none!important}
 [data-embed=compact] .wrap{grid-template-columns:1fr}[data-embed=compact] .side,[data-embed=compact] .stage>.msg{display:none}[data-embed=compact] .stage{padding:10px}
@@ -214,8 +215,13 @@ function syncKids(a,b){const A=a.childNodes,B=[...b.childNodes];
     if(o.nodeType!==1||n.nodeType!==1||o.namespaceURI!==n.namespaceURI||o.localName!==n.localName){a.replaceChild(n,o);continue}
     syncAttrs(o,n);syncKids(o,n)}
   while(A.length>B.length)a.removeChild(a.lastChild)}
-let LASTSVG='',SVGV=0;function showSvg(svg){const c=$('#canvas'),cur=c.querySelector(':scope>svg');if(cur&&svg===LASTSVG)return;LASTSVG=svg;SVGV++;SVGTPL.innerHTML=svg;const k=SVGTPL.content,nu=k.firstElementChild;
-  if(!cur||!nu||k.childElementCount!==1||nu.localName!=='svg'||[...c.children].some(e=>e!==cur&&!e.classList.contains('mkw'))){c.innerHTML=svg;SVGTPL.innerHTML='';return}
+// The drawing, and the hand drawing over it, sit in one box (FZW) inside the drawing area, and a pinch or a finger pan moves that box. Moved
+// on its own element, the drawing is laid out and painted again at every step (a browser does that for any transform on an svg's root);
+// inside a box that is moved, it is a finished layer, painted once.
+const FZW=Object.assign(document.createElement('div'),{className:'fzw'});
+let LASTSVG='',SVGV=0;function showSvg(svg){const c=$('#canvas'),cur=FZW.parentNode===c?FZW.querySelector(':scope>svg'):null;if(cur&&svg===LASTSVG)return;LASTSVG=svg;SVGV++;SVGTPL.innerHTML=svg;const k=SVGTPL.content,nu=k.firstElementChild;
+  if(!nu||k.childElementCount!==1||nu.localName!=='svg'){c.innerHTML=svg;SVGTPL.innerHTML='';return} // not one drawing (a message): put in whole
+  if(!cur||[...c.children].some(e=>e!==FZW)||[...FZW.children].some(e=>e!==cur&&!e.classList.contains('mkw'))){FZW.innerHTML=svg;c.replaceChildren(FZW);SVGTPL.innerHTML='';return}
   // the frame of the drawing (viewBox), its turn (style) and its full-view frame (data-base) belong to the zoom: changed only when they differ, as a
   // change to any of them lays out and paints the whole flat again
   const nb=nu.getAttribute('viewBox')||'';for(const k of ['viewBox','style','data-base']){const v=cur.getAttribute(k);if(v==null)nu.removeAttribute(k);else nu.setAttribute(k,v)}
@@ -611,7 +617,7 @@ function vgeo0(){const svg=$('#canvas svg');if(!svg)return null;const w=svg.clie
 const turn=(x,y,deg)=>{const a=deg*Math.PI/180,c=Math.cos(a),s=Math.sin(a);return[x*c-y*s,x*s+y*c]};
 function toInch(X,Y){const g=vgeo();if(!g)return[0,0];const[lx,ly]=turn(X-g.cx,Y-g.cy,-FR);return[g.v[0]+(lx+g.w/2-g.ox)/g.k,g.v[1]+(ly+g.h/2-g.oy)/g.k]}
 // the view's turn on the drawing and on the hand drawing over it (both turn about their own centre, which is the same box)
-function applyTurn(){VG=null;const svg=$('#canvas svg'),t=FR?`rotate(${FR}deg)`:'';if(svg){svg.style.transform=t;svg.style.transformOrigin='50% 50%'}MKW.style.transform=t;MKW.style.transformOrigin='50% 50%'}
+function applyTurn(){VG=null;const svg=$('#canvas svg'),t=FR?`rotate(${FR}deg)`:'';if(!FG?.live&&!FPAN){FZW.style.transform='';FZW.style.willChange=''}if(svg){svg.style.transform=t;svg.style.transformOrigin='50% 50%'}MKW.style.transform=t;MKW.style.transformOrigin='50% 50%'}
 function zoomSvg(){VG=null;const svg=$('#canvas svg');if(!svg)return;if(!svg.dataset.base)svg.dataset.base=svg.getAttribute('viewBox')||'';const b=baseBox();if(!b)return;
   const setVB=v=>{if(svg.getAttribute('viewBox')!==v)svg.setAttribute('viewBox',v)};if(Math.abs(FZ-1)<.001){FZ=1;FC=null;setVB(svg.dataset.base)}
   else if(FZ<1){const w=b.w/FZ,h=b.h/FZ,c=[b.x+b.w/2,b.y+b.h/2];FC=null;setVB(`${c[0]-w/2} ${c[1]-h/2} ${w} ${h}`)} // smaller than the fit: the whole flat, centred, with room round it
@@ -654,7 +660,7 @@ $('#canvas').addEventListener('pointerdown',e=>{if(e.pointerType!=='touch')retur
   if(DRAG){if(DRAG.q&&DRAG.ox!==undefined){DRAG.q.x=DRAG.ox;DRAG.q.y=DRAG.oy}if(DRAG.size)Object.assign(DRAG.size,DRAG.orig);if(DRAG.ed&&DRAG.orig)Object.assign(DRAG.ed,JSON.parse(JSON.stringify(DRAG.orig)));DRAG=null;draw()} // two fingers: a pinch, not a move
   BOXDRAG=null;FPAN=null;const[a,b]=[...FPTR.values()],g0=vgeo();if(!g0)return;FG={d:Math.hypot(a[0]-b[0],a[1]-b[1])||1,m:[(a[0]+b[0])/2,(a[1]+b[1])/2],z:FZ,c:centreNow(),u:1/g0.k,C:[g0.cx,g0.cy],r0:FR,ang:Math.atan2(b[1]-a[1],b[0]-a[0])};
   // two fingers on a graphic resize and turn it (about its centre, keeping its shape), as in other drawing apps; anywhere else they zoom the view
-  const on=[a,b,FG.m].map(([x,y])=>document.elementFromPoint(x,y)?.closest?.('[data-pl]')).find(Boolean),q=on&&PL.find(x=>x.id===on.dataset.pl);if(q){SEL=q.id;FG.q=q;FG.w0=q.w;FG.h0=q.h;FG.r0=q.rot||0;FG.a0=Math.atan2(b[1]-a[1],b[0]-a[0]);FG.base=shownQ(q)}else FG.snap=snapUse()},true);
+  const on=[a,b,FG.m].map(([x,y])=>document.elementFromPoint(x,y)?.closest?.('[data-pl]')).find(Boolean),q=on&&PL.find(x=>x.id===on.dataset.pl);if(q){SEL=q.id;FG.q=q;FG.w0=q.w;FG.h0=q.h;FG.r0=q.rot||0;FG.a0=Math.atan2(b[1]-a[1],b[0]-a[0]);FG.base=shownQ(q)}else{FG.snap=snapUse();if(!FG.snap&&FZW.isConnected){const r=FZW.getBoundingClientRect();FG.o=`${g0.cx-r.left}px ${g0.cy-r.top}px`}}},true);
 $('#canvas').addEventListener('pointermove',e=>{const p=FPTR.get(e.pointerId);if(p){p[0]=e.clientX;p[1]=e.clientY}
   if(FG&&FPTR.size>=2){e.stopImmediatePropagation();const[a,b]=[...FPTR.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1])||1,m=[(a[0]+b[0])/2,(a[1]+b[1])/2];
     if(FG.q){const k=Math.min(40/FG.w0,40/FG.h0,Math.max(.25/FG.w0,.25/FG.h0,d/FG.d));FG.q.w=r8(FG.w0*k);FG.q.h=r8(FG.h0*k);FG.q.rot=turnTo(FG.r0+(Math.atan2(b[1]-a[1],b[0]-a[0])-FG.a0)*180/Math.PI);FG.moved=true;liveQ(FG.q,FG.base);return}
@@ -663,9 +669,13 @@ $('#canvas').addEventListener('pointermove',e=>{const p=FPTR.get(e.pointerId);if
     const zN=Math.min(Math.max(FG.z*d/FG.d,ZMIN),ZMAX),sc=zN/FG.z;let dr=(Math.atan2(b[1]-a[1],b[0]-a[0])-FG.ang)*180/Math.PI;dr=((dr+540)%360)-180;
     const rN=FG.r0+dr,snap=Math.round(rN/90)*90,rT=Math.abs(rN-snap)<5?snap:rN;dr=rT-FG.r0; // a turn near square snaps to it
     const[qx,qy]=turn((FG.C[0]-FG.m[0])*sc,(FG.C[1]-FG.m[1])*sc,dr),tx=m[0]+qx-FG.C[0],ty=m[1]+qy-FG.C[1],t=`translate(${tx}px,${ty}px) rotate(${rT}deg) scale(${sc})`;
-    FG.live={sc,dr,rT,tx,ty,zN};const svg=FG.snap||$('#canvas svg');if(svg){svg.style.willChange='transform';svg.style.transformOrigin='50% 50%';svg.style.transform=t}MKW.style.willChange='transform';MKW.style.transformOrigin='50% 50%';MKW.style.transform=t;return}
-  if(FPAN){e.stopImmediatePropagation();FPAN.dx=e.clientX-FPAN.x;FPAN.dy=e.clientY-FPAN.y;if(!FPAN.raf)FPAN.raf=requestAnimationFrame(()=>{if(!FPAN)return;FPAN.raf=0;const t=`translate(${FPAN.dx}px,${FPAN.dy}px)${FR?` rotate(${FR}deg)`:''}`,svg=$('#canvas svg');if(svg){svg.style.willChange='transform';svg.style.transform=t}MKW.style.transform=t})}},true);
-function fpanCommit(){const P0=FPAN;FPAN=null;if(!P0||P0.dx===undefined)return;if(P0.raf)cancelAnimationFrame(P0.raf);const svg=$('#canvas svg');if(svg){svg.style.transform='';svg.style.willChange=''}MKW.style.transform='';VG=null;const u=unitsPerPx(),[ddx,ddy]=turn(P0.dx,P0.dy,-FR);FC=[P0.c[0]-ddx*u,P0.c[1]-ddy*u];zoomSvg()}
+    FG.live={sc,dr,rT,tx,ty,zN};
+    // the box round the flat is what moves (the flat keeps its own turn inside it, so the box turns only by what the fingers added); where
+    // a still picture stands in for the flat (a touch screen), the picture and the hand drawing move instead
+    if(FG.o){FZW.style.willChange='transform';FZW.style.transformOrigin=FG.o;FZW.style.transform=`translate(${tx}px,${ty}px) rotate(${dr}deg) scale(${sc})`;return}
+    const svg=FG.snap||$('#canvas svg');if(svg){svg.style.willChange='transform';svg.style.transformOrigin='50% 50%';svg.style.transform=t}MKW.style.willChange='transform';MKW.style.transformOrigin='50% 50%';MKW.style.transform=t;return}
+  if(FPAN){e.stopImmediatePropagation();FPAN.dx=e.clientX-FPAN.x;FPAN.dy=e.clientY-FPAN.y;if(!FPAN.raf)FPAN.raf=requestAnimationFrame(()=>{if(!FPAN)return;FPAN.raf=0;if(FZW.isConnected){FZW.style.willChange='transform';FZW.style.transform=`translate(${FPAN.dx}px,${FPAN.dy}px)`;return}const t=`translate(${FPAN.dx}px,${FPAN.dy}px)${FR?` rotate(${FR}deg)`:''}`,svg=$('#canvas svg');if(svg){svg.style.willChange='transform';svg.style.transform=t}MKW.style.transform=t})}},true);
+function fpanCommit(){const P0=FPAN;FPAN=null;if(!P0||P0.dx===undefined)return;if(P0.raf)cancelAnimationFrame(P0.raf);const svg=$('#canvas svg');if(svg){svg.style.transform='';svg.style.willChange=''}MKW.style.transform='';FZW.style.transform='';FZW.style.willChange='';VG=null;const u=unitsPerPx(),[ddx,ddy]=turn(P0.dx,P0.dy,-FR);FC=[P0.c[0]-ddx*u,P0.c[1]-ddy*u];zoomSvg()}
 const fzUp=e=>{FPTR.delete(e.pointerId);if(FG&&FPTR.size<2){const g=FG;FG=null;e.stopImmediatePropagation();if(g.q&&g.moved){if(LIVE.raf){cancelAnimationFrame(LIVE.raf);LIVE.raf=0}touch();paint()}if(g.live)fzCommit(g);else snapDone()}if(FPAN){fpanCommit();e.stopImmediatePropagation()}};
 ['pointerup','pointercancel','lostpointercapture'].forEach(t=>$('#canvas').addEventListener(t,e=>{if(e.type==='lostpointercapture'&&(!FPTR.has(e.pointerId)||MDRAG?.pid===e.pointerId))return;fzUp(e)},true));
 $('#canvas').addEventListener('wheel',e=>{if(!(e.ctrlKey||e.metaKey)){if(FZ>1){e.preventDefault();const u=unitsPerPx(),c=centreNow(),[ddx,ddy]=turn(e.deltaX,e.deltaY,-FR);FC=[c[0]+ddx*u,c[1]+ddy*u];zoomSvg()}return} // two fingers on a trackpad move a zoomed flat
@@ -673,7 +683,7 @@ $('#canvas').addEventListener('wheel',e=>{if(!(e.ctrlKey||e.metaKey)){if(FZ>1){e
 // zoom about a point on the screen: the inch under it stays under it
 // the pinch set for real: the point that was under the old centre of the view is found through the transform, and becomes the centre
 function fzCommit(g){const L=g.live,[qx,qy]=turn(-L.tx/L.sc,-L.ty/L.sc,-L.rT);FZ=L.zN;FR=((L.rT%360)+360)%360;if(FR>180)FR-=360;
-  if(Math.abs(FZ-1)<.04)FZ=1;FC=FZ<=1?null:[g.c[0]+qx*g.u,g.c[1]+qy*g.u];const svg=$('#canvas svg');if(svg){svg.style.transform='';svg.style.willChange=''}MKW.style.transform='';MKW.style.willChange='';VG=null;zoomSvg();snapDone()}
+  if(Math.abs(FZ-1)<.04)FZ=1;FC=FZ<=1?null:[g.c[0]+qx*g.u,g.c[1]+qy*g.u];const svg=$('#canvas svg');if(svg){svg.style.transform='';svg.style.willChange=''}MKW.style.transform='';MKW.style.willChange='';FZW.style.transform='';FZW.style.willChange='';VG=null;zoomSvg();snapDone()}
 function fzAt(nz,cx,cy){const g=vgeo();if(!g)return;const u=1/g.k,c=centreNow(),[ox,oy]=turn(cx-g.cx,cy-g.cy,-FR),P=[c[0]+ox*u,c[1]+oy*u];
   const z0=FZ;FZ=Math.min(Math.max(nz,ZMIN),ZMAX);if(Math.abs(FZ-1)<.04)FZ=1;const u1=u*z0/FZ;FC=FZ>1?[P[0]-ox*u1,P[1]-oy*u1]:null;zoomSvg()}
 // Safari's page zoom is never wanted here; a trackpad pinch (Magic Keyboard) arrives only as gesture events, so it zooms the flat under the pointer
@@ -772,7 +782,7 @@ function mkFit(m){const s=mkSpan();if(!s)return;const x0=Math.min(m.x,s.x),y0=Ma
 async function mkLoad(m){mkReset();if(!m)return;P.markup=m;for(const v of ['front','back']){const q=m[v];if(!q?.art)continue;try{const img=new Image();img.src=await blobUrl('/v1/lab/art/'+q.art);await img.decode();
   const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);MK[v]={cv,x:q.x,y:q.y,w:q.w,h:q.h,tpl:m.template||'none',art:q.art,dirty:false}}catch{}}mkPlace()}
 // the view's drawing laid exactly over its box: the box's corners in inches, through the flat's own transform, to the screen
-function mkPlace(){const c=$('#canvas'),g=vgeo();if(!g){MKW.remove();return}if(MKW.parentNode!==c)c.append(MKW);
+function mkPlace(){const c=$('#canvas'),g=vgeo();if(!g){MKW.remove();return}const host=FZW.parentNode===c?FZW:c;if(MKW.parentNode!==host)host.append(MKW);
   // laid over the drawing's own (unturned) box, and turned with it
   const cr=c.getBoundingClientRect();Object.assign(MKW.style,{left:(g.cx-cr.left-c.clientLeft-g.w/2)+'px',top:(g.cy-cr.top-c.clientTop-g.h/2)+'px',width:g.w+'px',height:g.h+'px'});if(!FG?.live){MKW.style.transformOrigin='50% 50%';MKW.style.transform=FR?`rotate(${FR}deg)`:''}
   const on=Boolean(HOST())&&(MKTOOLS.includes(MTOOL)||MTOOL==='hand');MKW.classList.toggle('on',on);MKW.classList.toggle('hand',MTOOL==='hand');
