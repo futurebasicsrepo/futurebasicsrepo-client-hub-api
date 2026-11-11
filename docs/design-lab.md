@@ -974,7 +974,8 @@ the page and the service).
   Each piece has its sew line, the cutting line (the seam allowance: ⅜ in for knits, ½ in for wovens, or as chosen), a grain line, notches, and
   how many to cut and from which cloth.
 - **Plush** is drafted from a kit: a **body type** and the **parts** that go on it (see *The plush kit* below). The pieces carry a ¼ in
-  allowance, the pile direction, and the stuffing opening.
+  allowance, the pile direction, their notches and the stuffing opening. Each body type is drafted with how it goes together (see *How a
+  fixed body type goes together* below).
 - **The exploded view shows every piece cut, at every step.** A piece cut 4 (two pairs, inner and outer) is four outlines; a lining under an
   ear and the pads under the feet lift off with the rest. The inner layers come off beside the outer ones, and once spread no two pieces
   cover each other. Each one is labelled with its count (Front leg 3/4), and the bar says how many there are to cut. A unit test holds this
@@ -1629,6 +1630,46 @@ Routes for paper sketches: `GET /v1/lab/concepts/:id/pattern/underlays` (which v
 /v1/lab/concepts/:id/pattern/underlays/:view` (the picture; `PUT {image: data URL, place?}`, `PATCH {place: {x, y, w, opacity}}`, in the view's
 inches; a picture up to 15 MB).
 
+### How a fixed body type goes together
+
+The seven fixed body types (bear, four-legged sitting, elephant, sea creature, bean, bunny, pillow) are drafted the way bags are
+(`draftFixed` in `src/lab-pattern.js`). Every piece names the ends of the edge it is sewn by (`at`) and carries a notch where a factory
+needs one. Every piece that depends on another is sized from the edge it is sewn to, measured off that piece's outline:
+
+- **A head gusset** is as long, tip to tip, as the head side's edge it is sewn along, and carries the head side's notches (the brow, the
+  root of an elephant's trunk, the two ear notches). A bear's runs from the nose over the crown to the back of the neck. A four-legged
+  animal's runs from the nose up the top of the snout, over the brow and the crown to the back of the head. An elephant's runs from the
+  tip of the trunk up its top, over the brow and the crown to the back of the head. The head side's brow notch is a match point on that
+  seam, not where the gusset starts.
+- **A foot pad** is as far round as its leg's open foot. On a four-legged body the hind foot is made as far round as the front, so one pad
+  fits all four, and the front leg is as long as the drop from its notch to the ground, so its sole is level with the seat.
+- **A base** (bean, bunny) is as far round as the front's and the two backs' bottom edges, with notches at the centre front, the centre
+  back and the two side seams.
+- **An underbody gusset** runs from the chest notch to the seat, as long as the body side's edge between them. A sea creature's belly
+  gusset is as long as the body side's belly edge.
+- **The neck.** A bear's body neck is the head's: each front and back takes half of a head side's neck edge. A sitting animal's head sits
+  on the body side's top and the top of its chest; the chest seam runs from there to the chest notch.
+- **A bear's back** is 6% fuller than its front, and its length is trued so the side seams walk each other.
+- **An ear lining** is the size of its ear. An elephant's ear is pleated (a quarter of its base taken up) into the gusset seam.
+- **Ears, arms, fins and a tail** are caught in a seam between two notches as far apart as the part's base: a bear's and a four-legged
+  animal's ears in the gusset seam, a bear's arms in the side seam, a bean's ears and arm nubs in the side seams, a pillow's ears in the
+  front seam, a sea creature's fins in the belly seam and its dorsal fin in the top seam, a tail in the back seam. A sea creature's tail
+  has a root as wide as the end of the tail stock. Legs are stuffed, closed and sewn on by hand at their notch.
+- **A pillow's** front is the size asked for (as tall as its height and 82% as wide), and its side gusset is as long as the front is
+  round.
+- **The stuffing opening** is marked by two notches in its seam, with at least ⅜ in of seam beyond each end.
+- **The size.** The toy is drafted, its height measured off its pieces, and drafted again until it stands the height asked for (a sea
+  creature: its length), whatever the head's size and with or without legs or a tail.
+
+`pat.assembly` lists every seam as its two runs (`{ name, a: [piece, [corners…], copy], b, gap?, why? }`), every edge finished on its own
+(`fin`) and the stuffing opening (`open`, `len`). `pat.trims` lists the fibre fill with its weight, the thread, the law label and the
+eyes (safety eyes, or floss), and what the parts call for: a pouch of pellets on a bean's or a bunny's base (3 years and up only), yarn
+for a tufted tail, interfacing behind an elephant's ears, antlers and wings. The construction check walks the assembly
+(`checkPlushShape` in `src/lab-pattern-check.js`, see [pattern-process.md](pattern-process.md)).
+
+`test/pattern-check.test.js` covers every body type at 4 to 48 in with every part it offers, and thirty patterns broken on purpose (a
+head gusset an inch short, a foot pad or a base too small, a seam left out, the fill removed), each caught by the check that is about it.
+
 ## Plush built from parts
 
 On the Pattern page a plush's body type can be **Built from parts** (`src/lab-plush-parts.js`). Start from one of twenty plush, then swap any part. Each part shows as a picture of itself, and each has a size slider. The starting plush are:
@@ -1805,7 +1846,7 @@ Footwear and plush now take the tools clothing has, where they apply:
 
 **The elephant** is a plush shape of its own (`src/lab-pattern.js`, `src/lab-plush-views.js`). It sits, with:
 
-- a head and trunk cut in one (two sides that meet down the trunk's underside, and a gusset from the back of the head over the brow and down the top of the trunk);
+- a head and trunk cut in one (two sides that meet down the trunk's underside, and a gusset from the back of the head over the brow and down the top of the trunk to its tip, as long as the head side's edge);
 - big ears, in self and lined in contrast;
 - a body in two sides with an underbody gusset;
 - four legs, each in two, on contrast foot pads;
