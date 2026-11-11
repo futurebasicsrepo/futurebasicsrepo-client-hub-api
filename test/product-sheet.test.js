@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { specFromTechPack, configFromSpec, makeLines, tierView, tiersToCopy, rankPast, cleanLadder, kindOf } from '../src/product-sheet.js';
+import { specFromTechPack, configFromSpec, makeLines, tierView, tiersToCopy, rankPast, cleanLadder, cleanTier, kindOf } from '../src/product-sheet.js';
 
 const PACK = {
   style: { styleNumber: 'Cap1 OT-S3', styleName: 'Long Sleeve "Yosemite"', category: 'Long Sleeve', fabricSummary: 'Cotton jersey, bone (weight to confirm)' },
@@ -67,4 +67,26 @@ test('any product opens in the Design Studio: a Lab category from the kind of it
   assert.match(conceptSpecOf({ title: 'Multitool' }, {}).description, /Opened from the product "Multitool"/);
   assert.equal(productPictureOf({ renderings: [{ image: '' }, { image: 'data:image/png;base64,AAA' }] }), 'data:image/png;base64,AAA');
   assert.equal(productPictureOf({ sketches: [{ image: 'data:image/jpeg;base64,BBB' }] }), 'data:image/jpeg;base64,BBB'); assert.equal(productPictureOf({ renderings: [{ image: 'fbblob:x' }] }), '');
+});
+
+test('a tier typed into the form is checked in words: whole units, a range that makes sense, no negative money', () => {
+  const ok = cleanTier({ minQuantity: '50', maxQuantity: '', unitCostCents: 900, wholesaleCents: 2300, srpCents: '', setupCents: '', freightCents: null, leadTimeDays: 21, notes: '  Gift box  included ' });
+  assert.deepEqual(ok.value, { minQuantity: 50, maxQuantity: null, unitCostCents: 900, wholesaleCents: 2300, srpCents: null, setupCents: 0, freightCents: 0, leadTimeDays: 21, notes: 'Gift box included' });
+  assert.match(cleanTier({ minQuantity: 0, unitCostCents: 1, wholesaleCents: 2 }).error, /Units/);
+  assert.match(cleanTier({ minQuantity: 2.5, unitCostCents: 1, wholesaleCents: 2 }).error, /Units/);
+  assert.match(cleanTier({ minQuantity: 50, maxQuantity: 20, unitCostCents: 1, wholesaleCents: 2 }).error, /below 50/);
+  assert.match(cleanTier({ minQuantity: 50, unitCostCents: -1, wholesaleCents: 2 }).error, /Our cost/);
+  assert.match(cleanTier({ minQuantity: 50, unitCostCents: 1 }).error, /Wholesale/);
+  assert.match(cleanTier({ minQuantity: 50, unitCostCents: 1, wholesaleCents: 2, setupCents: -5 }).error, /Setup and freight/);
+  assert.match(cleanTier({ minQuantity: 50, unitCostCents: 1, wholesaleCents: 2, leadTimeDays: 9999 }).error, /Lead time/);
+  assert.equal(cleanTier({ minQuantity: 50, maxQuantity: 99, unitCostCents: 0, wholesaleCents: 0 }).value.maxQuantity, 99, 'a free sample tier (0 and 0) is allowed');
+});
+
+test('packaging reads as words whatever shape the tech pack keeps it in, never "[object Object]"', () => {
+  const pk = packaging => specFromTechPack({ packaging }).packaging;
+  assert.equal(pk({ fold: '', notes: 'Pictures are in the views.', carton: 'Printed box.', polybag: '', unitsPerCarton: '24' }), 'Carton: Printed box.; Units per carton: 24', 'its filled-in parts, named');
+  assert.equal(pk({ fold: '', notes: 'Tissue wrap', carton: '', polybag: '' }), 'Tissue wrap', 'its notes when no part is filled in');
+  assert.equal(pk({ fold: '', notes: '', carton: '' }), '', 'an empty one is empty');
+  assert.equal(pk('Kraft box'), 'Kraft box'); assert.equal(pk([{ item: 'Polybag', spec: 'clear' }, { item: 'Hangtag' }]), 'Polybag: clear; Hangtag'); assert.equal(pk(null), '');
+  assert.ok(!/object Object/.test(JSON.stringify([pk({ a: { b: 1 } }), pk([{ x: { y: 'z' } }])])));
 });

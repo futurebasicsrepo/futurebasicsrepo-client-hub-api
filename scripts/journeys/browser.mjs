@@ -2348,5 +2348,127 @@ await journey('J304', "A project's product list in the hub shows each product's 
   } finally { await ctx.close(); }
 });
 
+// a staff page on the work console at a given width; pop-ups are accepted and kept, so a journey can say what was asked
+const consoleAt = async (token, width, height = 1000) => { const ctx = await browser.newContext({ viewport: { width, height } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, token); const page = await ctx.newPage(); page.errs = []; page.said = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => { page.said.push(d.message()); d.accept().catch(() => {}); }); return { ctx, page }; };
+
+await journey('J305', "Prices are set in one place and nothing is put on a product by itself: a saved ladder is chosen, shown, then used (never picked for you); a tier is changed, added and removed in the table, with Edit and Remove in sight at every width; a tier that starts where another does is refused in words; ladders are renamed, changed and deleted, and a product priced from one keeps its tiers", async () => {
+  const r = await room('305'), W = 'http://work.localhost:3123', tag = `${stamp}`.slice(-6);
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' }), adm = (path, o = {}) => call(path, { ...o, token: admin });
+  const sticker = sql(`insert into products(client_id,project_id,title) select client_id,project_id,'Sticker Pack' from products where id='${r.id}' returning id`).split('\n')[0].trim();
+  const tiersOf = id => sql(`select coalesce(string_agg(min_quantity||':'||wholesale_cents, ',' order by min_quantity),'') from price_tiers where product_id='${id}'`);
+  for (const [q, c, w, s] of [[42, 8200, 11000, 14000], [100, 1400, 2400, 7800]]) await adm(`/v1/admin/products/${r.id}/price-tiers`, { body: { minQuantity: q, unitCostCents: c, wholesaleCents: w, srpCents: s, setupCents: 10000 } });
+  const penLadder = `Steel pen ${tag}`, lad = await adm('/v1/admin/price-ladders', { body: { name: penLadder, productId: r.id } }), lid = lad.json?.ladder?.id;
+  ok(lad.status === 201 && !!lid && !!sticker, '   a pen priced at 42+ and 100+, saved as a ladder, and a sticker pack with no prices', lad.status);
+  // the service: one tier changed in place, and what it refuses
+  const penTiers = (await adm(`/v1/admin/products/${r.id}/sheet`)).json.tiers, t42 = penTiers.find(t => t.minQuantity === 42);
+  let x = await adm(`/v1/admin/products/${r.id}/price-tiers/${t42.id}`, { method: 'PATCH', body: { minQuantity: 40, wholesaleCents: 11500 } });
+  ok(x.status === 200 && tiersOf(r.id) === '40:11500,100:2400', '1. a tier is changed in place, its quantity too, and the others stay', { status: x.status, tiers: tiersOf(r.id) });
+  x = await adm(`/v1/admin/products/${r.id}/price-tiers/${t42.id}`, { method: 'PATCH', body: { minQuantity: 100 } }); ok(x.status === 409 && /already starts at 100/.test(x.json?.error || ''), '2. a tier moved onto the quantity another starts at is refused in words', x.json);
+  x = await adm(`/v1/admin/products/${r.id}/price-tiers/${t42.id}`, { method: 'PATCH', body: { wholesaleCents: -5 } }); ok(x.status === 422 && /Wholesale/.test(x.json?.error || '') && tiersOf(r.id) === '40:11500,100:2400', '   and a negative price is refused, nothing changed', x.json);
+  x = await call(`/v1/admin/products/${r.id}/price-tiers/${t42.id}`, { method: 'PATCH', token: r.token, body: { wholesaleCents: 1 } }); ok(x.status === 403 || x.status === 401, '   a client cannot change a tier', x.status);
+  await adm(`/v1/admin/products/${r.id}/price-tiers/${t42.id}`, { method: 'PATCH', body: { minQuantity: 42, wholesaleCents: 11000 } });
+  x = await adm(`/v1/admin/price-ladders/${lid}`, { method: 'PATCH', body: { tiers: [{ minQuantity: 50, unitCostCents: 1, wholesaleCents: 2 }, { minQuantity: 50, unitCostCents: 1, wholesaleCents: 3 }] } }); ok(x.status === 422 && /same quantity/.test(x.json?.error || ''), "3. a ladder's tiers cannot start at the same quantity twice", x.json);
+  const { ctx, page } = await consoleAt(admin, 1280), card = `#priceCard-${sticker}`, rows = () => page.$$eval(`${card} .tt:not(.mini) tr[data-tier]`, els => els.map(e => e.dataset.tier));
+  try {
+    await page.goto(`${W}/clients/${r.clientId}#product=${sticker}`, { waitUntil: 'networkidle' }); await page.evaluate(id => window.selectRoom('product', id, 'config'), sticker); await page.waitForSelector(card, { timeout: 15000 });
+    await page.evaluate(() => { window.__stayed = true; });
+    ok(await page.$eval(`${card} select`, s => s.value === '' && /Choose a ladder/.test(s.selectedOptions[0].textContent)) && (await rows()).length === 0 && tiersOf(sticker) === '', '4. a product with no prices opens with no ladder chosen and nothing put on it', await page.$eval(`${card} select`, s => s.selectedOptions[0].textContent));
+    await page.selectOption(`${card} select`, lid); await page.waitForSelector(`${card} .lad-preview`, { timeout: 8000 });
+    const preview = await page.$eval(`${card} .lad-preview`, e => e.innerText.replace(/\s+/g, ' '));
+    ok(/42\+/.test(preview) && /\$110\.00/.test(preview) && /100\+/.test(preview) && tiersOf(sticker) === '', "5. choosing a ladder shows its tiers first: the product is still untouched", preview.slice(0, 160));
+    await page.click(`${card} .lad-preview .pb.solid`); await page.waitForFunction(c => document.querySelectorAll(`${c} .tt:not(.mini) tr[data-tier]`).length === 2, card, { timeout: 10000 });
+    ok(tiersOf(sticker) === '42:11000,100:2400' && await page.$eval(`${card} select`, s => s.value === ''), '6. Use these tiers puts them on, and the picker goes back to nothing chosen', tiersOf(sticker));
+    const inSight = async () => page.$$eval(`${card} .tt:not(.mini) tr[data-tier]`, (els, c) => { const box = document.querySelector(c).getBoundingClientRect(), wrap = document.querySelector(`${c} .tt-wrap`); return els.every(tr => [...tr.querySelectorAll('.tt-acts .pb')].length >= 2 && [...tr.querySelectorAll('.tt-acts .pb')].every(b => { const q = b.getBoundingClientRect(); return q.width > 0 && q.right <= box.right + 0.5 && q.left >= box.left - 0.5; })) && wrap.scrollWidth <= wrap.clientWidth + 1; }, card);
+    ok(await inSight(), "7. every tier's Edit and Remove are in sight, with nothing off the table's edge to scroll to");
+    // a tier changed in place
+    await page.click(`${card} tr[data-tier="42"] .pb:has-text("Edit")`); await page.waitForSelector(`${card} form.tf`, { timeout: 8000 });
+    await page.fill(`${card} form.tf [name=wholesale]`, '120'); await page.fill(`${card} form.tf [name=notes]`, 'Gift box included');
+    const live = await page.$eval(`${card} .tf-live`, e => e.textContent); ok(/Landed \$84\.38/.test(live) && /29\.7%/.test(live), '8. the form works the landed cost and the margin out as the numbers are typed', live);
+    await page.press(`${card} form.tf [name=wholesale]`, 'Enter'); await page.waitForFunction(c => !document.querySelector(`${c} form.tf`) && /\$120\.00/.test(document.querySelector(c).innerText), card, { timeout: 10000 });
+    ok(tiersOf(sticker) === '42:12000,100:2400' && /Gift box included/.test(await page.innerText(card)), '   Enter saves it: the tier, its note and the others are as left', tiersOf(sticker));
+    // a twin quantity, then a real new tier
+    await page.click(`${card} .pb.add`); await page.fill(`${card} form.tf [name=min]`, '100'); await page.fill(`${card} form.tf [name=cost]`, '1'); await page.fill(`${card} form.tf [name=wholesale]`, '2'); await page.click(`${card} form.tf button[type=submit]`);
+    ok(/already starts at 100/.test(await page.$eval(`${card} .tf-msg`, e => e.textContent)) && tiersOf(sticker) === '42:12000,100:2400', '9. a new tier at a quantity another starts at is refused in the form, and the tier there is not written over', await page.$eval(`${card} .tf-msg`, e => e.textContent));
+    await page.fill(`${card} form.tf [name=min]`, 'lots'); await page.click(`${card} form.tf button[type=submit]`); ok(/Units from/.test(await page.$eval(`${card} .tf-msg`, e => e.textContent)), '   and a quantity that is not a number is asked for again', await page.$eval(`${card} .tf-msg`, e => e.textContent));
+    await page.fill(`${card} form.tf [name=min]`, '500'); await page.fill(`${card} form.tf [name=cost]`, '0.40'); await page.fill(`${card} form.tf [name=wholesale]`, '1.10'); await page.click(`${card} form.tf button[type=submit]`);
+    await page.waitForFunction(c => document.querySelectorAll(`${c} .tt:not(.mini) tr[data-tier]`).length === 3, card, { timeout: 10000 });
+    ok(tiersOf(sticker) === '42:12000,100:2400,500:110', '10. + Add a tier adds one', tiersOf(sticker));
+    // the pen's tiers come off the sticker pack
+    for (const q of ['42', '100']) { await page.click(`${card} tr[data-tier="${q}"] .pb.drop`); await page.waitForFunction(([c, q]) => !document.querySelector(`${c} tr[data-tier="${q}"]`), [card, q], { timeout: 10000 }); }
+    const tab = await page.$eval(`#workflow-${sticker} .ptabs button:nth-child(2)`, b => b.textContent);
+    ok(tiersOf(sticker) === '500:110' && page.said.filter(m => /^Remove the (42|100)\+ tier\?/.test(m)).length === 2 && /1 tier$/.test(tab), '11. Remove asks, then takes the tier off; the tab counts what is left', { tiers: tiersOf(sticker), tab, said: page.said });
+    ok(await page.evaluate(() => window.__stayed === true), '    and none of it reloaded the page');
+    // ladders: saved by name, then renamed, changed and deleted
+    const mine = `Stickers ${tag}`, renamed = `Sticker pack ${tag}`;
+    await page.click(`${card} .pb:has-text("Save these tiers as a ladder")`); await page.fill(`${card} .lad-save input`, mine); await page.click(`${card} .lad-save button[type=submit]`);
+    await page.waitForFunction(([c, n]) => [...document.querySelectorAll(`${c} select option`)].some(o => o.textContent.includes(n)), [card, mine], { timeout: 10000 });
+    ok(sql(`select count(*) from price_ladders where name='${mine}'`) === '1', '12. Save these tiers as a ladder keeps them under the name typed');
+    await page.click(`${card} .pb:has-text("Manage ladders")`); await page.waitForSelector('#ladderDlg[open]', { timeout: 8000 });
+    await page.click(`#ladderDlg .ld:has-text("${mine}") .pb:has-text("Rename")`); await page.fill('#ladderDlg .ld-top input', penLadder); await page.click('#ladderDlg .ld-top button[type=submit]'); await page.waitForFunction(() => document.querySelector('#ladderDlg .ld-top .tf-msg')?.textContent.length > 0, null, { timeout: 8000 });
+    ok(/already called/.test(await page.$eval('#ladderDlg .ld-top .tf-msg', e => e.textContent)), '13. a ladder cannot take the name another has', await page.$eval('#ladderDlg .ld-top .tf-msg', e => e.textContent));
+    await page.fill('#ladderDlg .ld-top input', renamed); await page.click('#ladderDlg .ld-top button[type=submit]'); await page.waitForSelector(`#ladderDlg .ld:has-text("${renamed}")`, { timeout: 8000 });
+    const L = `#ladderDlg .ld:has-text("${renamed}")`;
+    await page.click(`${L} .pb:has-text("Edit")`); await page.fill(`${L} form.tf [name=wholesale]`, '1.25'); await page.click(`${L} form.tf button[type=submit]`); await page.locator(L, { hasText: '$1.25' }).waitFor({ timeout: 8000 });
+    ok(sql(`select tiers->0->>'wholesaleCents' from price_ladders where name='${renamed}'`) === '125' && tiersOf(sticker) === '500:110', "14. a ladder is renamed and its tier changed; the product priced before keeps its own tiers", { ladder: sql(`select tiers from price_ladders where name='${renamed}'`), product: tiersOf(sticker) });
+    await page.click(`${L} .pb.drop:has-text("Remove")`); await sleep(300); ok(page.said.some(m => /needs at least one tier/.test(m)) && sql(`select jsonb_array_length(tiers) from price_ladders where name='${renamed}'`) === '1', "    a ladder's last tier cannot be removed: it says to delete the ladder instead", page.said.slice(-1));
+    await page.click(`${L} .pb:has-text("Delete ladder")`); await page.waitForFunction(n => !document.querySelector('#ladderDlg').innerText.includes(n), renamed, { timeout: 8000 });
+    ok(sql(`select count(*) from price_ladders where name='${renamed}'`) === '0' && sql(`select count(*) from price_ladders where id='${lid}'`) === '1' && tiersOf(sticker) === '500:110', '15. Delete ladder removes that ladder alone', page.said.slice(-1));
+    await page.click('#ladderDlg .close'); await page.waitForFunction(([c, n]) => ![...document.querySelectorAll(`${c} select option`)].some(o => o.textContent.includes(n)), [card, renamed], { timeout: 8000 });
+    ok(page.errs.length === 0, '    no page errors', page.errs);
+  } finally { await ctx.close(); }
+  // narrow: the tiers are cards, each with its Edit and Remove
+  const n = await consoleAt(admin, 720);
+  try {
+    await n.page.goto(`${W}/clients/${r.clientId}#product=${r.id}`, { waitUntil: 'networkidle' }); await n.page.evaluate(id => window.selectRoom('product', id, 'config'), r.id); await n.page.waitForSelector(`#priceCard-${r.id} tr[data-tier]`, { timeout: 15000 });
+    const narrow = await n.page.evaluate(id => { const c = document.querySelector('#priceCard-' + id), box = c.getBoundingClientRect(), wrap = c.querySelector('.tt-wrap'), btns = [...c.querySelectorAll('tr[data-tier] .tt-acts .pb')].map(b => b.getBoundingClientRect()); return { fits: wrap.scrollWidth <= wrap.clientWidth + 1, inside: btns.length >= 4 && btns.every(q => q.width > 0 && q.right <= box.right + 0.5), labelled: getComputedStyle(c.querySelector('tr[data-tier] td[data-l]'), '::before').content.includes('Units'), page: document.documentElement.scrollWidth - document.documentElement.clientWidth }; }, r.id);
+    ok(narrow.fits && narrow.inside && narrow.labelled && narrow.page <= 0, '16. on a narrow screen each tier is a card with its numbers named and its Edit and Remove inside it; nothing scrolls sideways', narrow);
+    ok(n.page.errs.length === 0, '    no page errors (narrow)', n.page.errs);
+  } finally { await n.ctx.close(); }
+});
+
+await journey('J306', "The product page reads in order at every width: the stage names are whole (never cut to 'Conc' and 'Deve'), the actions sit in one card of named rows, the tiles open the thing that fills them, Commerce says what it is for and offers the next step, and a file shows its picture in the list and opens bigger without a download", async () => {
+  const r = await room('306'), W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  sql(`delete from product_configurations where product_id='${r.id}'`);
+  const pic = Buffer.from(runner.split(',')[1], 'base64'), up = async (name, file, type, buf) => { const fd = new FormData(); fd.append('file', new Blob([buf], { type }), file); return (await fetch(`${BASE}/v1/admin/products/${r.id}/assets?name=${encodeURIComponent(name)}&kind=sample&visibility=client`, { method: 'POST', headers: { authorization: 'Bearer ' + admin }, body: fd })).status; };
+  ok(await up('Logo placement', 'IMG_4711.jpeg', 'image/jpeg', pic) === 201 && await up('Placement spec', 'placement-spec.pdf', 'application/pdf', Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n')) === 201, '   a product with a picture and a PDF among its files');
+  for (const width of [1440, 1120, 760, 390]) {
+    const { ctx, page } = await consoleAt(admin, width);
+    try {
+      await page.goto(`${W}/clients/${r.clientId}#product=${r.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('.gates-box .gate', { timeout: 15000 });
+      const v = await page.evaluate(() => { const gates = [...document.querySelectorAll('.gates-box .gate')], tops = [...new Set(gates.map(g => Math.round(g.getBoundingClientRect().top)))], groups = [...document.querySelectorAll('.actgroup')].map(g => g.getBoundingClientRect());
+        const range = document.createRange(), cut = gates.filter(g => { const t = [...g.childNodes].find(x => x.nodeType === 3 && x.textContent.trim()); if (!t) return true; range.selectNodeContents(t); const q = range.getBoundingClientRect(), b = g.getBoundingClientRect(); return q.right > b.right + 0.5 || q.left < b.left - 0.5 || q.width === 0; }).map(g => g.textContent.trim().slice(0, 14));
+        return { n: gates.length, rows: tops.length, perRow: Math.round(gates.length / tops.length), cut, groups: groups.length, oneCard: groups.every(g => Math.abs(g.left - groups[0].left) < 1 && Math.abs(g.right - groups[0].right) < 1) && groups.every((g, i) => i === 0 || g.top >= groups[i - 1].bottom - 1), names: [...document.querySelectorAll('.actgroup > .meta')].map(e => e.textContent.trim()), side: document.documentElement.scrollWidth - document.documentElement.clientWidth }; });
+      ok(v.n === 8 && v.cut.length === 0 && [8, 4, 2].includes(v.perRow) && v.rows * v.perRow === 8, `${width}px: all eight stage names are whole, in even rows (${v.perRow} to a row)`, v);
+      ok(v.groups === 4 && v.oneCard && ['Move it along', 'Design', 'Set up & price', 'Shopify'].every(g => v.names.includes(g)) && v.side <= 0, `${width}px: the four action groups are rows of one card, one under the other, and nothing pushes the page sideways`, v);
+      ok(page.errs.length === 0, `${width}px: no page errors`, page.errs);
+    } finally { await ctx.close(); }
+  }
+  const { ctx, page } = await consoleAt(admin, 1280);
+  try {
+    const open = async tab => { await page.goto(`${W}/clients/${r.clientId}#product=${r.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('.pf-tile', { timeout: 15000 }); if (tab) { await page.evaluate(([id, t]) => window.selectRoom('product', id, t), [r.id, tab]); await sleep(300); } };
+    await open();
+    await page.click('.pf-tile:has-text("Factory")'); await page.waitForSelector('#editorModal[open]', { timeout: 8000 }).catch(() => {});
+    ok(await page.locator('#editorModal[open]').count() === 1, '1. with no factory set, the Factory tile opens the form that sets it (not another tab to hunt through)'); await page.evaluate(() => document.querySelector('#editorModal').close());
+    await page.click('.pf-tile:has-text("Price")'); await page.waitForSelector(`#priceCard-${r.id} form.tf`, { timeout: 10000 }).catch(() => {});
+    ok(await page.locator(`#priceCard-${r.id} form.tf [name=min]`).count() === 1 && await page.evaluate(() => document.activeElement?.name === 'min'), '2. with no prices, the Price tile opens Spec & pricing on the first tier, ready to type');
+    await open('commerce');
+    const com = await page.$eval('.commerce-empty', e => e.innerText.replace(/\s+/g, ' '));
+    ok(/No quote yet/.test(com) && /Shopify draft order/.test(com) && await page.locator('.commerce-empty .tools button', { hasText: 'Add prices' }).count() === 1, '3. Commerce with no quote says what the tab is for and offers the step that is missing (prices first)', com.slice(0, 200));
+    await page.click('.commerce-empty .tools button'); await page.waitForSelector(`#priceCard-${r.id} form.tf`, { timeout: 10000 }).catch(() => {}); ok(await page.locator(`#priceCard-${r.id} form.tf`).count() === 1, '   and that button lands on the prices');
+    // files: listed as the tab opens, each with its picture or its kind
+    await open('assets'); await page.waitForSelector('.frow', { timeout: 15000 }); await page.waitForFunction(() => [...document.querySelectorAll('.arow .fthumb[data-pic], .frow .fthumb[data-pic]')].every(b => b.querySelector('img')?.naturalWidth > 0), null, { timeout: 15000 }).catch(() => {});
+    const f = await page.evaluate(() => ({ rows: document.querySelectorAll('.frow').length, shown: [...document.querySelectorAll('.fthumb[data-pic]')].map(b => b.querySelector('img')?.naturalWidth > 0), pdf: [...document.querySelectorAll('.fthumb.doc span')].map(e => e.textContent), asset: !!document.querySelector('.arow .fthumb[data-pic] img'), size: [...document.querySelectorAll('.fthumb')].map(b => Math.round(b.getBoundingClientRect().width)) }));
+    ok(f.rows >= 2 && f.shown.length >= 2 && f.shown.every(Boolean) && f.asset, '4. the folder lists itself as the tab opens, and every picture file shows its picture: in the folder and beside its asset', f);
+    ok(f.pdf.includes('pdf') && f.size.every(w => w === 56), '   a PDF is marked as one; every row keeps the same small square', f);
+    let downloads = 0; page.on('download', () => downloads++);
+    await page.locator('.arow .fthumb[data-pic]').first().click(); await page.waitForSelector('#picZoom[open] img', { timeout: 8000 });
+    ok(await page.$eval('#picZoom img', i => i.naturalWidth > 100) && downloads === 0, '5. pressing a picture opens it bigger on the page: nothing is downloaded', { downloads });
+    await page.keyboard.press('Escape');
+    const got = page.waitForEvent('download', { timeout: 8000 }).catch(() => null); await page.locator('.frow .pb', { hasText: 'Download' }).first().click(); ok(!!(await got), '   and Download still downloads the file');
+    ok(page.errs.length === 0, '   no page errors', page.errs);
+  } finally { await ctx.close(); }
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);

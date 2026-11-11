@@ -20,7 +20,12 @@ export function specFromTechPack(data) {
   const body = bom.find(b => /body|shell|main|fabric|upper|blank/i.test(`${b.component || ''}`)) || bom[0] || null;
   const decoMethods = METHODS.filter(([, re]) => re.test(artText) || bom.some(b => re.test(`${b.component} ${b.material} ${b.notes}`))).map(([n]) => n);
   const decoPlaces = PLACES.filter(([, re]) => re.test(artText) || art.some(a => (a.placements || []).some(p => re.test(`${p.label || ''} ${p.sketchId || ''}`)))).map(([n]) => n);
-  const packaging = Array.isArray(d.packaging) ? d.packaging.map(p => clean([p.item, p.spec].filter(Boolean).join(': '))).filter(Boolean).join('; ') : clean(d.packaging?.notes || d.packaging || '');
+  // packaging is a list of items, a line of words, or an object of parts (polybag, carton, fold, units per carton, notes): an object used to
+  // print as "[object Object]". Its parts are named; its notes are used when no part is filled in.
+  const partName = k => clean(String(k).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ')).replace(/^./, ch => ch.toUpperCase()).replace(/ ([A-Z])/g, (_, ch) => ' ' + ch.toLowerCase());
+  const packWords = v => typeof v === 'string' || typeof v === 'number' ? clean(v) : Array.isArray(v) ? v.map(packWords).filter(Boolean).join(', ')
+    : v && typeof v === 'object' ? (Object.entries(v).filter(([k]) => !/^(notes?|description)$/i.test(k)).map(([k, x]) => [partName(k), packWords(x)]).filter(([, x]) => x).map(([k, x]) => `${k}: ${x}`).join('; ') || clean(v.notes || v.note || v.description)) : '';
+  const packaging = Array.isArray(d.packaging) ? d.packaging.map(p => p && typeof p === 'object' ? clean([p.item, p.spec].filter(Boolean).join(': ')) || packWords(p) : packWords(p)).filter(Boolean).join('; ') : packWords(d.packaging);
   const c = d.commercial || {}, cost = c.cost || {};
   return {
     styleNumber: clean(style.styleNumber), styleName: clean(style.styleName), category: clean(style.category), season: clean(style.season), description: clean(style.description),
@@ -91,6 +96,22 @@ export function likeness(a, b) {
 export const rankPast = (target, list, n = 12) => list.filter(x => x.id !== target.id && (x.tiers?.length || x.config)).map(x => ({ ...x, score: likeness(target, x) })).sort((x, y) => y.score - x.score || new Date(y.updated_at || 0) - new Date(x.updated_at || 0)).slice(0, n);
 
 // A price ladder staff save once and reuse: a name and its tiers.
+// One price tier as a person typed it (the console's tier form, a ladder's tiers): whole units, money in cents, nothing negative.
+// Returns { value } in the shape tiersToCopy gives, or { error } in words the form can show.
+export function cleanTier(input = {}) {
+  const int = v => (v === '' || v == null ? null : Number(v)), whole = n => Number.isFinite(n) && Math.round(n) === n;
+  const min = int(input.minQuantity), max = int(input.maxQuantity), cost = int(input.unitCostCents), wholesale = int(input.wholesaleCents), srp = int(input.srpCents);
+  const setup = int(input.setupCents) ?? 0, freight = int(input.freightCents) ?? 0, lead = int(input.leadTimeDays);
+  if (!whole(min) || min < 1 || min > 10000000) return { error: 'Units: enter the quantity this tier starts at' };
+  if (max != null && max !== 0 && (!whole(max) || max < min)) return { error: `Units: the top of the range cannot be below ${min}` };
+  if (!whole(cost) || cost < 0) return { error: 'Our cost: enter what one unit costs us' };
+  if (!whole(wholesale) || wholesale < 0) return { error: 'Wholesale: enter the price the client pays for one unit' };
+  if (srp != null && srp !== 0 && (!whole(srp) || srp < 0)) return { error: 'SRP: enter a price, or leave it empty' };
+  if (!whole(setup) || setup < 0 || !whole(freight) || freight < 0) return { error: 'Setup and freight are totals for the run: enter an amount, or leave them empty' };
+  if (lead != null && lead !== 0 && (!whole(lead) || lead < 0 || lead > 730)) return { error: 'Lead time: enter days, or leave it empty' };
+  return { value: { minQuantity: min, maxQuantity: max || null, unitCostCents: cost, wholesaleCents: wholesale, srpCents: srp || null, setupCents: setup, freightCents: freight, leadTimeDays: lead || null, notes: clean(input.notes).slice(0, 400) || null } };
+}
+
 export function cleanLadder(input = {}) {
   const name = clean(input.name).slice(0, 80); if (!name) return { error: 'Give the price ladder a name' };
   const tiers = tiersToCopy(input.tiers); if (!tiers.length) return { error: 'A ladder needs at least one price tier' };
