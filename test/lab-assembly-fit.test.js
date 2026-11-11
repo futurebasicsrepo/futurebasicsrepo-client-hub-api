@@ -134,3 +134,15 @@ test('the files: a made part\'s STL is its one closed solid, and its STEP carrie
     const mine = stepOf(s, { only: q.id }), alone = stepOf(cleanAssembly({ ...s, parts: [{ ...q, cuts: undefined }] })); assert.ok(shut(mine), `${a}: ${q.name}`); if (count(mine, /ADVANCED_FACE\(/g) > count(alone, /ADVANCED_FACE\(/g)) written++; } } // alone: the part with nothing passing through it
   assert.ok(windows >= 60 && written >= 15, `${windows} windows in side walls over the starting assemblies, in ${written} housings' STEP`);
 });
+
+test('the bike light the journeys design from a concept really is clear: nothing floating, its screws through the board into bosses, its lens and key through their walls', async () => {
+  const { readFileSync } = await import('node:fs'), { composeAssembly } = await import('../src/lab-assembly-compose.js');
+  const answers = JSON.parse(readFileSync(new URL('../scripts/journeys/fixtures/assembly-compose.json', import.meta.url), 'utf8')); let i = 0;
+  const r = await composeAssembly({ concept: { name: 'Bike front light', category: 'electronics' }, ask: async () => answers[i++] });
+  assert.equal(r.status, 'clear'); assert.equal(r.spec.parts.length, 14); assert.deepEqual(notOk(fitOf(r.spec)).map(c => `${c.kind}: ${c.text}`), [], 'no clash, contact, fastener or size finding at any level');
+  const by = Object.fromEntries(r.spec.parts.map(p => [p.id, p])); assert.equal(by.body.bosses.length, 2); assert.equal(by.screws.qty, 2); assert.ok(by.top.cuts.some(c => c.for === 'key') && by.body.cuts.some(c => c.for === 'lens') && by.top.cuts.some(c => c.for === 'lens'));
+  // as it was drawn before (a cell 1.1 mm off the floor, an LED module 0.7 mm from the wall and 5.5 mm from all else, four screws in mid-air), the contact and fastener checks say so
+  const old = JSON.parse(JSON.stringify(answers[1])), P = id => old.parts.find(p => p.id === id); P('battery').at = [0, -16, 6.4]; P('led').at = [0, 41, 17]; Object.assign(P('screws'), { at: [12, 30, 26], qty: 4, spots: undefined, through: undefined, parent: undefined }); delete P('body').bosses;
+  const f = fitOf(cleanAssembly({ arch: 'custom', kind: 'electronics', parts: old.parts })), ids = f.contact.filter(c => c.level === 'warn').flatMap(c => c.parts);
+  assert.ok(['battery', 'led', 'screws', 'pcb'].every(id => ids.includes(id)), `floating: ${ids.join(', ')}`); assert.ok(f.fasteners.some(c => c.level === 'warn' && c.need === 2 && c.have === 4));
+});

@@ -2034,6 +2034,12 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   - `fasteners` (watch): the screws on the parts list against what the screw-fixed parts ask for (`fixQty` × quantity), and each screw
     through two parts.
   - `size` (watch): the size the parts make against the size asked for at **Start from…** (kept on the assembly as `dims`), over 0.5 mm.
+  Contact, fasteners and size stay at watch, not fix before tooling. Measured on the 15 starting assemblies as they were saved before they
+  were rebuilt: 12 have a contact or fastener finding (38 contact findings, 27 of them a gap of 2 mm or less: drawn loosely, not a part
+  missing), so every such saved assembly would turn red and lose up to 30 review points for what a parts list or a nudge puts right; a
+  part just added with **Add part** starts 20 mm outside the product; and the size asked goes stale when a designer resizes a housing on
+  purpose. On the 60 assemblies the starting points make today none of the three is raised, so a clash (a part in another's material)
+  is the one that blocks.
 - **Openings, bosses and screws.** A part says what it passes `through` (a key through its cover, a shaft through a panel, a screw through
   a board) and the opening is cut there with 0.2 mm round it, worked out each time so it follows the part; sockets and clear windows get
   theirs without being told. A part with a quantity can list where its other pieces are (`spots`). A round solid part can have a `flange`
