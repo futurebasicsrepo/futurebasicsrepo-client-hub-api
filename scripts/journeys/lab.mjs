@@ -1885,7 +1885,7 @@ await journey('J229', 'Made as: a mark or graphic in the studio is made as any o
   const { brands, plan } = await conceptSetup();
   const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
   try {
-    const tl = await K('/library/techniques'); const T = tl.json.techniques, byKind = k => T.filter(t => t.kind === k);
+    const tl = await K('/library/techniques'); const T = tl.json.techniques, TC = T.filter(t => !t.surfaces || t.surfaces.includes('cloth')), byKind = k => TC.filter(t => t.kind === k); // what the Studio offers a garment: the ways made on cloth (a product type is offered its own, J311)
     ok(tl.status === 200 && T.length >= 44 && tl.json.kinds.length === 6 && byKind('embroidery').length >= 7 && byKind('print').length >= 12 && byKind('heat_transfer').length >= 8 && byKind('patch').length >= 7 && byKind('other').length >= 5, `1. the library has ${T.length} ways to make a graphic across ${tl.json.kinds.length} kinds`, Object.fromEntries(tl.json.kinds.map(k => [k.id, byKind(k.id).length])));
     ok(T.every(t => tl.json.effects.includes(t.finish.effect) && t.factoryNote && t.prompt) && tl.json.effects.includes('silicone') && tl.json.effects.includes('stud'), '   each one draws with a known effect and carries its factory note and its words for the image model');
     if (!playwright) { ok(true, 'needs a browser'); return; }
@@ -1906,9 +1906,9 @@ await journey('J229', 'Made as: a mark or graphic in the studio is made as any o
       ok((await fin()).effect === 'silicone' && (await fin()).raise === 5, '   the heat transfers: 3D silicone, thick and glossy', await fin());
       await page.click('#pLayers [data-tkind=other]'); const studs = T.find(t => t.key === 'rhinestones'); await page.waitForSelector(`#pLayers [data-tapply="${studs.id}"]`); await page.click(`#pLayers [data-tapply="${studs.id}"]`); await page.waitForFunction(id => selected().finish && selected().finish.id === id, studs.id);
       ok((await fin()).effect === 'stud', '   other ways: rhinestones');
-      await page.click('#pLayers [data-act=madeall]'); await page.waitForSelector('#madeDlg[open]'); await page.waitForFunction(n => document.querySelectorAll('#madeGrid [data-madeapply]').length === n, T.length, { timeout: 30000 });
-      ok((await page.locator('#madeGrid canvas').count()) === T.length && (await page.locator('#madeGrid h4').count()) === 6, `3. "See it made every way": the wordmark made all ${T.length} ways on a piece of cloth, grouped by kind`);
-      await page.selectOption('#madeCloth', 'denim'); await page.waitForFunction(n => document.querySelectorAll('#madeGrid canvas').length === n, T.length); ok(await page.evaluate(() => MADE.cloth === 'denim'), '   drawn again on denim');
+      await page.click('#pLayers [data-act=madeall]'); await page.waitForSelector('#madeDlg[open]'); await page.waitForFunction(n => document.querySelectorAll('#madeGrid [data-madeapply]').length === n, TC.length, { timeout: 30000 });
+      ok((await page.locator('#madeGrid canvas').count()) === TC.length && (await page.locator('#madeGrid h4').count()) === 6, `3. "See it made every way": the wordmark made all ${TC.length} ways on a piece of cloth, grouped by kind`);
+      await page.selectOption('#madeCloth', 'denim'); await page.waitForFunction(n => document.querySelectorAll('#madeGrid canvas').length === n, TC.length); ok(await page.evaluate(() => MADE.cloth === 'denim'), '   drawn again on denim');
       await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-made-every-way.png` }).catch(() => {});
       const knit = T.find(t => t.key === 'knit-in'); await page.click(`#madeGrid [data-madeapply="${knit.id}"]`); await page.waitForFunction(id => selected().finish && selected().finish.id === id, knit.id);
       ok(!(await page.evaluate(() => document.getElementById('madeDlg').open)) && (await fin()).effect === 'knit', '   clicking one makes the layer that way and closes the wall');
