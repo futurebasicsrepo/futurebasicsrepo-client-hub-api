@@ -17,17 +17,22 @@ const INK = ['#d1495b', '#2e86ab', '#e89f2b', '#3a9d5d', '#8e5ad6', '#c2577f', '
 
 const NAMES = { front: 'Front', back: 'Back', sleeve: 'Sleeve', side: 'Side body', top: 'Top sleeve', under: 'Under sleeve', panel: 'Crown panel', brim: 'Brim', crown: 'Crown top', band: 'Side band' };
 function blocksOf(pat) { // the block pieces, flat, with a name each
-  const out = []; const walk = (o, pre) => { for (const [k, v] of Object.entries(o || {})) if (v && Array.isArray(v.sew) && v.sew.length > 2) out.push({ name: (pre ? pre + ' ' : '') + (NAMES[k] || k), blk: v }); else if (v && typeof v === 'object' && !Array.isArray(v) && k !== 'at') walk(v, k === 'brief' ? 'Brief' : ''); };
-  walk(pat.block, ''); return out;
+  const out = []; const walk = (o, pre) => { for (const [k, v] of Object.entries(o || {})) if (v && Array.isArray(v.sew) && v.sew.length > 2) out.push({ name: (pre ? pre + ' ' : '') + (NAMES[k] || (v.name ? `${v.name}${v.cut > 1 ? ` (cut ${v.cut})` : ''}` : k)), blk: v }); else if (v && typeof v === 'object' && !Array.isArray(v) && k !== 'at') walk(v, k === 'brief' ? 'Brief' : ''); };
+  walk(pat.block || pat.shell, ''); return out; // a bag: the pieces of its shell
 }
 // the block pieces side by side, each seam's two sides in its colour and its number at each side's middle
 function sewnSvg(pat, c) {
   const B = blocksOf(pat); if (!B.length) return '';
-  let x = 0; const at = new Map(); const gap = 2.5;
-  for (const b of B) { const bb = boundsOf(b.blk.sew); at.set(b.blk, { dx: x - bb.x0, dy: -bb.y0, bb }); b.pos = at.get(b.blk); x += bb.w + gap; }
-  const H = Math.max(...B.map(b => b.pos.bb.h)), W = x - gap, fs = Math.max(.35, Math.min(1, Math.max(H, W / 3) / 14)), rr = fs * .62; // labels and markers to the drawing's size (a cap is a few inches, a coat a yard)
+  const at = new Map(), gap = 2.5, wide = Math.max(...B.map(b => boundsOf(b.blk.sew).w));
+  // a garment's blocks stand in one row; a bag's long gussets go under its panels, a row as wide as the longest piece
+  const rowW = pat.kind === 'bag' ? Math.max(wide, 30) : Infinity, fs0 = pat.kind === 'bag' ? Math.max(.6, Math.min(1.1, wide / 40)) : 0;
+  let x = 0, y = 0, rowH = 0, W = 0;
+  for (const b of B) { const bb = boundsOf(b.blk.sew); if (x > 0 && x + bb.w > rowW) { y += rowH + gap + fs0 * 2.2; x = 0; rowH = 0; }
+    at.set(b.blk, { dx: x - bb.x0, dy: y - bb.y0, bb, y }); b.pos = at.get(b.blk); x += bb.w + gap; rowH = Math.max(rowH, bb.h); W = Math.max(W, x - gap); }
+  for (const b of B) b.pos.foot = Math.max(...B.filter(o => o.pos.y === b.pos.y).map(o => o.pos.y + o.pos.bb.h));
+  const H = y + rowH, fs = fs0 || Math.max(.35, Math.min(1, Math.max(H, W / 3) / 14)), rr = fs * .62; // labels and markers to the drawing's size (a cap is a few inches, a coat a yard)
   let s = '';
-  for (const b of B) { const { dx, dy, bb } = b.pos; s += `<path class="blk" d="${path(b.blk.sew.map(([px, py]) => [px + dx, py + dy]))}"/><text class="bn" x="${f1(bb.x0 + dx + bb.w / 2)}" y="${f1(H + fs * 1.6)}" style="font-size:${Math.round(fs * 100) / 100}px">${esc(b.name)}</text>`; }
+  for (const b of B) { const { dx, dy, bb, foot } = b.pos; s += `<path class="blk" d="${path(b.blk.sew.map(([px, py]) => [px + dx, py + dy]))}"/><text class="bn" x="${f1(bb.x0 + dx + bb.w / 2)}" y="${f1(foot + fs * 1.6)}" style="font-size:${Math.round(fs * 100) / 100}px">${esc(b.name)}</text>`; }
   c.seams.forEach((sm, i) => { if (!sm.edges) return; const col = INK[i % INK.length];
     for (const e of sm.edges) { const p = at.get(e.block); if (!p) continue; const pts = e.pts.map(([px, py]) => [px + p.dx, py + p.dy]);
       s += `<path class="sm" stroke="${col}" stroke-width="${Math.round(rr * 68) / 100}" d="${path(pts, false)}"/>`;
@@ -54,13 +59,13 @@ const productSvg = pat => { const A = assembled(pat), b = A.bounds; if (!Number.
 
 export function proofCard({ id, label, style, kind, pat, c, sizes = [], size = pat.size }) {
   const okN = c.passed, made = c.made, rows = c.seams.map((s, i) => s.ok === null ? '' : `<tr class="${s.ok ? '' : 'bad'}"><td>${s.edges ? `<span class="dot" style="background:${INK[i % INK.length]}">${i + 1}</span>` : '<span class="dot none">·</span>'}</td><td>${esc(s.name)}${s.why ? `<small>${esc(s.why)}</small>` : ''}</td><td class="n">${fr(s.a)}</td><td class="n">${fr(s.b)}</td><td class="n">${sgn(s.diff)}</td><td class="n">${fr(s.range[0])} to ${fr(s.range[1])}</td><td>${s.ok ? '✓' : '✗'}</td></tr>`).join('');
-  const mrows = c.meas.map(s => s.ok === null ? '' : `<tr class="${s.ok ? '' : 'bad'}"><td>${esc(s.name)}</td><td class="n">${fr(s.want)}</td><td class="n">${fr(s.got)}</td><td class="n">${sgn(s.diff)}</td><td class="n">±${fr(s.tol)}</td><td>${s.ok ? '✓' : '✗'}</td></tr>`).join('');
+  const mrows = c.meas.map(s => s.ok === null ? '' : `<tr class="${s.ok ? '' : 'bad'}"><td>${esc(s.name)}</td><td class="n">${fr(s.want)}</td><td class="n">${fr(s.got)}</td><td class="n">${sgn(s.diff)}</td><td class="n">${s.rule ? esc(s.rule) : `±${fr(s.tol)}`}</td><td>${s.ok ? '✓' : '✗'}</td></tr>`).join('');
   const yd = c.table.map(t => `${esc(t.fabric)} ${t.yards} yd`).join(' · ');
   return `<article class="card" id="${esc(id)}" data-kind="${kind}" data-ok="${c.ok && sizes.every(z => z.ok) ? 1 : 0}">
   <header><div><h3>${esc(label)}</h3><p class="meta">${esc(style)} · size ${esc(size)} · ${yd}</p></div><div class="sizes">${sizes.map(z => `<span class="${z.ok ? 'ok' : 'no'}" title="${esc(z.why || 'passes')}">${z.size}</span>`).join('')}</div><span class="score ${c.ok ? 'ok' : 'no'}">${okN}/${made}</span></header>
   <div class="grid"><figure><figcaption>Sewn together: each seam's two sides, same colour and number</figcaption>${sewnSvg(pat, c)}<figcaption>The pieces put together</figcaption>${productSvg(pat)}</figure>
   <div class="tables"><table><caption>Seams walked</caption><thead><tr><th></th><th>Seam</th><th>Side A</th><th>Side B</th><th>B − A</th><th>Allowed</th><th></th></tr></thead><tbody>${rows}</tbody></table>
-  <table><caption>The made garment against its spec (inches, flat)</caption><thead><tr><th>Point</th><th>Spec</th><th>Pattern</th><th>Off</th><th>Tolerance</th><th></th></tr></thead><tbody>${mrows}</tbody></table></div></div>
+  <table><caption>${kind === 'bag' ? 'The made bag: its size, and what has to reach, clear or cover' : 'The made garment against its spec (inches, flat)'}</caption><thead><tr><th>Point</th><th>Spec</th><th>Pattern</th><th>Off</th><th>Tolerance</th><th></th></tr></thead><tbody>${mrows}</tbody></table></div></div>
   <p class="cuts ${c.missing.length ? 'no' : 'ok'}">${c.missing.length ? c.missing.map(x => `✗ Missing ${esc(x.need)} (${esc(x.for)})`).join('<br>') : `✓ Everything it is made with: ${pat.pieces.filter(q => q.cut).length} pieces to cut (${[...new Set(pat.pieces.filter(q => q.cut).map(q => q.fabric))].join(', ')}), ${pat.trims.length} trims`}</p>
   <details class="bom"><summary>Pieces and trims</summary><table><thead><tr><th>Piece</th><th>Cut</th><th>From</th></tr></thead><tbody>${pat.pieces.filter(q => q.cut).map(q => `<tr><td>${esc(q.name)}</td><td class="n">${q.cut}${q.pair ? ' (pairs)' : ''}${q.fold ? ' on the fold' : ''}</td><td>${esc(q.fabric)}</td></tr>`).join('')}</tbody></table>
   <table><thead><tr><th>Trim</th><th>Spec</th><th>Qty</th><th>Where</th></tr></thead><tbody>${pat.trims.map(t => `<tr><td>${esc(t.item)}</td><td>${esc(t.spec)}</td><td class="n">${esc(t.qty)}</td><td>${esc(t.where)}</td></tr>`).join('')}</tbody></table></details>

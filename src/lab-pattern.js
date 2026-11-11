@@ -869,73 +869,207 @@ export function garmentPattern(p, size = p.size || 'M') {
 // A bag drafted from its kind and size (src/lab-bags.js BAG_TYPES: width × height × depth of the body, inches): its panels, gussets, straps
 // and handles, pockets, linings and the hardware, each as a factory cuts and builds it. On the product (front view) the panels and what is
 // sewn on them sit where the bag's drawings put them: x from the centre, y down from the top of the body.
+//
+// A bag is drafted with how it goes together. Each piece of the shell and the lining labels its corners (`at`), and `assembly` lists every
+// seam as the two runs of outline sewn together (a run: a piece, the corners it passes, and which copy when a piece is cut twice), every
+// zip with the two edges it joins, every edge finished on its own, and everything sewn onto a panel with where it sits. Every gusset is
+// sized from the edge it is sewn round, measured off that panel's outline. src/lab-pattern-check.js walks the list: the two sides of each
+// seam, each zip in its opening, that no edge is left unsewn or sewn twice, and that what is sewn on a panel lies on it.
 const roundRect = (w, h, r) => { r = Math.min(r, w / 2, h / 2); const q = (cx, cy, a0) => Array.from({ length: 5 }, (_, i) => { const a = a0 + i * Math.PI / 8; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r]; });
   return [...q(w - r, r, -Math.PI / 2), ...q(w - r, h - r, 0), ...q(r, h - r, Math.PI / 2), ...q(r, r, Math.PI)]; };
 const at0 = (pts, x, y) => pts.map(([a, b]) => [a + x, b + y]);
 export const BAG_KINDS = ['rolltop', 'backpack', 'drawstring', 'sling', 'tote', 'helmet', 'briefcase', 'messenger', 'duffel', 'waist', 'pouch'];
+const arcQ = (cx, cy, r, a0, n = 6) => Array.from({ length: n + 1 }, (_, i) => { const a = a0 + i / n * Math.PI / 2; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r]; });
+// a panel with a straight top (its two top corners square) and rounded bottom corners; `up`: carried up above the body (a roll, a turn-back)
+function panelU(W, H, r, up = 0) { r = Math.max(.05, Math.min(r, W / 4, H / 4));
+  return { pts: [[0, -up], [W, -up], ...arcQ(W - r, H - r, r, 0), [W / 2, H], ...arcQ(r, H - r, r, Math.PI / 2)], at: { tl: [0, -up], tr: [W, -up], bm: [W / 2, H] } }; }
+// a panel rounded at all four corners (a clamshell): the base gusset comes `rise` up each side, the zip gusset runs over the top between
+function panelO(W, H, r, rise) { r = Math.max(.05, Math.min(r, W / 4, H / 4)); const y = H - Math.min(Math.max(rise, r + .25), H - r - .25);
+  return { pts: [[W / 2, 0], ...arcQ(W - r, r, r, -Math.PI / 2), [W, y], ...arcQ(W - r, H - r, r, 0), [W / 2, H], ...arcQ(r, H - r, r, Math.PI / 2), [0, y], ...arcQ(r, r, r, Math.PI)], at: { tm: [W / 2, 0], sr: [W, y], bm: [W / 2, H], sl: [0, y] } }; }
+// a crescent (a sling, a waist bag): the zip runs over the top from side point to side point, the gusset round the belly
+function panelC(W, H) { const top = cubic([0, H * .18], [W * .2, -H * .05], [W * .8, -H * .05], [W, H * .18]), rt = cubic([W, H * .18], [W * 1.02, H * .7], [W * .85, H], [W * .5, H]), lf = cubic([W * .5, H], [W * .15, H], [-W * .02, H * .7], [0, H * .18]);
+  return { pts: [...top, ...tail(rt), ...tail(lf).slice(0, -1)], at: { l: top[0], tm: top[6], r: top[12], bm: [W * .5, H] } }; }
+const stripOf = (len, w) => ({ pts: rect(len, w), at: { a: [0, 0], b: [len, 0], c: [len, w], d: [0, w] } });
+// the length of a shape's outline from one labelled corner to another, by the run that passes none of its other labelled corners
+function edgeRun(sh, a, b) { const P = sh.pts, n = P.length, ix = k => { let j = -1, d = Infinity; P.forEach((p, i) => { const e = Math.hypot(p[0] - sh.at[k][0], p[1] - sh.at[k][1]); if (e < d) { d = e; j = i; } }); return j; };
+  const i = ix(a), j = ix(b), others = new Set(Object.keys(sh.at).filter(k => k !== a && k !== b).map(ix));
+  const walk = (s, e) => { let L = 0, k = s, hit = false; for (let t = 0; t < n && k !== e; t++) { const nx = (k + 1) % n; L += Math.hypot(P[k][0] - P[nx][0], P[k][1] - P[nx][1]); k = nx; if (k !== e && others.has(k)) hit = true; } return { L, hit }; };
+  const f = walk(i, j), r = walk(j, i); return (!f.hit ? f : !r.hit ? r : f.L <= r.L ? f : r).L; }
+const pathOf = (sh, ...ks) => ks.slice(1).reduce((s, k, i) => s + edgeRun(sh, ks[i], k), 0);
+const ZIP_SHOW = .5; // how much of a zip shows between the two edges it is sewn to
 export function bagPattern(spec = {}) {
   const type = BAG_KINDS.includes(spec.type) ? spec.type : 'tote', DEF = { rolltop: [12, 18, 6], backpack: [12, 17, 5.5], drawstring: [12, 17, 6], sling: [10, 6.5, 3], tote: [16, 14, 5.5], helmet: [19, 20, 5], briefcase: [16, 11.5, 3.5], messenger: [15, 11, 4], duffel: [22, 11, 11], waist: [11, 5.5, 2.5], pouch: [7.5, 9.5, 2] }[type];
   const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d), W = num(spec.w, DEF[0]), H = num(spec.h, DEF[1]), D = num(spec.d, DEF[2]), hw = W / 2;
-  const pieces = [], trims = [], push = (...q) => pieces.push(...q), sa = .375;
-  const front = view => ({ view, x: 0, y: 0 });
+  const pieces = [], trims = [], asm = [], sa = .375;
   const pack = ['rolltop', 'backpack', 'drawstring'].includes(type), curved = ['sling', 'waist'].includes(type), round = type === 'duffel';
-  // the body
-  if (round) { // a barrel: one panel wrapped round, two round ends
-    const C = r8(Math.PI * H), wrap = rect(W, C);
-    push(piece('body', 'Body', wrap, { cut: 1, notes: [`Wrapped round the ends; the zip set along the top, ${W - 2} in`], shown: at0(rect(W, H), -hw, 0), place: front('front') }));
-    const end = Array.from({ length: 24 }, (_, i) => { const a = i / 24 * Math.PI * 2; return [H / 2 + Math.cos(a) * H / 2, H / 2 + Math.sin(a) * H / 2]; });
-    push(piece('end', 'End panel', end, { cut: 2, notes: ['Round, the body eased onto it; piped'], hidden: true, place: { view: 'back', x: -H / 2, y: 0 } }));
-    trims.push({ item: 'Zip', spec: `#10 coil, two-way, ${r8(W - 2)} in`, qty: 1, where: 'Along the top' }); }
-  else {
-    const shape = curved ? [[0, H * .18], ...tail(cubic([0, H * .18], [W * .2, -H * .05], [W * .8, -H * .05], [W, H * .18])), ...tail(cubic([W, H * .18], [W * 1.02, H * .7], [W * .85, H], [W * .5, H])), ...tail(cubic([W * .5, H], [W * .15, H], [-W * .02, H * .7], [0, H * .18])).slice(0, -1)]
-      : roundRect(W, H, type === 'pouch' || pack ? 1.25 : type === 'tote' || type === 'helmet' ? .25 : .75);
-    const top = type === 'rolltop' ? 8 : 0, panel = top ? [[0, -top], [W, -top], ...shape.filter(([, y]) => y > H * .3)] : shape;
-    push(piece('front', 'Front panel', panel, { cut: 1, notes: [top ? `Carried up ${top} in above the body for the roll` : 'Self, backed with foam or a bonded fusible'], shown: at0(panel, -hw, 0), place: front('front') }),
-      piece('back', pack ? 'Back panel (padded)' : 'Back panel', panel, { cut: 1, notes: [pack ? 'Spacer mesh over 8 mm foam; channels for air' : 'Self'], shown: at0(panel, -hw, 0), place: front('back') }));
-    // the gusset: round the sides and the bottom (a zip backpack: a zip gusset over the top and a base gusset below)
-    // the gusset as long as the panel's edge it is sewn round: down a side, across the bottom (its rounded corners included) and up the other;
-    // a rolltop's carried up the roll (src/lab-pattern-check.js walks it)
-    const closedLen = q => q.reduce((a, p, i) => a + Math.hypot(p[0] - q[(i + 1) % q.length][0], p[1] - q[(i + 1) % q.length][1]), 0), pb = boundsOf(panel);
-    const per = r8(closedLen(panel) - pb.w);
-    if (type === 'backpack') { const base = r8(W + 2 * H * .2), zg = r8(closedLen(panel) - base); // the zip gusset over the top and down the sides, the base gusset the rest
-      push(piece('zip-gusset', 'Zip gusset', rect(zg, D + 1), { cut: 2, notes: ['Two halves, the two-way zip between them (clamshell)'], hidden: true, place: front('back') }),
-        piece('base-gusset', 'Base gusset', rect(base, D), { cut: 1, notes: ['Ballistic or a doubled base'], hidden: true, place: front('back') }));
-      trims.push({ item: 'Zip', spec: `#10 coil, two-way, ${r8(zg - 2)} in`, qty: 1, where: 'Clamshell, round the top and sides' }); }
-    else push(piece('gusset', 'Gusset', rect(per, D), { cut: 1, notes: ['Sides and bottom in one; bound or turned seams'], hidden: true, place: front('back') }));
-    // the lining: the same panels and gusset
-    push({ ...piece('lining', 'Lining (panels and gusset)', panel, { fabric: 'lining', cut: 2, hidden: true, notes: ['210D nylon or a coated taffeta; the gusset the same as the outer'], place: { view: 'front', x: -hw, y: 0, z: -2 } }) });
-    // how it closes
-    if (type === 'rolltop') trims.push({ item: 'Side-release buckle', spec: '1 in, acetal', qty: 2, where: 'The roll, to the sides' }, { item: 'Webbing', spec: '1 in nylon', qty: `${r8(H + 12)} in`, where: 'Side straps for the roll' }, { item: 'Stiffener', spec: 'HDPE strip, 1 in', qty: `${W} in`, where: 'In the roll edge' });
-    if (type === 'drawstring') { push(piece('channel', 'Drawcord channel', rect(r8(2 * W + 2 * D + 1), 3), { cut: 1, notes: ['Folded to 1¼ in round the top, eyelets at the front'], hidden: true, place: front('back') }));
-      const lid = roundRect(W * .9, H * .42, 1.5); push(piece('lid', 'Lid flap', lid, { cut: 2, notes: ['Outer and lining; a zip pocket in the outer'], shown: at0(lid, -W * .45, -1), place: { view: 'front', x: 0, y: 0, z: 3 } }));
-      trims.push({ item: 'Drawcord', spec: '4 mm braided', qty: `${r8(2 * W + 2 * D + 14)} in`, where: 'Channel' }, { item: 'Cord lock', spec: 'Single-hole, spring', qty: 1, where: 'Front' }, { item: 'Side-release buckle', spec: '¾ in', qty: 2, where: 'Lid to front' }); }
-    if (type === 'messenger') { const fl = roundRect(W, H * .92, 1); push(piece('flap', 'Flap', fl, { cut: 2, notes: ['Outer and lining, cut in one with the back at the top fold'], shown: at0(fl, -hw, -.6), place: { view: 'front', x: 0, y: 0, z: 3 } }));
-      trims.push({ item: 'Side-release buckle', spec: '1 in, with a webbing tongue', qty: 2, where: 'Flap to front' }, { item: 'Hook-and-loop', spec: '2 in', qty: `${r8(W * .6)} in`, where: 'Under the flap' }); }
-    if (['sling', 'tote', 'helmet', 'briefcase', 'waist', 'pouch'].includes(type)) trims.push(type === 'tote' ? { item: 'Magnetic snap', spec: '18 mm', qty: 1, where: 'Centre top, inside' } : { item: 'Zip', spec: `#${type === 'pouch' || type === 'waist' ? 5 : 8} coil, ${type === 'briefcase' ? 'two-way' : 'one-way'}, ${r8(W - 1 + (curved ? 2 : 0))} in`, qty: 1, where: type === 'helmet' ? 'Full width at the top, under a flap' : 'Along the top' });
-    if (type === 'helmet') { const fl = rect(W, 3.5); push(piece('top-flap', 'Zip flap', fl, { cut: 2, notes: ['Over the top zip'], shown: at0(fl, -hw, -.5), place: { view: 'front', x: 0, y: 0, z: 3 } })); }
-    // a pocket on the front
-    if (['backpack', 'rolltop', 'briefcase', 'waist', 'helmet', 'sling'].includes(type)) { const pw = r8(W * (curved ? .75 : .7)), ph = r8(H * (curved ? .42 : .38)), pk = roundRect(pw, ph, curved ? 1 : .75);
-      push(piece('front-pocket', 'Front pocket', pk, { cut: 2, notes: ['Outer and bag; zipped across the top'], shown: at0(pk, -pw / 2, H * (curved ? .42 : .5)), place: { view: 'front', x: 0, y: 0, z: 2 } }));
-      trims.push({ item: 'Zip', spec: `#5 coil, ${r8(pw - 1)} in`, qty: 1, where: 'Front pocket' }); }
-    if (type === 'backpack' || type === 'briefcase') push({ ...piece('sleeve', 'Laptop sleeve', rect(r8(W - 1), r8(H * .85)), { cut: 2, hidden: true, notes: ['8 mm foam between; a hook-and-loop tab'], place: front('back') }) });
+  const ziptop = ['helmet', 'briefcase', 'pouch'].includes(type), flat = D < 1.25; // flat: too shallow for a zip gusset in two halves
+  // a piece of the shell or the lining: its outline and its labelled corners
+  const add = (id, name, sh, o = {}) => { const q = piece(id, name, sh.pts, o); q.at = sh.at; pieces.push(q); return q; };
+  const J = (name, a, b, o = {}) => asm.push({ name, a, b, ...o });           // a seam: two runs sewn together
+  const F = (name, a, fin) => asm.push({ name, a, fin });                      // an edge finished on its own
+  const Z = (name, a, b, zip, o = {}) => asm.push({ name, a, b, zip, ...o }); // a zip between two edges
+  const ON = (name, id, on, at, o = {}) => asm.push({ name, id, on, at, ...o }); // a piece sewn onto a panel, its outline moved by `at`
+  const zipTrim = (gauge, way, len, where) => { trims.push({ item: 'Zip', spec: `#${gauge} coil, ${way}, ${len} in`, qty: 1, where }); return len; };
+  const half = Math.max(.375, r8((D - ZIP_SHOW) / 2)); // one side of a zip gusset: the two and the zip between them make the depth
+  const zipLen = open => Math.max(2, r8(open - 1));     // a zip stops ½ in short of each end of its opening, under a tab
+  let frontSh = null, linSh = null, roll = 0, turn = 0, shown;
+
+  if (round) { // a barrel: one panel wrapped round two round ends, its two long edges meeting at the zip along the top
+    const C = r8(Math.PI * H - ZIP_SHOW), wrap = stripOf(W, C), circle = { pts: Array.from({ length: 48 }, (_, i) => { const a = i / 48 * Math.PI * 2; return [H / 2 + Math.cos(a) * H / 2, H / 2 + Math.sin(a) * H / 2]; }), at: { e: [H, H / 2], w: [0, H / 2] } };
+    add('body', 'Body', wrap, { cut: 1, notes: [`Wrapped round the ends; its two long edges meet at the zip along the top`], shown: at0(rect(W, H), -hw, 0), place: { view: 'front', x: 0, y: 0 } });
+    add('end', 'End panel', circle, { cut: 2, notes: ['Round, the body sewn round it; piped'], hidden: true, place: { view: 'back', x: -H / 2, y: 0 } });
+    add('lining', 'Lining body', wrap, { fabric: 'lining', cut: 1, hidden: true, notes: ['210D nylon or a coated taffeta'], place: { view: 'front', x: -hw, y: 0, z: -2 } });
+    add('lining-end', 'Lining end', circle, { fabric: 'lining', cut: 2, hidden: true, notes: ['Sewn round as the outer end is'], place: { view: 'back', x: -H / 2, y: 0, z: -2 } });
+    const zl = zipTrim(10, 'two-way', zipLen(W), 'Along the top');
+    Z('Top zip', ['body', ['a', 'b']], ['body', ['d', 'c']], zl, { why: 'the body\'s two long edges, one to each side of the zip' });
+    J('Body round one end panel', ['end', ['e', 'w', 'e'], 0], ['body', ['b', 'c']], { gap: ZIP_SHOW, why: 'the body and the zip between its edges go once round the end' });
+    J('Body round the other end panel', ['end', ['e', 'w', 'e'], 1], ['body', ['d', 'a']], { gap: ZIP_SHOW });
+    J('Lining body round one lining end', ['lining-end', ['e', 'w', 'e'], 0], ['lining', ['b', 'c']], { gap: ZIP_SHOW });
+    J('Lining body round the other lining end', ['lining-end', ['e', 'w', 'e'], 1], ['lining', ['d', 'a']], { gap: ZIP_SHOW });
+    J('Lining to the zip, one edge', ['body', ['a', 'b']], ['lining', ['a', 'b']], { caught: true, why: 'the lining is caught in the zip seam' });
+    J('Lining to the zip, the other edge', ['body', ['d', 'c']], ['lining', ['d', 'c']], { caught: true });
+    trims.push({ item: 'Piping', spec: '⅛ in cord, covered in self', qty: `${r8(2 * Math.PI * H + 2)} in`, where: 'Round each end panel' });
+  } else {
+    // the panels: the front and the back the same outline
+    if (curved) frontSh = panelC(W, H);
+    else if (type === 'backpack') frontSh = panelO(W, H, 1.25, H * .2);
+    else { roll = type === 'rolltop' ? 8 : 0; turn = type === 'tote' ? 1.5 : 0; frontSh = panelU(W, H, type === 'pouch' || pack ? 1.25 : type === 'tote' || type === 'helmet' ? .25 : .75, roll + turn); }
+    // the lining's panels: the outer's, except a tote's, which stops at the foot of the turned-back top
+    linSh = type === 'tote' ? panelU(W, H - turn, .25) : frontSh;
+    shown = at0(frontSh.pts, -hw, 0);
+    add('front', 'Front panel', frontSh, { cut: 1, notes: [roll ? `Carried up ${roll} in above the body for the roll` : turn ? `The top ${turn} in turned to the inside and stitched` : 'Self, backed with foam or a bonded fusible'], shown, place: { view: 'front', x: 0, y: 0 } });
+    add('back', pack ? 'Back panel (padded)' : 'Back panel', frontSh, { cut: 1, notes: [pack ? 'Spacer mesh over 8 mm foam; channels for air' : roll ? `Carried up ${roll} in for the roll` : turn ? `The top ${turn} in turned to the inside` : 'Self'], shown, place: { view: 'back', x: 0, y: 0 } });
+    add('lining', 'Lining panel', linSh, { fabric: 'lining', cut: 2, hidden: true, notes: ['210D nylon or a coated taffeta; front and back'], place: { view: 'front', x: -hw, y: 0, z: -2 } });
+    // the shell, and the lining built the same way: `ids` names each one's pieces
+    const shell = (pre, sh, ids) => {
+      const lin = Boolean(pre), n = lin ? 'Lining: ' : '', fab = lin ? { fabric: 'lining' } : {};
+      const fr = ks => (lin ? [ids.panel, ks, 0] : ['front', ks]), bk = ks => (lin ? [ids.panel, ks, 1] : ['back', ks]);
+      // an edge of the two panels closed by a zip: a zip gusset in two halves between them, the zip between the halves. `gid`: the gusset
+      // whose two ends the halves cross. A bag too shallow for two halves has its zip sewn straight to the panels.
+      const zipClose = (ks, gid, zid, zname, gauge, way, where, why) => {
+        const open = r8(pathOf(sh, ...ks));
+        if (flat) { if (!lin) Z(zname, fr(ks), bk(ks), zipTrim(gauge, way, zipLen(open), where), { why: 'the two panels, one to each side of the zip (too shallow for a zip gusset)' });
+          else { J('Lining to the zip, front', ['front', ks], fr(ks), { caught: true, why: 'the lining is caught in the zip seam' }); J('Lining to the zip, back', ['back', ks], bk(ks), { caught: true }); }
+          F(`${n}Gusset: one end`, [gid, ['b', 'c']], 'closed under the zip\'s end tab'); F(`${n}Gusset: the other end`, [gid, ['d', 'a']], 'closed under the zip\'s end tab'); return; }
+        add(zid, `${n}${zid.includes('top') ? 'Top panel' : 'Zip gusset'}`, stripOf(open, half), { ...fab, cut: 2, notes: [`Two, each ${half} in wide, the zip between them`], hidden: true, place: { view: 'back', x: 0, y: 0 } });
+        J(`${n}Front panel ${why}`, fr(ks), [zid, ['d', 'c'], 0], { why: 'one half of the zip gusset along the front panel' });
+        J(`${n}Back panel ${why}`, bk(ks), [zid, ['d', 'c'], 1]);
+        J(`${n}Zip gusset across one end of the gusset`, [gid, ['b', 'c']], [[zid, ['b', 'c'], 0], [zid, ['b', 'c'], 1]], { gap: ZIP_SHOW, why: `the two halves and the ${ZIP_SHOW} in of zip between them make the gusset's width` });
+        J(`${n}Zip gusset across the other end`, [gid, ['d', 'a']], [[zid, ['d', 'a'], 0], [zid, ['d', 'a'], 1]], { gap: ZIP_SHOW });
+        if (!lin) Z(zname, [zid, ['a', 'b'], 0], [zid, ['a', 'b'], 1], zipTrim(gauge, way, zipLen(open), where), { why: 'the two halves, one to each side of the zip' });
+        else { const o = zid.replace(/^lining-/, '').replace(/^top$/, 'top-panel'); J('Lining to the zip, front half', [o, ['a', 'b'], 0], [zid, ['a', 'b'], 0], { caught: true, why: 'the lining is caught in the zip seam' }); J('Lining to the zip, back half', [o, ['a', 'b'], 1], [zid, ['a', 'b'], 1], { caught: true }); }
+      };
+      if (type === 'backpack') { // a clamshell: the zip gusset over the top and down the sides; the base gusset round the bottom
+        const base = r8(pathOf(sh, 'sr', 'bm', 'sl'));
+        add(ids.base, `${n}Base gusset`, stripOf(base, D), { ...fab, cut: 1, notes: [lin ? 'Round the bottom, as the outer' : 'Ballistic or a doubled base; across the bottom and up each side'], hidden: true, place: { view: 'back', x: 0, y: 0 } });
+        J(`${n}Front panel round the base gusset`, fr(['sr', 'bm', 'sl']), [ids.base, ['a', 'b']], { why: 'across the bottom and up each side' });
+        J(`${n}Back panel round the base gusset`, bk(['sr', 'bm', 'sl']), [ids.base, ['d', 'c']]);
+        zipClose(['sl', 'tm', 'sr'], ids.base, ids.zip, 'Clamshell zip', 10, 'two-way', 'Clamshell, round the top and sides', 'over the top and down each side');
+        return; }
+      if (curved) { // a crescent: a zip gusset over the top, a gusset round the belly
+        const belly = r8(pathOf(sh, 'r', 'bm', 'l'));
+        add(ids.gusset, `${n}Gusset`, stripOf(belly, D), { ...fab, cut: 1, notes: ['Round the belly, side point to side point'], hidden: true, place: { view: 'back', x: 0, y: 0 } });
+        J(`${n}Front panel's belly round the gusset`, fr(['r', 'bm', 'l']), [ids.gusset, ['a', 'b']], { why: 'side point, round the bottom, to side point' });
+        J(`${n}Back panel's belly round the gusset`, bk(['r', 'bm', 'l']), [ids.gusset, ['d', 'c']]);
+        zipClose(['l', 'tm', 'r'], ids.gusset, ids.zip, 'Top zip', type === 'waist' ? 5 : 8, 'one-way', 'Along the top', 'over the top, side point to side point');
+        return; }
+      // a box: one gusset down a side, across the bottom and up the other, as long as the panel's edge it is sewn round
+      const u = r8(pathOf(sh, 'tr', 'bm', 'tl'));
+      add(ids.gusset, `${n}Gusset`, stripOf(u, D), { ...fab, cut: 1, notes: [lin ? 'Sides and bottom in one, as the outer' : `Sides and bottom in one${roll ? ', carried up the roll' : turn ? ', carried up the turned-back top' : ''}; bound or turned seams`], hidden: true, place: { view: 'back', x: 0, y: 0 } });
+      J(`${n}Front panel round the gusset`, fr(['tr', 'bm', 'tl']), [ids.gusset, ['a', 'b']], { why: 'down a side, across the bottom and up the other' });
+      J(`${n}Back panel round the gusset`, bk(['tr', 'bm', 'tl']), [ids.gusset, ['d', 'c']]);
+      if (ziptop) zipClose(['tl', 'tr'], ids.gusset, ids.top, 'Top zip', type === 'pouch' ? 5 : 8, type === 'briefcase' ? 'two-way' : 'one-way', type === 'helmet' ? 'Full width at the top, under a flap' : 'Along the top', 'along its top edge');
+    };
+    shell('', frontSh, { gusset: 'gusset', zip: 'zip-gusset', base: 'base-gusset', top: 'top-panel' });
+    shell('lining-', linSh, { panel: 'lining', gusset: 'lining-gusset', zip: 'lining-zip-gusset', base: 'lining-base', top: 'lining-top' });
+    // an open top: how the outer's top edge and the lining's meet, and what closes it
+    if (!ziptop && !curved && type !== 'backpack') {
+      const topRing = [['front', ['tl', 'tr']], ['gusset', ['b', 'c']], ['back', ['tl', 'tr']], ['gusset', ['d', 'a']]];
+      if (type === 'drawstring') { // a drawcord channel sewn round the top, the lining caught in the same seam
+        const ring = r8(2 * W + 2 * D), ch = stripOf(ring + 1, 3);
+        add('channel', 'Drawcord channel', ch, { cut: 1, notes: ['Folded to 1¼ in round the top, its ends turned ½ in at the eyelets'], hidden: true, place: { view: 'back', x: 0, y: 0 } });
+        J('Drawcord channel round the top', ['channel', ['a', 'b']], topRing, { ease: [-1.125, -.875], why: 'round the front, a gusset end, the back and the other gusset end; the channel 1 in longer, its ends turned ½ in at the eyelets' });
+        F('Drawcord channel: its other long edge and its two ends', ['channel', ['b', 'c', 'd', 'a']], 'folded down onto its own seam; the ends turned');
+        const lid = panelU(r8(W * .9), r8(D + Math.max(3, H * .2)), 1.5);
+        add('lid', 'Lid flap', lid, { cut: 2, notes: [`Outer and lining; reaches across the ${D} in top and ${r8(Math.max(3, H * .2))} in down the front`, 'A zip pocket in the outer'], shown: at0(roundRect(W * .9, D * .4 + Math.max(3, H * .2), 1.5), -W * .45, -1), place: { view: 'front', x: 0, y: 0, z: 3 } });
+        F('Lid flap: its top edge', ['lid', ['tl', 'tr']], 'stitched to the back panel 1 in below its top');
+        F('Lid flap: its sides and front edge', ['lid', ['tr', 'bm', 'tl']], 'bagged out with its lining');
+        asm.push({ name: 'Lid flap reaches across the top and down the front', reach: 'lid', over: D, min: 2.5 });
+        trims.push({ item: 'Drawcord', spec: '4 mm braided', qty: `${r8(ring + 14)} in`, where: 'Channel' }, { item: 'Cord lock', spec: 'Single-hole, spring', qty: 1, where: 'Front' }, { item: 'Eyelet', spec: '6 mm, brass', qty: 2, where: 'Channel, centre front' }, { item: 'Side-release buckle', spec: '¾ in', qty: 2, where: 'Lid to front' }, { item: 'Webbing', spec: '¾ in nylon', qty: `${r8(4 * 6)} in`, where: 'Lid buckle straps' });
+        J('Lining: its top edge into the channel seam', topRing, [['lining', ['tl', 'tr'], 0], ['lining-gusset', ['b', 'c']], ['lining', ['tl', 'tr'], 1], ['lining-gusset', ['d', 'a']]], { caught: true, why: 'the lining is caught in the channel seam' });
+      } else {
+        J('Lining to the outer round the top: front', ['front', ['tl', 'tr']], ['lining', ['tl', 'tr'], 0], { why: turn ? 'the lining sewn to the edge of the turned-back top' : 'the top edges sewn together and turned' });
+        if (type === 'messenger') { // the flap sewn along the back's top edge, the lining caught under it
+          const drop = r8(Math.max(3, H * .7)), fl = panelU(W, r8(D + drop), 1);
+          add('flap', 'Flap', fl, { cut: 2, notes: [`Outer and lining; across the ${D} in top and ${drop} in down the front`], shown: at0(roundRect(W, drop + .6, 1), -hw, -.6), place: { view: 'front', x: 0, y: 0, z: 3 } });
+          J('Flap along the back panel\'s top edge', ['back', ['tl', 'tr']], ['flap', ['tl', 'tr'], 0], { why: 'the flap hinges on the back\'s top edge' });
+          J('Lining to the outer round the top: back', ['back', ['tl', 'tr']], ['lining', ['tl', 'tr'], 1], { caught: true, why: 'caught in the flap seam' });
+          F('Flap: its sides and front edge', ['flap', ['tr', 'bm', 'tl'], 0], 'bagged out with its lining');
+          F('Flap lining', ['flap', ['tl', 'tr', 'bm', 'tl'], 1], 'sewn round the flap and turned; its top edge closed in the flap seam');
+          asm.push({ name: 'Flap reaches across the top and down the front', reach: 'flap', over: D, min: 3 });
+          trims.push({ item: 'Side-release buckle', spec: '1 in, with a webbing tongue', qty: 2, where: 'Flap to front' }, { item: 'Webbing', spec: '1 in nylon', qty: `${r8(2 * (drop + 4))} in`, where: 'Flap buckle straps' }, { item: 'Hook-and-loop', spec: '2 in', qty: `${r8(W * .6)} in`, where: 'Under the flap' });
+        } else J('Lining to the outer round the top: back', ['back', ['tl', 'tr']], ['lining', ['tl', 'tr'], 1]);
+        J('Lining to the outer round the top: one gusset end', ['gusset', ['b', 'c']], ['lining-gusset', ['b', 'c']]);
+        J('Lining to the outer round the top: the other gusset end', ['gusset', ['d', 'a']], ['lining-gusset', ['d', 'a']]);
+        if (type === 'rolltop') trims.push({ item: 'Side-release buckle', spec: '1 in, acetal', qty: 2, where: 'The roll, to the sides' }, { item: 'Webbing', spec: '1 in nylon', qty: `${r8(H + 12)} in`, where: 'Side straps for the roll' }, { item: 'Stiffener', spec: 'HDPE strip, 1 in', qty: `${W} in`, where: 'In the roll edge' });
+        if (type === 'tote') trims.push({ item: 'Magnetic snap', spec: '18 mm', qty: 1, where: 'Centre top, inside' }, { item: 'Base board', spec: 'HDPE, 1.5 mm', qty: `${r8(W - .25)} × ${r8(D - .25)} in`, where: 'Under the lining, on the bottom' });
+      }
+    }
+    if (type === 'helmet') { const fl = rect(W, r8(D / 2 + 1)); pieces.push(piece('top-flap', 'Zip flap', fl, { cut: 2, notes: ['Outer and lining; sewn into the back top seam, over the top zip'], shown: at0(rect(W, 3.5), -hw, -.5), place: { view: 'front', x: 0, y: 0, z: 3 } })); }
+    // a pocket on the front: a patch with a zip across its top, its outline inside the panel's
+    if (['backpack', 'rolltop', 'briefcase', 'waist', 'helmet', 'sling'].includes(type)) {
+      let pk, at;
+      if (curved) { const k = .56, cx = W / 2, cy = H * .6; pk = frontSh.pts.map(([x, y]) => [(x - cx) * k + cx, (y - cy) * k + cy]); const b = boundsOf(pk); at = [b.x0, b.y0]; pk = pk.map(([x, y]) => [x - b.x0, y - b.y0]); }
+      else { const pw = r8(W * .7), ph = r8(H * .38); pk = roundRect(pw, ph, .75); at = [(W - pw) / 2, H * .5]; }
+      const pb = boundsOf(pk);
+      pieces.push(piece('front-pocket', 'Front pocket', pk, { cut: 2, notes: ['Outer and its bag; zipped across the top'], shown: at0(pk, at[0] - hw, at[1]), place: { view: 'front', x: 0, y: 0, z: 2 } }));
+      ON('Front pocket on the front panel', 'front-pocket', 'front', at);
+      const pz = zipTrim(5, 'one-way', zipLen(pb.w), 'Front pocket'); asm.push({ name: 'Front pocket zip across the pocket', fits: pz, within: r8(pb.w) });
+    }
+    if (type === 'backpack' || type === 'briefcase') { const sw = r8(W - 1.5), sh = r8(H * .8), sl = rect(sw, sh);
+      pieces.push(piece('sleeve', 'Laptop sleeve', sl, { cut: 2, hidden: true, notes: ['8 mm foam between; a hook-and-loop tab'], place: { view: 'back', x: 0, y: 0 } }));
+      ON('Laptop sleeve on the back lining', 'sleeve', 'back', [.75, H * .1]);
+      trims.push({ item: 'Foam', spec: '8 mm closed-cell', qty: `${sw} × ${sh} in`, where: 'Laptop sleeve' }, { item: 'Hook-and-loop', spec: '1 in', qty: '3 in', where: 'Sleeve tab' }); }
   }
   // how it is carried
-  if (pack) { const st = [[0, 0], [3, 0], [3, 7], [2.4, 18], [.6, 18], [0, 7]];
-    push(piece('strap', 'Shoulder strap', st, { cut: 4, pair: true, notes: ['Outer and spacer mesh, 10 mm foam between; bound edges'], shown: at0(st, -hw + 1, 1), place: { view: 'back', x: 0, y: 0, z: 3 } }), { ...piece('strap-2', 'Shoulder strap', st, { cut: 0, shown: at0(st, -hw + 1, 1), place: { view: 'back', x: 0, y: 0, flip: true, z: 3 } }), twin: true });
-    trims.push({ item: 'Webbing', spec: '1 in nylon', qty: '2 × 20 in', where: 'Strap ends' }, { item: 'Ladder lock', spec: '1 in', qty: 2, where: 'Strap ends, at the base' }, { item: 'Foam', spec: '10 mm closed-cell', qty: '2 straps', where: 'Shoulder straps' }, { item: 'Webbing', spec: '1 in nylon', qty: '7 in', where: 'Grab handle' }); }
-  if (['tote', 'helmet', 'briefcase', 'duffel'].includes(type)) { const len = type === 'tote' ? 24 : type === 'briefcase' ? 14 : type === 'helmet' ? 20 : 22, hdl = [[-.5, 0], [.5, 0], [.5, -len * .3], [-.5, -len * .3]], spread = W * (type === 'briefcase' ? .18 : .25);
-    const loop = (sg) => [[sg * spread - .5, .2], [sg * spread + .5, .2], [sg * spread * .45 + .5, -len * .32], [sg * spread * .45 - .5, -len * .32]];
-    push(piece('handle', 'Handle', rect(2.5, len), { cut: 2, notes: [type === 'tote' ? 'Self, folded to 1 in and edge-stitched' : 'Webbing or self, wrapped at the grip'], shown: loop(1), place: { view: 'front', x: 0, y: 0, z: 1 } }),
-      { ...piece('handle-2', 'Handle', rect(2.5, len), { cut: 0, shown: loop(-1), place: { view: 'front', x: 0, y: 0, z: 1 } }), twin: true },
-      { ...piece('handle-top', 'Handle', hdl, { cut: 0, shown: [[-spread, -len * .3], [spread, -len * .3], [spread * .9, -len * .34], [-spread * .9, -len * .34]], place: { view: 'front', x: 0, y: 0, z: 1 } }), twin: true }); }
-  if (['sling', 'messenger', 'briefcase', 'helmet', 'duffel', 'pouch'].includes(type)) trims.push({ item: 'Webbing', spec: `${type === 'messenger' ? '1½' : '1'} in nylon`, qty: `${type === 'pouch' ? 48 : 52} in`, where: 'Shoulder strap' }, { item: type === 'sling' ? 'Side-release buckle' : 'Swivel hook', spec: type === 'messenger' ? '1½ in, metal' : '1 in, metal', qty: type === 'sling' ? 1 : 2, where: 'Strap ends' }, { item: 'Slider', spec: 'Tri-glide, matching width', qty: 1, where: 'Strap adjuster' });
-  if (type === 'waist') trims.push({ item: 'Webbing', spec: '1 in nylon', qty: '42 in', where: 'Waist belt' }, { item: 'Side-release buckle', spec: '1 in, acetal', qty: 1, where: 'Belt' }, { item: 'Ladder lock', spec: '1 in', qty: 1, where: 'Belt adjuster' });
-  trims.push({ item: 'Binding tape', spec: '1 in grosgrain or nylon', qty: `${r8((2 * W + 2 * H) * 2 + 2 * D)} in`, where: 'Inside seams' }, { item: 'Thread', spec: 'Tex 70 bonded nylon', qty: 'about 120 m', where: 'Throughout' }, { item: 'Main label', spec: 'Woven, folded', qty: 1, where: 'Inside, top centre' });
+  if (pack) { const sw = Math.min(3, r8(hw - 1.25)), L = r8(Math.min(20, Math.max(14, H))), st = [[0, 0], [sw, 0], [sw, L * .4], [sw * .8, L], [sw * .2, L], [0, L * .4]];
+    const stShown = at0(st.map(([x, y]) => [x, y * Math.min(1, Math.max(4, H - 3) / L)]), -hw + 1, 1); // on the product the strap curves away to the base: drawn no longer than the back
+    pieces.push(piece('strap', 'Shoulder strap', st, { cut: 4, pair: true, notes: ['Outer and spacer mesh, 10 mm foam between; bound edges', 'Its top sewn to the back panel under a box stitch; 1 in webbing from its foot to a ladder lock at the base'], shown: stShown, place: { view: 'back', x: 0, y: 0, z: 3 } }), { ...piece('strap-2', 'Shoulder strap', st, { cut: 0, shown: stShown, place: { view: 'back', x: 0, y: 0, flip: true, z: 3 } }), twin: true });
+    const wl = Math.max(20, r8(H - L + 16)), gx = Math.max(.75, Math.min(2, hw - 1.75)); // the webbing from each strap's foot; where the grab handle's ends sit
+    asm.push({ name: 'Shoulder strap tops on the back panel', on: 'back', boxes: [[1, 1, 1 + sw, 3], [W - 1 - sw, 1, W - 1, 3]], clear: .75 },
+      { name: 'Grab handle ends on the back panel', on: 'back', boxes: [[hw - gx - .5, .75, hw - gx + .5, 1.75], [hw + gx - .5, .75, hw + gx + .5, 1.75]], clear: .5 },
+      { name: 'Shoulder straps let out, past the back they span', straps: 'strap', webbing: wl, sewn: 2, span: r8(H - 3), min: 12 });
+    trims.push({ item: 'Webbing', spec: '1 in nylon', qty: `2 × ${wl} in`, where: 'Strap ends, to the ladder locks' }, { item: 'Webbing', spec: '1 in nylon', qty: '2 × 4 in', where: 'Ladder lock tabs, sewn into the side seams at the base' }, { item: 'Ladder lock', spec: '1 in', qty: 2, where: 'Strap ends, at the base' },
+      { item: 'Foam', spec: '10 mm closed-cell', qty: `2 × ${sw} × ${L} in`, where: 'Shoulder straps' }, { item: 'Spacer mesh', spec: '3 mm', qty: `${W} × ${H} in and the strap undersides`, where: 'Back panel and straps' }, { item: 'Foam', spec: '8 mm closed-cell', qty: `${r8(W - .5)} × ${r8(H - .5)} in`, where: 'Back panel' },
+      { item: 'Webbing', spec: '1 in nylon', qty: '9 in', where: 'Grab handle' }); }
+  if (['tote', 'helmet', 'briefcase', 'duffel'].includes(type)) {
+    // a handle: its two ends stitched down `tail` in onto the panel, `spread` each side of the centre; long enough to rise `drop` when taut
+    const drop = type === 'tote' ? 11 : type === 'briefcase' ? 5 : type === 'helmet' ? 8 : 9, spread = Math.max(1.5, Math.min(W * (type === 'briefcase' ? .18 : .25), hw - 1.75)), tail_ = 2, free = r8(2 * Math.hypot(drop, spread)), len = r8(free + 2 * tail_);
+    const loop = sg => [[sg * spread - .5, .2], [sg * spread + .5, .2], [sg * spread * .45 + .5, -free * .32], [sg * spread * .45 - .5, -free * .32]];
+    pieces.push(piece('handle', 'Handle', rect(2, len), { cut: 2, notes: [type === 'tote' ? 'Self, folded to 1 in and edge-stitched' : 'Webbing or self, folded to 1 in, wrapped at the grip', `${free} in between its two ends; each end stitched down ${tail_} in under a box stitch`], shown: loop(1), place: { view: 'front', x: 0, y: 0, z: 1 } }),
+      { ...piece('handle-2', 'Handle', rect(2, len), { cut: 0, shown: loop(-1), place: { view: 'front', x: 0, y: 0, z: 1 } }), twin: true },
+      { ...piece('handle-top', 'Handle', [[-.5, 0], [.5, 0], [.5, -free * .3], [-.5, -free * .3]], { cut: 0, shown: [[-spread, -free * .3], [spread, -free * .3], [spread * .9, -free * .34], [-spread * .9, -free * .34]], place: { view: 'front', x: 0, y: 0, z: 1 } }), twin: true });
+    // where the ends land: on the front and back panels below the top (a duffel's on its body, each side of the zip)
+    const y0 = round ? 2 : .75, bx = (sg, y) => [hw + sg * spread - .5, y, hw + sg * spread + .5, y + tail_];
+    if (round) { const C = boundsOf(pieces.find(q => q.id === 'body').sew).h; asm.push({ name: 'Handle ends on the body, each side of the zip', on: 'body', boxes: [bx(-1, y0), bx(1, y0), bx(-1, C - y0 - tail_), bx(1, C - y0 - tail_)], clear: .5 }); }
+    else asm.push({ name: 'Handle ends on the front panel', on: 'front', boxes: [bx(-1, y0), bx(1, y0)], clear: .5 }, { name: 'Handle ends on the back panel', on: 'back', boxes: [bx(-1, y0), bx(1, y0)], clear: .5 });
+    asm.push( { name: 'Handle rises when taut', handle: 'handle', tails: tail_, spread, min: type === 'tote' ? 9 : 4 }); }
+  if (['sling', 'messenger', 'briefcase', 'helmet', 'duffel', 'pouch'].includes(type)) { const wide = type === 'messenger' ? '1½' : '1', n = type === 'sling' ? 1 : 2;
+    trims.push({ item: 'Webbing', spec: `${wide} in nylon`, qty: `${type === 'pouch' ? 48 : 52} in`, where: 'Shoulder strap' }, { item: type === 'sling' ? 'Side-release buckle' : 'Swivel hook', spec: `${wide} in, ${type === 'sling' ? 'acetal' : 'metal'}`, qty: n, where: 'Strap ends' }, { item: 'Slider', spec: `Tri-glide, ${wide} in`, qty: 1, where: 'Strap adjuster' });
+    if (type === 'sling') trims.push({ item: 'Webbing', spec: '1 in nylon', qty: '2 × 4 in', where: 'Strap tabs, sewn into the gusset at each side point' });
+    else trims.push({ item: 'D-ring', spec: `${wide} in, metal`, qty: 2, where: round ? 'The top of each end panel' : 'The top of each side, on the gusset' }, { item: 'Webbing', spec: `${wide} in nylon`, qty: '2 × 3 in', where: 'D-ring tabs, bartacked' }); }
+  if (type === 'waist') trims.push({ item: 'Webbing', spec: '1 in nylon', qty: '42 in', where: 'Waist belt, sewn into the gusset at each side point' }, { item: 'Side-release buckle', spec: '1 in, acetal', qty: 1, where: 'Belt' }, { item: 'Ladder lock', spec: '1 in', qty: 1, where: 'Belt adjuster' });
+  // one puller to each slider; binding for every inside seam of the shell
+  const zips = trims.filter(t => t.item === 'Zip'); if (zips.length) trims.push({ item: 'Zip puller', spec: 'Cord or moulded, to the zip', qty: zips.reduce((s, t) => s + (/two-way/.test(t.spec) ? 2 : 1), 0), where: 'One to each slider' });
+  const byId = Object.fromEntries(pieces.filter(q => q.at).map(q => [q.id, q])), lenOf = r => (Array.isArray(r[0]) ? r : [r]).reduce((s, [id, ks]) => s + pathOf({ pts: byId[id].sew, at: byId[id].at }, ...ks), 0);
+  const bound = asm.filter(e => e.b && !e.zip && !e.caught && !/^Lining/.test(e.name)).reduce((s, e) => s + lenOf(e.a), 0);
+  trims.push({ item: 'Binding tape', spec: '1 in grosgrain or nylon', qty: `${Math.ceil(bound * 1.08)} in`, where: 'Inside seams' }, { item: 'Thread', spec: 'Tex 70 bonded nylon', qty: 'about 120 m', where: 'Throughout' }, { item: 'Main label', spec: 'Woven, folded', qty: 1, where: 'Inside, top centre' });
   const ty = { rolltop: 'Rolltop backpack', backpack: 'Zip backpack', drawstring: 'Top-loader backpack', sling: 'Sling', tote: 'Tote', helmet: 'Helmet bag', briefcase: 'Work bag', messenger: 'Messenger', duffel: 'Duffel', waist: 'Waist bag', pouch: 'Shoulder pouch' }[type];
   // a piece not seen on the product (a gusset, a lining, a sleeve) sits under the panel there, inside its outline, so only the explode shows it
   for (const q of pieces) if (q.hidden && !q.shown) { const b = boundsOf(q.sew), sw = Math.min(b.w, W * .9), sh = Math.min(b.h, H * .9); q.shown = at0(rect(sw, sh), -sw / 2, .4); q.place = { ...q.place, x: 0, y: 0, z: -3 }; }
   pieces.trims = trims;
-  return { kind: 'bag', style: type, label: ty, size: `${W} × ${H} × ${D} in`, sa, construction: {}, pieces: [...pieces], trims, notes: ['Bag: ⅜ in seam allowance, seams bound inside', 'A first block from the size: sample it, then true the panels to the drawing'] };
+  return { kind: 'bag', style: type, label: ty, size: `${W} × ${H} × ${D} in`, sa, construction: {}, pieces: [...pieces], trims, assembly: asm, up: roll + turn, shell: Object.fromEntries(pieces.filter(q => q.at && q.fabric !== 'lining').map(q => [q.id, q])),
+    notes: ['Bag: ⅜ in seam allowance, seams bound inside', 'Every gusset is as long as the panel edge it is sewn round; the Sews together panel walks each seam', 'A first block from the size: sample it, then true the panels to the drawing'] };
 }
 
 // ---- plush ----

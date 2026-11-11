@@ -54,6 +54,48 @@ test('every bag sews together and is the size it says', () => {
   }
 });
 
+test('a bag is put together from its pieces: every seam walked, every edge used once, every zip in its opening', () => {
+  const pc = (p, id) => p.pieces.find(q => q.id === id), names = c => [...c.seams, ...c.meas].filter(x => x.ok === false).map(x => x.name).concat(c.missing.map(x => 'Missing ' + x.need));
+  // every kind, at its own size and at smaller, larger, shallower and deeper ones: a bag is sized by whoever designs it
+  for (const t of BAG_TEMPLATES) { const [w0, h0, d0] = String(t.size).match(/[\d.]+/g).map(Number);
+    for (const [kw, kh, kd] of [[1, 1, 1], [.6, .6, .4], [.6, 1.7, 1], [1.7, .6, 1.5], [1.3, 1.3, .7], [1.7, 1.7, 1.5], [1, 1, .15]]) {
+      const spec = { type: t.type, w: Math.round(w0 * kw * 4) / 4, h: Math.round(h0 * kh * 4) / 4, d: Math.max(.5, Math.round(d0 * kd * 4) / 4) }, c = constructionCheck(bagPattern(spec));
+      assert.ok(c.ok, `${t.id} at ${spec.w} × ${spec.h} × ${spec.d}: ${failsOf(c).join('; ')}`);
+      assert.ok(c.seams.every(x => x.ok !== null) && c.meas.every(x => x.ok !== null), `${t.id}: every seam and measurement could be made`);
+    } }
+  // what a factory needs, drafted: a zip gusset in two halves that make the depth with the zip between them; a lining with its gusset; a
+  // detachable strap's hooks with rings to clip to; a puller to each slider
+  const bp = bagPattern({ type: 'backpack' }), zg = pc(bp, 'zip-gusset'), half = Math.max(...zg.sew.map(([, y]) => y));
+  assert.equal(zg.cut, 2); assert.ok(Math.abs(2 * half + .5 - 5.5) < .13, `two halves and the zip make the depth (${half})`);
+  assert.ok(['lining', 'lining-zip-gusset', 'lining-base'].every(i => pc(bp, i)?.fabric === 'lining'), 'the clamshell lining is its panels, its zip gusset and its base');
+  assert.ok(constructionCheck(bp).seams.length >= 15, 'a clamshell is walked seam by seam, shell and lining');
+  for (const type of ['helmet', 'briefcase', 'messenger', 'duffel', 'pouch']) { const p = bagPattern({ type }), n = k => p.trims.filter(x => x.item === k).reduce((a, x) => a + Number(x.qty), 0); assert.ok(n('D-ring') >= n('Swivel hook') && n('Swivel hook') === 2, `${type}: a ring for each hook`); }
+  const wb = bagPattern({ type: 'briefcase' }); assert.equal(wb.trims.find(x => x.item === 'Zip puller').qty, 3, 'a two-way zip and a pocket zip: three sliders, three pullers');
+  assert.ok(pc(bagPattern({ type: 'messenger' }), 'flap').sew.some(([, y]) => y > 4 + 7), 'a messenger flap crosses the 4 in top and comes well down the front');
+  // a bag too shallow for a zip gusset in halves has its zip sewn straight to the panels
+  const thin = bagPattern({ type: 'pouch', d: .75 }); assert.ok(!pc(thin, 'top-panel') && thin.assembly.some(e => e.zip != null && e.a[0] === 'front'), 'a shallow pouch zips panel to panel'); assert.ok(constructionCheck(thin).ok);
+
+  // broken on purpose: each has to be caught, and by the check that is about it
+  const broken = [
+    ['a gusset 1 in short', 'tote', p => { const g = pc(p, 'gusset'); g.sew = g.sew.map(([x, y]) => [x > 1 ? x - 1 : x, y]); g.at.b = [g.at.b[0] - 1, g.at.b[1]]; g.at.c = [g.at.c[0] - 1, g.at.c[1]]; }, /Front panel round the gusset/],
+    ['a zip gusset half too wide', 'backpack', p => { const g = pc(p, 'zip-gusset'); g.sew = g.sew.map(([x, y]) => [x, y > 1 ? y + .5 : y]); g.at.c = [g.at.c[0], g.at.c[1] + .5]; g.at.d = [g.at.d[0], g.at.d[1] + .5]; }, /Zip gusset across/],
+    ['a seam left out', 'messenger', p => { p.assembly = p.assembly.filter(e => e.name !== 'Back panel round the gusset'); }, /No edge left unsewn/],
+    ['an edge sewn twice', 'pouch', p => { p.assembly.push({ ...p.assembly.find(e => e.name === 'Front panel round the gusset') }); }, /No edge left unsewn/],
+    ['a zip longer than its opening', 'briefcase', p => { p.assembly.find(e => e.zip != null).zip += 3; }, /zip in its opening/],
+    ['a pocket hanging off its panel', 'sling', p => { const e = p.assembly.find(x => x.id === 'front-pocket'); e.at = [e.at[0], e.at[1] + 2]; }, /Front pocket on the front panel/],
+    ['a handle too short to rise', 'tote', p => { const h = pc(p, 'handle'); h.sew = h.sew.map(([x, y]) => [x, y > 1 ? y - 12 : y]); }, /Handle rises/],
+    ['handle ends on a seam', 'helmet', p => { const e = p.assembly.find(x => /Handle ends on the front/.test(x.name)); e.boxes = e.boxes.map(([x0, y0, x1, y1]) => [x0 - 4.5, y0, x1 - 4.5, y1]); }, /Handle ends on the front panel/],
+    ['a flap that stops at the top', 'messenger', p => { const f = pc(p, 'flap'); f.sew = f.sew.map(([x, y]) => [x, y * .35]); }, /Flap reaches/],
+    ['hooks with no rings', 'duffel', p => { p.trims = p.trims.filter(x => x.item !== 'D-ring'); }, /D-rings/],
+    ['a zip with no puller', 'waist', p => { p.trims = p.trims.filter(x => x.item !== 'Zip puller'); }, /zip puller/],
+    ['a lining with no gusset', 'tote', p => { p.pieces = p.pieces.filter(q => q.id !== 'lining-gusset'); }, /lining's gusset/],
+    ['too little binding tape', 'rolltop', p => { p.trims.find(x => x.item === 'Binding tape').qty = '20 in'; }, /Binding tape/],
+    ['a body too short for its ends', 'duffel', p => { const g = pc(p, 'body'); g.sew = g.sew.map(([x, y]) => [x, y > 1 ? y - 1 : y]); g.at.c = [g.at.c[0], g.at.c[1] - 1]; g.at.d = [g.at.d[0], g.at.d[1] - 1]; }, /Body round one end/],
+    ['a panel narrower than the size', 'pouch', p => { const g = pc(p, 'front'); g.sew = g.sew.map(([x, y]) => [x * (7 / 7.5), y]); }, /Width/],
+    ['straps too short', 'backpack', p => { p.assembly.find(e => e.straps).webbing = 4; }, /Shoulder straps let out/]];
+  for (const [what, type, hurt, re] of broken) { const p = bagPattern({ type }); hurt(p); const c = constructionCheck(p); assert.ok(!c.ok && names(c).some(x => re.test(x)), `${what} is caught (${names(c).join('; ') || 'nothing failed'})`); }
+});
+
 test('caps, bucket hats, beanies and totes: seams walked, sized to spec, with what they are made with', () => {
   for (const style of Object.keys(STYLES).filter(k => ['cap', 'beanie', 'tote'].includes(STYLES[k].kind))) {
     const p = defaultParams(style), pat = garmentPattern(p), c = constructionCheck(pat, { m: measurementsFor(p, pat.size), style });

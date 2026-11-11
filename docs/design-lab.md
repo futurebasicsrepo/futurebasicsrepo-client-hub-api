@@ -1278,14 +1278,25 @@ What the picture sets can also be set by hand, and every value is bounded:
 
 A bag concept opens on the Pattern page as kind `bag` (`bagPattern` in `src/lab-pattern.js`; `cleanBagSpec` in `src/lab-pattern-routes.js`), drafted from its kind and body size (width × height × depth; from the concept's bag choices, else the kind its name says, else a tote):
 
-- **Zip backpack:** front and padded back panels, a clamshell zip gusset in two halves and a base gusset, padded shoulder straps, a front zip pocket, a laptop sleeve.
-- **Rolltop:** the panels carried up 8 in for the roll, side straps and buckles, a stiffener in the roll edge.
-- **Top-loader:** a drawcord channel, a lid flap with buckles.
-- **Tote, helmet bag, work bag, duffel:** a gusset down a side, across the bottom and up the other (a duffel: one body wrapped round two round ends), handles; a helmet bag's zip flap, a work bag's laptop sleeve.
-- **Messenger:** a full flap with buckles and hook-and-loop.
-- **Sling, waist bag, pouch:** curved or rounded panels, a top zip, a front pocket.
+- **Zip backpack:** front and padded back panels rounded at all four corners; a clamshell zip gusset in two halves over the top and down the sides, and a base gusset across the bottom and up each side; padded shoulder straps; a front zip pocket; a laptop sleeve.
+- **Rolltop:** the panels and the gusset carried up 8 in for the roll, side straps and buckles, a stiffener in the roll edge.
+- **Top-loader:** a drawcord channel round the top, a lid flap that crosses the top and comes down the front to its buckles.
+- **Tote:** a gusset down a side, across the bottom and up the other; the top 1½ in turned to the inside, the lining sewn to its edge; handles; a base board.
+- **Helmet bag, work bag, pouch:** the same gusset, and the top closed by a zip between two top panels; a helmet bag's zip flap, a work bag's laptop sleeve.
+- **Messenger:** a flap hinged on the back's top edge that crosses the top and comes most of the way down the front, with buckles and hook-and-loop.
+- **Duffel:** one body wrapped round two round ends, its two long edges meeting at the zip along the top; handles each side of the zip.
+- **Sling, waist bag:** crescent panels, a zip gusset in two halves over the top and a gusset round the belly, a front pocket inside the panel's outline.
 
-Every bag has a lining and lists its zips (gauge, way and length), webbing, buckles, hooks, sliders, foam, binding and thread. A gusset, a lining or a sleeve sits under the panel on the product, so the explode shows it. It is a first block from the size: sample it, then true the panels to the drawing.
+**How a bag goes together.** Each panel and gusset labels its corners, and the pattern carries its `assembly`: every seam as the two runs of outline sewn together, every zip with the two edges it joins and its length, every edge finished on its own (a channel folded, a flap bagged out), and everything sewn onto a panel with where it sits (a pocket, a sleeve, handle and strap ends). Rules the drafting keeps:
+
+- A gusset is as long as the panel edge it is sewn round, measured off that panel's outline, rounded corners included.
+- A zip gusset is two halves; the halves and the ½ in of zip between them make the depth. A bag under 1¼ in deep has its zip sewn straight to the two panels.
+- A zip is 1 in shorter than its opening, so it stops ½ in short of each end, under a tab.
+- The lining is built the way the shell is (its panels, its gusset, its zip gusset or top panels) and joined at the top or caught in the zip seam.
+- A handle is long enough to rise 11 in (a tote, to go over a shoulder) or 5 to 9 in (hand carried) with its two ends stitched down 2 in.
+- A detachable strap's swivel hooks have D-rings to clip to; every zip slider has a puller; binding tape covers every inside seam.
+
+Every bag lists its zips (gauge, way and length), webbing, buckles, hooks, rings, sliders, foam, spacer mesh, binding and thread. A gusset, a lining or a sleeve sits under the panel on the product, so the explode shows it. It is a first block from the size: sample it, then true the panels to the drawing.
 
 ## The construction check and the cut-and-sew proof
 
@@ -1302,6 +1313,7 @@ A pattern is only right if it sews together into the garment it was drafted for.
   - tops: chest 1 in below the armhole, length from the high point of the shoulder, shoulder, neck, sleeve and opening
   - bottoms: waist, hip, rise along its seam, inseam, thigh, leg opening, sweep
   - bags: width, height and depth
+- **A bag's assembly.** `checkBag` walks the pattern's `assembly`: the two sides of every seam of the shell and the lining; the two edges each zip joins, and the zip in its opening; that every edge of every piece is sewn or finished once (none left open, none used twice); that a pocket or sleeve lies inside the panel it is sewn on, and handle and strap ends sit clear of its seams; that a flap or lid reaches down the front; that a handle rises; that the shoulder straps let out past the back; that the binding tape covers the inside seams. `missingComponents` asks for a puller to each slider, a D-ring to each swivel hook, a slider on an adjustable strap, foam where a part is padded, the lining's gusset, a drawcord's lock and eyelets, a tote's base board.
 - **Collars, stands and hoods.** Each records the length of the edge it is sewn on by, measured off its own outline, and is walked against the body's neckline. The neckline runs front edge to front edge for a shirt stand, or centre front to centre front, less any designed turn-back at a zip. A hood's neck edge is solved to half the neckline.
 - **Clean outlines.** No cut piece may cross itself or have a corner sharper than 20°.
 - **Everything it is made with.** Every garment goes through `finishGarment` (`src/lab-pattern.js`). It adds whatever drafting has not:
@@ -1329,11 +1341,11 @@ A pattern is only right if it sews together into the garment it was drafted for.
 - **Tote.** The body is cut twice the height plus the two 1½ in turn-backs.
 
 `npm run pattern:proof` writes `pattern-proof/pattern-proof.html`. It covers every library garment at M, with a strip of XS to XXL, and every bag. Each card shows:
-- the block pieces, with each seam's two sides in one colour
+- the block pieces (a bag: the pieces of its shell, the long gussets under the panels), with each seam's two sides in one colour
 - the seam and measurement tables
 - the cutting table
 
-`test/pattern-check.test.js` holds the whole library at every size, and every bag, to the check.
+`test/pattern-check.test.js` holds the whole library at every size, and every bag at its own size and at smaller, larger, shallower and deeper ones, to the check. It also breaks bag patterns on purpose (a gusset an inch short, a seam left out, a zip longer than its opening, a pocket off its panel, hooks with no rings) and requires each to be caught.
 
 ## Editing pieces and the AAMA/ASTM DXF
 

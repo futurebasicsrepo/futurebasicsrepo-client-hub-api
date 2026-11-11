@@ -28,11 +28,13 @@ Every pull request runs `npm test` and `npm run pattern:proof` in GitHub Actions
    - a sleeve cap into its armhole
    - a rib onto a neckline or a cuff
    - a waistband over the waist
+
+   A bag is walked from its `assembly`, the list its drafting gives of every seam, zip and finished edge: the two sides of each seam of the shell and the lining, each zip in its opening, and that every edge of every piece is sewn or finished once.
 2. **Collars, stands and hoods.** Each records the edge it is sewn on by, measured off its own outline (`neck: { len, to, extra }` on the piece). That edge is walked against the body's neckline, front edge to front edge or centre front to centre front.
 3. **The made product.** It is measured off the pieces as sewn and compared with the spec, within factory tolerances:
    - tops: chest, length, shoulder, neck, sleeve
    - bottoms: waist, hip, rise, inseam, thigh, opening, sweep
-   - bags: width, height, depth
+   - bags: width, height, depth; a pocket or sleeve inside its panel; handle and strap ends clear of the seams; how far a flap comes down the front; how high a handle rises; how far the shoulder straps let out; binding tape against the seams it binds
    - a six-panel cap: head size, crown height (read back off the panel), brim length at the centre front and brim width
    - a bucket hat: head size at the brim seam, crown height, brim length
    - a beanie: flat width and length; it must also be knitted 10 to 25% smaller round than a 22¾ in head
@@ -51,6 +53,7 @@ Every pull request runs `npm test` and `npm run pattern:proof` in GitHub Actions
    - a cap: a top button, a back closure, eyelets, crown seam tape, front panel buckram, a brim board and a sweatband
    - a beanie: its yarn
    - a tote: its handles
+   - a bag: a puller to each zip slider, a D-ring to each swivel hook, a slider on an adjustable strap, foam where it is padded, the lining's gusset, a drawcord's lock and eyelets, a structured tote's base board
    - a one-size piece needs no size label
 6. **The cutting table.** Every piece is laid on its cloth at the cloth's width, nested by its outline (`layoutOf`). The table gives the yardage and how much of the cloth is used. No piece may be wider than its cloth.
 
@@ -81,6 +84,8 @@ Every pull request runs `npm test` and `npm run pattern:proof` in GitHub Actions
 | "… onto the neckline" | The collar, stand or hood was sized from a formula, not from the neckline it is sewn to | Size it from `neckLen`, or solve it the way the hood is, and record its `neck` |
 | A measurement, for example "Chest, 1 in below the armhole", is off | The drawing pulled the shape away from the spec, or a feature took width the block did not give back | The style's measurements in `STYLES`, the sketch's traced proportions (`npm run pattern:proportions`), or the feature's drafting |
 | "… crosses itself" or "a corner of N°, a sliver" | Two cuts meet past each other, or a curve's control point sits behind its start | The piece's drafting. Every outline is also tidied at the end (`tidy`), which removes hairline backtracks. |
+| A bag: "… round the gusset" or "Zip gusset across …" | A gusset was sized from a formula, not from the panel edge it is sewn round; or the two halves of a zip gusset and the zip do not make the depth | `bagPattern` (`src/lab-pattern.js`): size the gusset with `pathOf` off the panel's own outline |
+| A bag: "No edge left unsewn, none sewn twice" | A piece was added or reshaped without its seams being listed, or one edge is in two seams | The bag's `assembly` in `bagPattern`: every edge of every shell and lining piece is in one seam, one zip or one finish |
 | "Missing …" | A feature was drafted without what it is made with | Add it in `finishGarment` (or where the feature is drafted). The rule is in `missingComponents`. |
 | Fails at one size only | Grading moved a point past another, or an exact-match lookup missed by a hair | Compare that size's pattern with M; look for exact-equality lookups on drafted points |
 
@@ -91,7 +96,7 @@ After a fix, run `npm test` and `npm run pattern:proof`. Both must be clean befo
 A new kind of garment, a new pocket or collar, or a new add-on is not done until the check covers it:
 
 1. **Draft it** in `src/lab-pattern.js`. If it changes the body, update the block's corner labels (`BLOCK`, `lmark`, `legMark`).
-2. **Walk its seams.** Add each new seam in `checkTop` / `checkBottom` / `checkBag` (`src/lab-pattern-check.js`), with the ease a factory sews, and say why in `why`. A piece sewn to the neckline records `neck`.
+2. **Walk its seams.** Add each new seam in `checkTop` / `checkBottom` (`src/lab-pattern-check.js`), with the ease a factory sews, and say why in `why`. A piece sewn to the neckline records `neck`. A bag's seams are not added in the check: label the new piece's corners (`at`) and list its seams in the bag's `assembly` in `bagPattern`; `checkBag` walks whatever the list holds, and fails when an edge is not in it.
 3. **Measure it.** If it has a specified measurement, add a `measure(...)` with the factory tolerance. Add the base value to `STYLES` with its sources in `docs/measurement-sources.md`.
 4. **List what it is made with.** Add the parts and trims in `finishGarment` (or where it is drafted), and the rule that requires them in `missingComponents`.
 5. **Test it.** `test/pattern-check.test.js` already covers every library sketch. Add an assertion for the new feature, and a negative case if the rule is new.
