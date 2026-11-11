@@ -80,6 +80,12 @@ test('the checks catch each fault made on purpose, each by the check that is abo
   c = kinds(edit('handheld', s => { s.parts = s.parts.filter(p => p.id !== 'screws'); }), 'fasteners', 'warn'); assert.equal(c.length, 1); assert.equal(c[0].need, 4); assert.equal(c[0].have, 0); assert.match(c[0].text, /ask for 4 .* carries 0/);
   c = kinds(edit('puck', (s, P) => { P('screws').qty = 2; }), 'fasteners', 'warn'); assert.ok(c.some(x => x.need === 5 && x.have === 4));
   c = kinds(edit('desk', (s, P) => { P('screws').at[1] += 12; }), 'fasteners', 'warn'); assert.ok(c.length >= 1 && c.every(x => /a screw joins two parts/.test(x.text)), c.map(x => x.text).join(' | '));
+  // a speaker driver has a flange: it lies on the baffle's face, the body goes through, and the screws go through the flange into the baffle.
+  const spk = cleanAssembly(archetype('speaker')), wf = spk.parts.find(p => p.elec?.kind === 'woofer'), bf = spk.parts.find(p => p.id === 'baffle'), sd = spk.parts.find(p => p.id === 'screws-drivers');
+  assert.deepEqual(wf.flange, { body: 106.6, t: 4, end: '-' }); assert.ok(Math.abs(bf.cuts.find(x => x.for === wf.id).size[0] - 107) < .01, 'the opening is the body\'s, not the flange\'s');
+  const mid = [sd.at[0], 0, sd.at[2]]; assert.equal(inMaterial(wf, [mid[0], wf.at[1] - wf.size[1] / 2 + 2, mid[2]]), true, 'the screw is in the flange'); assert.equal(inMaterial(wf, [mid[0], wf.at[1], mid[2]]), false, 'and beside the body behind it');
+  assert.equal(inMaterial(bf, [mid[0], bf.at[1], mid[2]]), true, 'and in the baffle'); assert.equal(kinds(spk, 'fasteners', 'warn').length, 0);
+  const bare = cleanAssembly(edit('speaker', s => { for (const q of s.parts) delete q.flange; })).parts.find(q => q.id === 'baffle'); assert.equal(inMaterial(bare, [mid[0], bare.at[1], mid[2]]), false, 'with no flange the opening is as wide as the driver, and the same screw would be in the opening, not in the baffle');
   // a part hung outside the size asked
   c = kinds(edit('desk', (s, P) => { P('feet').at[2] -= 3; }), 'size', 'warn'); assert.equal(c.length, 1); assert.match(c[0].text, /3 mm more tall/); assert.deepEqual(c[0].asked, [140, 70, 86]);
   // a part with no parent and a part with several pieces are measured like any other

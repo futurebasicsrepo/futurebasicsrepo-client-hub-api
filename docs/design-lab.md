@@ -2036,7 +2036,9 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   - `size` (watch): the size the parts make against the size asked for at **Start from…** (kept on the assembly as `dims`), over 0.5 mm.
 - **Openings, bosses and screws.** A part says what it passes `through` (a key through its cover, a shaft through a panel, a screw through
   a board) and the opening is cut there with 0.2 mm round it, worked out each time so it follows the part; sockets and clear windows get
-  theirs without being told. A part with a quantity can list where its other pieces are (`spots`). A housing carries screw `bosses` on its
+  theirs without being told. A part with a quantity can list where its other pieces are (`spots`). A round solid part can have a `flange`
+  (a speaker driver's: full width for a few millimetres at one end, a narrower body behind), so it lies on a baffle's face, goes through
+  with its body, and its screws go through the flange into the baffle. A housing carries screw `bosses` on its
   floor. Screws are parts: one line a kind, every position listed, lying through the part held and into the part that takes the thread.
   Openings and bosses are in the part's solid: its STL, and its STEP as exact faces (holes through a floor or a solid part, bosses, and
   windows in a housing's side walls with their sides, sill and head, a notch where one reaches the rim). The 3D view shows them too: a

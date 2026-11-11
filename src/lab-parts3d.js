@@ -395,6 +395,7 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
     if (p.shape === 'pcb') return null;
     if (['shell', 'cup', 'ring'].includes(p.shape)) return housing(p, dims, m);
     if (p.shape === 'ball') return group(mesh(new T.SphereGeometry(.5, 64, 32).scale(w, d, h), m));
+    if (p.shape === 'cyl' && p.flange) { const k = p.flange.body / Math.min(w, d), ft = p.flange.t, s = p.flange.end === '+' ? 1 : -1; return group(mesh(rcyl(w, d, ft, Math.min(.4, ft / 4)), m, 0, 0, s * (h / 2 - ft / 2)), mesh(rcyl(w * k, d * k, h - ft, .4), m, 0, 0, -s * ft / 2)); }
     const thru = p.shape === 'box' || p.shape === 'cyl' ? holesOf(p, w, d, p.shape === 'cyl') : []; // a baffle's driver openings, a panel's, a plate's
     if (thru.length) { const sh = p.shape === 'cyl' ? ell(w, d) : rr(w, d, p.r ?? 1); sh.holes.push(...thru); return group(mesh(extrude(sh, h, Math.min(.6, h / 4)), m)); }
     if (p.shape === 'cyl') { const b = Math.min(1, h / 4, Math.min(w, d) / 6); return group(mesh(rcyl(w, d, h, b), m)); }

@@ -85,7 +85,9 @@ export function stepOf(s0, { t = 0, only = null, title = '' } = {}) {
     const wins = sides.map(m => ({ m, za: Math.min(F.sgn * m.ua, F.sgn * m.ub), zb: Math.max(F.sgn * m.ua, F.sgn * m.ub) })), near = (a, b) => Math.abs(a - b) < 1e-9;
     const steps = (lo, hi) => { const z = [...new Set([lo, hi, ...wins.flatMap(x => [x.za, x.zb])])].filter(v => v > lo - 1e-9 && v < hi + 1e-9).sort((a, b) => a - b).filter((v, i, l) => i === 0 || v - l[i - 1] > 1e-9); return z.slice(0, -1).map((v, i) => [v, z[i + 1]]); };
     const lost = (sg, za, zb) => Boolean(sg.wins) && wins.some(x => sg.wins.includes(x.m) && x.za < za + 1e-9 && x.zb > zb - 1e-9), layered = (P, lo, hi, inward) => { for (const [a, b] of steps(lo, hi)) wall(P, a, b, inward, sg => lost(sg, a, b)); };
-    if (!innP) { wall(outP, z0, z1, false); cap(outP, z0, false, own); cap(outP, z1, true, own); for (const h of own) wall(h, z0, z1, true); }
+    if (!innP && F.flange) { const { k, za, zb } = F.flange, bodP = round(w * k, d * k), low = za <= z0 + 1e-9; // a flanged round part: flange, step, body
+      wall(outP, za, zb, false); wall(bodP, low ? zb : z0, low ? z1 : za, false); cap(outP, low ? z0 : z1, !low); cap(outP, low ? zb : za, low, bodP); cap(bodP, low ? z1 : z0, low); }
+    else if (!innP) { wall(outP, z0, z1, false); cap(outP, z0, false, own); cap(outP, z1, true, own); for (const h of own) wall(h, z0, z1, true); }
     else { const o = p.shape === 'ring' ? 'both' : p.open === '-' ? '-' : '+', up = o === '+', zo = up ? z0 : z1, zi = o === 'both' ? null : up ? z0 + tk : z1 - tk, ilo = o === '+' ? zi : z0, ihi = o === '-' ? zi : z1, lo = (a, b) => Math.min(a, b), hi = (a, b) => Math.max(a, b);
       layered(outP, z0, z1, false); layered(innP, ilo, ihi, true);
       // a line across the wall's thickness at an outline point, at a height: shared by a window's side and its sill or head, or the rim

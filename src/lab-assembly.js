@@ -158,6 +158,7 @@ export function featuresOf(p) {
   const [w, d, L] = localDims(p), round = ROUND.has(p.shape), r = round ? 0 : Math.max(0, Math.min(p.r ?? 0, w / 2 - .01, d / 2 - .01)), t = shellLike(p) ? Math.min(p.wall, Math.min(w, d) / 2 - .2) : 0, o = openOf(p);
   const sgn = shellLike(p) && o === '-' ? -1 : 1, floor = shellLike(p) && o !== 'both', F = { w, d, L, r, t, round, sgn, floor, shell: shellLike(p), u0: -L / 2, uf: floor ? -L / 2 + t : -L / 2, u1: L / 2, holes: [], sides: [], bosses: [] };
   if (p.shape === 'ball') return F;
+  if (p.shape === 'cyl' && p.flange) { F.flange = { k: p.flange.body / Math.min(w, d), za: p.flange.end === '+' ? L / 2 - p.flange.t : -L / 2, zb: p.flange.end === '+' ? L / 2 : -L / 2 + p.flange.t }; return F; } // a flanged part carries no openings
   const iw = w - 2 * t, id = d - 2 * t, ir = Math.max(r - t, 0), ax = axisOf(p);
   // is a box (centre, half sizes) inside the floor's inner outline with a margin?
   const inFloor = (cx, cy, hw, hd, m) => { const W2 = (floor ? iw : w) / 2 - m, D2 = (floor ? id : d) / 2 - m, R = floor ? ir : r; if (W2 <= hw || D2 <= hd) return false;
@@ -252,6 +253,13 @@ function solidOf(p) {
     for (let i = 0; i < ts.length; i += 3) up ? tri(at(ts[i], u), at(ts[i + 1], u), at(ts[i + 2], u)) : tri(at(ts[i], u), at(ts[i + 2], u), at(ts[i + 1], u)); };
   const quad = (a, b, c, d) => { tri(a, b, c); tri(a, c, d); };
   const loops = F.holes.map(holeLoop), tube = (loop, a, b, outward) => { for (let i = 0; i < loop.length; i++) strip(loop[i], loop[(i + 1) % loop.length], [], [], a, b, outward); };
+  if (!inn && F.flange) { // a flanged round part: the flange's edge and face, the step down to the body, the body and its end
+    const { k, za, zb } = F.flange, bod = out.map(q => [q[0] * k, q[1] * k]), low = za <= u0 + 1e-9;
+    for (let i = 0; i < n; i++) { const j = (i + 1) % n; strip(out[i], out[j], [], [], za, zb, true); strip(bod[i], bod[j], [], [], low ? zb : u0, low ? u1 : za, true);
+      low ? quad(at(out[i], zb), at(out[j], zb), at(bod[j], zb), at(bod[i], zb)) : quad(at(out[i], za), at(bod[i], za), at(bod[j], za), at(out[j], za)); }
+    flat(out, [], low ? u0 : u1, !low); flat(bod, [], low ? u1 : u0, low);
+    return { T, sgn: F.sgn };
+  }
   if (!inn) { // a solid: the wall, the two faces with their holes, the holes' own walls
     for (let i = 0; i < n; i++) strip(out[i], out[(i + 1) % n], [], [], u0, u1, true);
     flat(out, loops, u0, false); flat(out, loops, u1, true); for (const l of loops) tube(l, u0, u1, false);
@@ -286,7 +294,7 @@ export function meshOf(p, off = [0, 0, 0]) {
 export function volumeOf(p) {
   if (p.shape === 'ball') { const [a, b, c] = p.size.map(v => v / 2); return 4 / 3 * Math.PI * a * b * c; }
   const [, , L] = localDims(p), { out, inn, t } = profilesOf(p), A = area(out);
-  if (!inn) return A * L;
+  if (!inn) return p.shape === 'cyl' && p.flange ? A * p.flange.t + A * (p.flange.body / Math.min(...localDims(p).slice(0, 2))) ** 2 * (L - p.flange.t) : A * L;
   return openOf(p) === 'both' ? (A - area(inn)) * L : A * L - area(inn) * (L - t);
 }
 // the outside and inside surface (mm²), from the triangles: a rotocast or blown part is a skin of about 2 mm, not a solid
@@ -327,6 +335,8 @@ export function cleanPart(q = {}, i = 0) {
   // what it passes through (an opening is cut there for it), where its other pieces sit (qty over 1: offsets from the one drawn), the
   // openings cut in it (worked out by cleanAssembly from the two above, and for sockets) and the screw bosses on a housing's floor
   const v3 = (a, lo, hi, d) => [0, 1, 2].map(k => r2(num(a?.[k], lo, hi, d)));
+  // a flange on a round solid part (a speaker driver's): its full width holds for `t` at one end of its axis, the body behind it is `body` across
+  if (shape === 'cyl' && q.flange && Number(q.flange.body) > 0) { const [fw, fd, fl] = localDims(p), ac = Math.min(fw, fd); if (ac > 1 && fl > .6) p.flange = { body: r1(num(q.flange.body, .3, ac - .4, ac * .8)), t: r1(num(q.flange.t, .2, fl - .2, Math.min(3, fl / 2))), end: q.flange.end === '+' ? '+' : '-' }; }
   if (Array.isArray(q.through)) { const t = [...new Set(q.through.map(String).filter(x => ID.test(x)))].slice(0, 4); if (t.length) p.through = t; }
   if (Array.isArray(q.spots) && p.qty > 1) { const sp = q.spots.slice(0, p.qty - 1).map(a => v3(a, -3000, 3000, 0)); if (sp.length) p.spots = sp; }
   if (Array.isArray(q.cuts)) { const cs = q.cuts.slice(0, 40).map(c => ({ at: v3(c?.at, -3000, 3000, 0), size: v3(c?.size, .2, 3000, 1), axis: AXN.includes(c?.axis) ? c.axis : 'z', ...(c?.round ? { round: true } : {}), ...(ID.test(String(c?.for || '')) ? { for: c.for } : {}) })); if (cs.length) p.cuts = cs; }
@@ -353,9 +363,12 @@ export function cleanAssembly(s = {}) {
 // another gets its outline (and each of its `spots`) cut there with 0.2 mm round it, and every socket and every clear window gets its
 // opening in the housing wall it reaches. A window in a side wall, a hole in a floor or through a solid part; see featuresOf for what can be cut.
 function cutFor(h, q, o) {
-  const clr = .2, e = 1e-6, ax = axisOf(h), qa = q.at.map((v, k) => v + o[k]), qlo = qa.map((v, k) => v - q.size[k] / 2), qhi = qa.map((v, k) => v + q.size[k] / 2), hlo = h.at.map((v, k) => v - h.size[k] / 2), hhi = h.at.map((v, k) => v + h.size[k] / 2);
+  const clr = .2, e = 1e-6, ax = axisOf(h), qa = q.at.map((v, k) => v + o[k]), hlo = h.at.map((v, k) => v - h.size[k] / 2), hhi = h.at.map((v, k) => v + h.size[k] / 2);
+  // a flanged part goes through with its body where the host lies behind the flange
+  const fa = axisOf(q), f0 = q.flange && (q.flange.end === '-' ? qa[fa] - q.size[fa] / 2 : qa[fa] + q.size[fa] / 2 - q.flange.t), behind = q.flange && !(hhi[fa] > f0 + e && hlo[fa] < f0 + q.flange.t - e), qs = behind ? q.size.map((v, k) => (k === fa ? v : v * q.flange.body / Math.min(...q.size.filter((_, i) => i !== fa)))) : q.size;
+  const qlo = qa.map((v, k) => v - qs[k] / 2), qhi = qa.map((v, k) => v + qs[k] / 2);
   if ([0, 1, 2].some(k => qhi[k] <= hlo[k] + e || qlo[k] >= hhi[k] - e) || h.shape === 'ball') return [];
-  const rel = qa.map((v, k) => r2(v - h.at[k])), rnd = k => (ROUND.has(q.shape) && axisOf(q) === k) || q.shape === 'ball', mk = (k, at) => ({ at, size: q.size.map((v, i) => r2(i === k ? v : v + 2 * clr)), axis: AXN[k], ...(rnd(k) ? { round: true } : {}), for: q.id });
+  const rel = qa.map((v, k) => r2(v - h.at[k])), rnd = k => (ROUND.has(q.shape) && axisOf(q) === k) || q.shape === 'ball', mk = (k, at) => ({ at, size: qs.map((v, i) => r2(i === k ? v : v + 2 * clr)), axis: AXN[k], ...(rnd(k) ? { round: true } : {}), for: q.id });
   if (!shellLike(h)) return [mk(ax, rel.map((v, k) => (k === ax ? 0 : v)))];
   const t = h.wall, op = openOf(h);
   if (op !== 'both') { const flo = op === '+' ? hlo[ax] : hhi[ax] - t; if (qlo[ax] < flo + t - e && qhi[ax] > flo + e) return [mk(ax, rel.map((v, k) => (k === ax ? r2(flo + t / 2 - h.at[ax]) : v)))]; }
@@ -533,16 +546,16 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     const pl = Math.min(110, cdp - 30), pdia = Math.min(50, W - 2 * t - 50);
     add({ id: 'port', name: 'Bass port tube', shape: 'ring', axis: 'y', size: [pdia, pl, pdia], wall: 2.5, at: [-W / 2 + t + 8 + pdia / 2, yb - pl / 2, H - t - 8 - pdia / 2], resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, through: ['cab'], fix: 'glue', order: 4, lvl: 6 });
     add({ id: 'baffle', name: 'Baffle', shape: 'box', axis: 'y', size: [W, bf, Hs], r: 3, at: [0, y0 + gr + bf / 2, zb + Hs / 2], resin: 'MDF', process: 'CNC routed', cost: r2(1.5 + W * Hs / 1e6 * 11), finish: 'none', fix: 'glue', order: 6, dir: [0, -1, 0], lvl: 1.2 });
-    const wdep = Math.min(70, cdp - t - 70), yw = y0 + gr - 1;
-    elec('woofer', { axis: 'y', size: [wd, wdep, wd], at: [0, yw + wdep / 2, wz], parent: 'baffle', through: ['baffle'], fix: 'screws', fixQty: 4, order: 7, dir: [0, -1, 0], lvl: 1.8 });
-    elec('tweeter', { axis: 'y', size: [80, 40, 80], at: [0, yw + 20, tz], parent: 'baffle', through: ['baffle'], fix: 'screws', fixQty: 4, order: 7, dir: [0, -1, 0], lvl: 1.8 });
+    const wdep = Math.min(70, cdp - t - 70), yf = y0 + gr, wb = e2(wd * .82); // each driver's flange lies on the baffle's face, its body goes through
+    elec('woofer', { axis: 'y', size: [wd, wdep, wd], flange: { body: wb, t: 4, end: '-' }, at: [0, yf - 4 + wdep / 2, wz], parent: 'baffle', through: ['baffle'], fix: 'screws', fixQty: 4, order: 7, dir: [0, -1, 0], lvl: 1.8 });
+    elec('tweeter', { axis: 'y', size: [80, 40, 80], flange: { body: 60, t: 3, end: '-' }, at: [0, yf - 3 + 20, tz], parent: 'baffle', through: ['baffle'], fix: 'screws', fixQty: 4, order: 7, dir: [0, -1, 0], lvl: 1.8 });
     add({ id: 'grille', name: 'Grille (cloth on a frame)', shape: 'shell', axis: 'y', size: [W - 4, gr, Hs - 4], r: 3, at: [0, y0 + gr / 2, zb + Hs / 2], wall: 2, open: '+', resin: 'ABS', finish: 'none', draft: 1, fix: 'press', order: 10, dir: [0, -1, 0], lvl: 2.8 });
     const so4 = [[-(bw / 2 - 5), pz - bhh / 2 + 5], [bw / 2 - 5, pz - bhh / 2 + 5], [bw / 2 - 5, pz + bhh / 2 - 5], [-(bw / 2 - 5), pz + bhh / 2 - 5]], sol = yb - t - (py + .8);
     add({ id: 'standoffs', name: `Standoff, M3 × ${Math.round(sol)}, threaded into the back`, shape: 'cyl', axis: 'y', size: [5.5, sol, 5.5], at: [so4[0][0], py + .8 + sol / 2, so4[0][1]], resin: 'bought in', process: 'bought in', cost: .05, qty: 4, spots: so4.slice(1).map(q => [q[0] - so4[0][0], 0, q[1] - so4[0][1]]), fix: 'press', order: 2, lvl: 4.2 });
     screw('screws-board', 'Screw, M3 × 6 (amplifier board)', 3, 6, 'y', so4.map(q => [q[0], py - .8 - 1 + 3, q[1]]), { parent: 'pcb', through: ['pcb'], dir: [0, -1, 0], lvl: 5 });
     screw('screws-psu', 'Screw, M4 × 20 wood (supply, up through the cabinet)', 4, 20, 'z', [[-44, psy - 24], [44, psy - 24], [44, psy + 24], [-44, psy + 24]].map(q => [...q, zb + 10]), { through: ['cab'], dir: [0, 0, -1], lvl: 2 });
-    const rim = (cz, r) => [45, 135, 225, 315].map(a => [(r + .3) * Math.cos(a * Math.PI / 180), y0 + gr + 7, cz + (r + .3) * Math.sin(a * Math.PI / 180)]);
-    screw('screws-drivers', 'Screw, M4 × 16 wood (drivers, through the rim into the baffle)', 4, 16, 'y', [...rim(wz, wd / 2), ...rim(tz, 40)], { dir: [0, -1, 0], lvl: 2.4 });
+    const rim = (cz, r, ft) => [45, 135, 225, 315].map(a => [r * Math.cos(a * Math.PI / 180), yf - ft + 8, cz + r * Math.sin(a * Math.PI / 180)]);
+    screw('screws-drivers', 'Screw, M4 × 16 wood (drivers, through the flange into the baffle)', 4, 16, 'y', [...rim(wz, (wd + wb) / 4, 4), ...rim(tz, 35, 3)], { dir: [0, -1, 0], lvl: 2.4 });
   } else if (arch === 'turntable') {
 
     // a belt-drive turntable: an MDF plinth closed underneath by a steel plate on four feet, with the main bearing, the motor and the board
@@ -882,6 +895,7 @@ function inPiece(p, F, w, plain) {
   const l = toLocal(p, d), x = l[0], y = l[1], u = F.sgn * l[2];
   for (const b of F.bosses) if (u >= F.uf - EPS && u <= b.ue + EPS) { const q = Math.hypot(x - b.cx, y - b.cy); if (q <= b.R + EPS && (plain || q >= b.rp - EPS)) return true; }
   if (u < F.u0 - EPS || u > F.u1 + EPS || !inOutline(F, F.w, F.d, F.r, x, y)) return false;
+  if (F.flange && (u < F.flange.za - EPS || u > F.flange.zb + EPS) && !inOutline(F, F.w * F.flange.k, F.d * F.flange.k, 0, x, y)) return false; // behind the flange, only the body
   if (!F.shell) return plain || !F.holes.some(h => inHole(h, x, y));
   if ((!F.floor || u > F.uf + EPS) && inOutline(F, F.w - 2 * F.t - 2 * EPS, F.d - 2 * F.t - 2 * EPS, Math.max(F.r - F.t, 0), x, y)) return false;
   if (plain) return true;
@@ -898,6 +912,7 @@ function samplesOf(p, F) {
   const O = outlinesOf(F), oo = denser(O.out, 140, 1), ii = O.inn ? denser(O.inn, 140, 1) : null, nl = Math.max(2, Math.min(7, Math.ceil(F.L / 1.5) + 1)), lv = Array.from({ length: nl }, (_, i) => F.u0 + (F.u1 - F.u0) * i / (nl - 1));
   for (const u of lv) for (const q of oo) pts.push([q[0], q[1], u]);
   if (ii) for (const u of [...new Set([F.uf, ...lv.filter(v => v > F.uf)])]) for (const q of ii) pts.push([q[0], q[1], u]);
+  if (F.flange) { const bo = denser(O.out.map(q => [q[0] * F.flange.k, q[1] * F.flange.k]), 100, 1); for (const u of [...lv, F.flange.za, F.flange.zb]) { for (const q of bo) pts.push([q[0], q[1], u]); for (const q of oo) pts.push([q[0], q[1], u]); } }
   const grid = (W, D, R, u) => { const n = 7; for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const x = -W / 2 + W * (i + .5) / n, y = -D / 2 + D * (j + .5) / n; if (inOutline(F, W, D, R, x, y)) pts.push([x, y, u]); } };
   if (!F.shell) { grid(F.w, F.d, F.r, F.u0); grid(F.w, F.d, F.r, F.u1); } else if (F.floor) { grid(F.w, F.d, F.r, F.u0); grid(F.w - 2 * F.t, F.d - 2 * F.t, Math.max(F.r - F.t, 0), F.uf); }
   for (const b of F.bosses) for (let i = 0; i < 8; i++) { const a = i / 8 * 2 * Math.PI; for (const R of [b.R, (b.R + b.rp) / 2]) pts.push([b.cx + R * Math.cos(a), b.cy + R * Math.sin(a), b.ue]); }
@@ -971,7 +986,7 @@ export function fitOf(s) {
   const screws = parts.filter(isScrew), fixed = parts.filter(p => p.fix === 'screws' && !isScrew(p)), need = fixed.reduce((t, p) => t + Math.max(1, p.fixQty) * p.qty, 0), have = screws.reduce((t, p) => t + p.qty, 0);
   if (need !== have) say('fasteners', (screws[0] || fixed[0]).id, 'warn', `Screws: the parts fixed by screws ask for ${need} (${fixed.map(p => `${low(p)} ${Math.max(1, p.fixQty) * p.qty}`).join(', ') || 'none'}) and the parts list carries ${have}${screws.length ? ` (${screws.map(p => `${p.name} × ${p.qty}`).join(', ')})` : ''}. Make them agree.`, { need, have });
   let loose = 0; for (const sc of screws) { const i0 = parts.indexOf(sc), ax = sc.size.indexOf(Math.max(...sc.size)), L = sc.size[ax], N = Math.max(8, Math.ceil(L / .1));
-    [[0, 0, 0], ...(sc.spots || [])].forEach((o, pc) => { const len = {}, o2 = [0, 1, 2].filter(q => q !== ax), rr = Math.min(sc.size[o2[0]], sc.size[o2[1]]) * .45; for (let k = 0; k < N; k++) { const c = sc.at.map((v, q) => v + o[q]); c[ax] += -L / 2 + L * (k + .5) / N; for (let j = 0; j < n; j++) { if (j === i0 || isScrew(parts[j]) || c.some((v, q) => v < B[j].lo[q] - 5 || v > B[j].hi[q] + 5)) continue; if ([[0, 0], [rr, 0], [-rr, 0], [0, rr], [0, -rr]].some(([a, b]) => { const w = [...c]; w[o2[0]] += a; w[o2[1]] += b; return inPart(parts[j], F[j], w, true); })) len[j] = (len[j] || 0) + L / N; } }
+    [[0, 0, 0], ...(sc.spots || [])].forEach((o, pc) => { const len = {}; for (let k = 0; k < N; k++) { const w = sc.at.map((v, q) => v + o[q]); w[ax] += -L / 2 + L * (k + .5) / N; for (let j = 0; j < n; j++) if (j !== i0 && !isScrew(parts[j]) && w.every((v, q) => v >= B[j].lo[q] - 5 && v <= B[j].hi[q] + 5) && inPart(parts[j], F[j], w, true)) len[j] = (len[j] || 0) + L / N; }
       const thru = Object.keys(len).filter(j => len[j] >= .5); if (thru.length >= 2) return; loose++;
       say('fasteners', sc.id, 'warn', `${sc.name}${sc.spots?.length ? ` (piece ${pc + 1} of ${sc.qty})` : ''}: goes through ${thru.length ? `only ${low(parts[thru[0]])} (${r1(len[thru[0]])} mm of its ${L} mm)` : 'no part at all'}; a screw joins two parts. Put it through the part it holds and into the part that takes its thread.`, { through: thru.map(j => parts[j].id), piece: pc + 1 }); }); }
   if (screws.length && need === have && !loose) say('fasteners', screws[0].id, 'ok', `Screws: ${have} on the parts list for the ${need} the parts ask for, each through two parts.`);
