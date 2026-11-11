@@ -79,9 +79,15 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Browser for the journeys
+        # The browser's system packages come from Ubuntu's servers, which a runner sometimes cannot reach for a few minutes (both suites
+        # died here twice on 11 Nov, before any journey ran). Tried up to three times, a minute apart, and still a failure if none works.
         run: |
           npm install --no-save playwright@1.63.0
-          npx playwright install --with-deps chromium
+          for attempt in 1 2 3; do
+            npx playwright install --with-deps chromium && exit 0
+            echo "browser install failed (attempt $attempt of 3)"; [ "$attempt" = 3 ] || sleep 60
+          done
+          exit 1
       - name: psql, which the journeys use to make their database
         run: command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
       - name: Customer journeys
