@@ -214,6 +214,9 @@ export const cleanSpec = (s = {}) => ({
   ...(s.branding ? { branding: { logo: { mark: s.branding.logo?.mark, placement: clip(s.branding.logo?.placement, 120), technique: clip(s.branding.logo?.technique, 40) } } } : {}), ...(s.graphics ? { graphics: cleanGraphics(s.graphics) } : {}),
   description: clip(s.description, 600), silhouette: clip(s.silhouette, 120), fabric: clip(s.fabric, 160), fit: clip(s.fit, 80), trims: clip(s.trims, 200),
   colors: (Array.isArray(s.colors) ? s.colors : []).map(c => clip(c, 40)).filter(Boolean).slice(0, 4), details: (Array.isArray(s.details) ? s.details : []).map(c => clip(c, 120)).filter(Boolean).slice(0, 6),
+  // a concept started from a catalogue product keeps which product (never its cost), and the style it names when its flat is drawn from its
+  // measurements (src/lab-catalog-routes.js), so editing its words does not lose what it is
+  ...(s.catalog && typeof s.catalog === 'object' && typeof s.catalog.id === 'string' ? { catalog: { id: clip(s.catalog.id, 80), name: clip(s.catalog.name, 200), brand: clip(s.catalog.brand, 80) }, ...(typeof s.style === 'string' && s.template === 'none' ? { style: clip(s.style, 40), template: 'none' } : {}) } : {}),
   ...cleanMakeup(s)
 });
 export function conceptFixture({ user }) {

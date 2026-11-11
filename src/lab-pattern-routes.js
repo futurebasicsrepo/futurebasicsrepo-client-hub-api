@@ -46,11 +46,13 @@ const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const WIDTHS = [36, 44, 54, 58, 60, 72];
 // what kind of pattern a concept is cut from: plush has its own drafting; a garment needs a style the flats know; the rest is still to come
 export const SOON = { toys: 'Toys and objects are engineered as 3D parts', electronics: 'Electronics are engineered as 3D parts with the board', home: 'Home and objects are engineered as 3D parts' }; // the page sends these to /lab/engineer (src/lab-assembly.js)
+// a product type (a mug, a poster, a phone case: src/lab-goods.js) has no pattern, and the page says why
+export const notSewn = flatStyle => (STYLES[flatStyle]?.kind === 'goods' ? `${/^[aeiou]/i.test(STYLES[flatStyle].label) ? 'An' : 'A'} ${STYLES[flatStyle].label.toLowerCase()} is printed or bought in, not cut and sewn, so it has no pattern and no size run. Its flat carries its measurements and its print area.` : '');
 export function kindOf(c, flatStyle = null) {
   if (c.category === 'plush') return 'plush';
   if (c.category === 'footwear') return 'footwear';
   if (c.category === 'bags') return 'bag';
-  if (flatStyle && STYLES[flatStyle]) return 'garment';
+  if (flatStyle && STYLES[flatStyle]) return STYLES[flatStyle].kind === 'goods' ? 'none' : 'garment'; // a product type (src/lab-goods.js) is not cut and sewn
   if (SOON[c.category]) return 'soon';
   return detectStyle(c) ? 'garment' : 'none';
 }
@@ -149,11 +151,11 @@ export function registerLabPatternRoutes(app, d) {
     const pat = patternOf(L, L.flat?.size), check = checkOf(L, pat), extra = pat ? { ...(check ? { check } : {}), yardage: yardage(pat, Number(L.spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat) } : {}), ...(pat.kind === 'footwear' ? footExtra(L.spec, pat) : {}) } : {};
     const hasImage = L.kind === 'footwear' || L.kind === 'plush' ? Boolean((await pool.query('select image is not null h from lab_concepts where id=$1', [L.c.id])).rows[0]?.h) : false;
     const materials = (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.part); // what goes on the product's parts, drawn on its flats
-    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage, productId: L.c.product_id || null }, marks: L.kind === 'plush' || L.kind === 'footwear' ? Object.fromEntries(Object.keys(MARKS).flatMap(k => [[k, logoSvg(k === 'cue' ? 'mark' : k)], [`${k}:light`, logoSvg(k === 'cue' ? 'mark' : k, { fill: '#ffffff' })]])) : undefined, colourways: (Array.isArray(L.c.spec?.colourways) ? L.c.spec.colourways : []).filter(c => /^#[0-9a-f]{6}$/i.test(String(c?.hex || ''))).slice(0, 8).map(c => ({ name: clip(c.name, 60), hex: String(c.hex).toLowerCase() })), materials, allMaterials: (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.kind === 'fabric' && !p.part), parts: partsFor(L.c.category), kind: L.kind, flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, coloursFrom: L.coloursFrom || null, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
+    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage, productId: L.c.product_id || null }, marks: L.kind === 'plush' || L.kind === 'footwear' ? Object.fromEntries(Object.keys(MARKS).flatMap(k => [[k, logoSvg(k === 'cue' ? 'mark' : k)], [`${k}:light`, logoSvg(k === 'cue' ? 'mark' : k, { fill: '#ffffff' })]])) : undefined, colourways: (Array.isArray(L.c.spec?.colourways) ? L.c.spec.colourways : []).filter(c => /^#[0-9a-f]{6}$/i.test(String(c?.hex || ''))).slice(0, 8).map(c => ({ name: clip(c.name, 60), hex: String(c.hex).toLowerCase() })), materials, allMaterials: (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.kind === 'fabric' && !p.part), parts: partsFor(L.c.category), kind: L.kind, ...(L.kind === 'none' && notSewn(L.flat?.style) ? { why: notSewn(L.flat.style) } : {}), flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, coloursFrom: L.coloursFrom || null, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
   });
   app.put('/v1/lab/concepts/:id/pattern', { preHandler: pre, bodyLimit: 4_000_000 }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
-    if (!['plush', 'garment', 'footwear', 'bag'].includes(L.kind)) return bad(reply, L.kind === 'soon' ? SOON[L.c.category] : 'This piece has no pattern the Lab can draft yet');
+    if (!['plush', 'garment', 'footwear', 'bag'].includes(L.kind)) return bad(reply, L.kind === 'soon' ? SOON[L.c.category] : notSewn(L.flat?.style) || 'This piece has no pattern the Lab can draft yet');
     const spec = await save(L, req.body?.spec, actorOf(req));
     const pat = patternOf({ ...L, spec }, L.flat?.size);
     const check = checkOf({ ...L, spec }, pat);

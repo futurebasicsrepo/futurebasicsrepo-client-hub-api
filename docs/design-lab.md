@@ -84,7 +84,7 @@ keeps what to show, Explode it and the size, and folds editing and the files the
 
 The launcher lives in `src/lab-nav.js` (`FBLabNav.openNew()`); anything marked `data-new-design` opens it.
 
-**The sketch pack** (`/lab/sketches`): every flat sketch we draw from, searchable and filtered by range (men's, women's, accessories) and style. Picking a sketch opens it in a sheet over the gallery (from the side on a wide screen, from the bottom on a phone), so nobody scrolls to find what to do next. In the sheet:
+**The sketch pack** (`/lab/sketches`): every flat sketch we draw from, searchable and filtered by range (men's, women's, accessories) and style. Its **Catalogue** tab lists the supplier's 1,846 products to start from, with no prices (see "The Catalogue" below). Picking a sketch opens it in a sheet over the gallery (from the side on a wide screen, from the bottom on a phone), so nobody scrolls to find what to do next. In the sheet:
 
 1. **Cloth.** The room's fabrics as swatches, or **Decide later**. A cloth starts in its own first colour.
 2. **Colour.** The cloth's own colours first, then a house set, then any colour from the wheel. The sketch is redrawn in the colour as it is picked (its white cloth swapped for it).
@@ -930,6 +930,52 @@ Once kept, **Make it a repeat** opens it at its all-over repeat with a half-drop
 Routes: `POST /v1/lab/library/prints {mode: style|blend, art, subject?, mix?, fill?, name?, replaces?}` (a draft; `replaces` is the draft Try again drops), `POST /v1/lab/library/prints/:id/keep {name?}`, `DELETE /v1/lab/library/prints/:id` (a draft only). A print counts toward `LAB_DAILY_ART` and charges a room one graphic.
 
 A room's graphics stay its own: a new print, and an all-over repeat, can only be made from the room's own graphics, and are kept in that room.
+
+## The Catalogue: start from any product our supplier makes
+
+The sketch pack (`/lab/sketches`) has a third tab beside Sketches and Parts: **Catalogue**. It lists every product in our supplier's catalogue (the OpenWav Enterprise Catalogue, Fall 2026: 1,846 products) as something to start a design from. A client's room with the Lab sees it; a room without the Lab does not.
+
+- **No prices.** What we pay the supplier never reaches the Lab. The Lab reads the catalogue through `src/lab-catalog.js`, which keeps a product's id, name and brand and the base it opens on, and nothing else. The costs stay in `src/price-catalog.js`, which only staff routes read (the pricing card in the work console). `test/lab-catalog.test.js` and `test/lab-catalog-routes.test.js` hold every Lab answer to no `costCents`, no price status and no dollar amount.
+- **Browsing.** A search box (every word typed must match, and a word stands for its like, as in the staff search; the products that say the very word come first), a group filter with counts, and the number of products. Cards load 48 at a time. Each card shows the drawing the product opens on, its name, its brand and **Open in the Studio**.
+- **What a product opens on.** Each product is sent, by its name, to one base. The catalogue's own sections are not used, because they are noisy ("Accessories / Bags" holds tees and polos). The rules are an ordered list in `src/lab-catalog.js` (`RULES`), and the sketch within a style is picked by words in the name (`SKETCH`): crop, oversized, raglan, zip, jogger, cargo and so on, else the style's plainest sketch.
+
+| Opens on | Products |
+|---|---|
+| A style and its closest library sketch (tee, hoodie, polo, pants…) | 1,105 |
+| A style drawn from its measurements (a beanie, a flat tote) | 53 |
+| A library bag (backpack, duffel, sling, pouch, messenger, waist bag, structured tote) | 113 |
+| A library shoe (court low and mid, basketball high-top, daily runner…) | 30 |
+| A product type added for the catalogue (below) | 491 |
+| A plain 12 in panel, for what the Studio has no drawing for (a massage gun, a folding chair, a surfboard) | 54 |
+
+- **Opening one.** `POST /v1/lab/concepts/from-catalog { item, colour? }` makes a concept named after the product on its base and opens the Studio. A product on a library sketch, bag or shoe is started by the route that already does that (`from-sketch`, `from-library-bag`, `from-library-footwear`), so each kind of concept is made one way. The concept remembers its product (`spec.catalog`: id, name, brand), and keeps it when its words are edited.
+- **For staff.** When that concept becomes a product, the pricing card's "Closest to this product" lists the catalogue item the design was started from first, marked as such.
+- `GET /v1/lab/catalog?q=&group=&limit=&offset=` is the list. Both routes sit behind the Lab's gate (`src/lab-catalog-routes.js`).
+
+## Product types beyond clothes: mugs, posters, pillows and the rest
+
+The catalogue sells things the Studio had no drawing for. Each is now a style of the flats, of kind `goods` (`src/lab-goods.js`): 70 product types and a plain panel.
+
+| Group | Product types |
+|---|---|
+| Drinkware | mug, tumbler, tumbler with handle, water bottle, can glass, pint glass, stemless wine glass, rocks glass, can cooler |
+| Wall art and decor | poster, canvas print, metal sign, wall tapestry, flag, wall clock |
+| Home textiles | pillow, pillowcase, blanket, towel, tea towel, rug, door or bath mat, shower curtain, window curtain, placemat, napkin, table runner, tablecloth, duvet cover or comforter, apron, Christmas stocking |
+| Tech | phone case, mouse pad, desk mat, laptop sleeve, power bank, speaker, earbuds case, wireless charging pad |
+| Paper and small goods | sticker, notebook, jigsaw puzzle, coaster, playing cards, wall calendar |
+| Pets | pet bed, pet bowl, pet collar or leash, pet feeding mat, pet tee |
+| Sports and outdoor | yoga mat, ball, skateboard deck, paddle, umbrella |
+| Automotive | car mat, car seat cover, steering wheel cover, licence plate |
+| Socks, scarves and sandals | socks, scarf, bandana, flip-flop, slide sandal, clog, face mask, web belt |
+| Kids and baby, Bags, Music | bandana bib, lunch bag or cooler, record sleeve |
+
+- **The flat.** Each is drawn at true proportion from its measurements, in inches, with its **print area** named, and a back where the product has two sides (a mug's other side, a pillow's back; a poster has none). A graphic starts in the middle of the print area, clear of what cannot be printed (a clock's spindle, a zip, a phone case's camera opening).
+- **Sizes.** Each type says where its size came from (`from` in `src/lab-goods.js`): a size in a catalogue item's own name (a 50 × 60 in blanket, a 12 × 8 in metal sign, a 28 × 18 in pet bed), a published standard (an 11 oz mug, a 12 × 6 in US plate, a 12.375 in LP jacket, a 24 × 68 in yoga mat), or a typical size chosen here and marked "chosen here". They are starting sizes, not a supplier's spec: type the real ones in the measurements. They are kept to the eighth of an inch the flats work in (a mug is 3¼ in across).
+- **Drinkware is drawn from the side.** The print area on a side is the part of the wrap that shows there; the full wrap is in the measurements ("Wrap print area, around"). A graphic that runs right round the cup is not laid out on the flat: place it on each side, and send the wrap artwork at the wrap's size.
+- **One size, no pattern.** These are printed or bought in, not cut and sewn by the Lab. The Pattern page says so plainly ("A mug is printed or bought in, not cut and sewn, so it has no pattern and no size run"), and the size menu shows One size.
+- **The check.** The edge of a print area is an edge, not a seam: a graphic within an eighth of it is flagged. A graphic put on the back of a one-sided product is told that side is not printed.
+- **What is still garment-shaped.** The flats' side panels were written for garments: the technique list is the garment decoration library (screen print, embroidery, transfers), with no sublimation, UV print or engraving yet; the Cloth, wash and label sections still show; and the help line under the drawing speaks of the HPS and the centre front. They do no harm on a mug, but they do not apply.
+- The concept's category is Accessories (what is worn or carried, and tech accessories) or Other. Home, Toys and Electronics concepts open the 3D engineer instead of flats, so a printed mug is not put there.
 
 ## Starting from scratch
 

@@ -69,6 +69,14 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
 .pick{display:grid;gap:6px;max-height:280px;overflow:auto}.pick button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:6px 10px;text-align:left;cursor:pointer;display:flex;gap:8px;align-items:center}.pick button:hover{border-color:var(--ink)}
 .forline{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin:12px 0 4px;padding:12px 16px;border:1px solid var(--line);border-radius:14px;background:#fff;font-size:14px}.forline span{flex:1;min-width:220px}
 .grown{grid-column:1/-1;margin:0 0 18px}.grown h3{margin:0 0 10px;font-size:15px;font-weight:600;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.ggal{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}.ggal figure{margin:0;display:grid;gap:6px;padding:10px;border:1px solid rgba(20,20,22,.14);border-radius:14px;background:#fff}.ggal img{width:100%;aspect-ratio:1;object-fit:contain;background:#f6f5f1;border-radius:10px}.ggal figcaption{display:grid;gap:2px;font-size:13px}.gact{display:flex;gap:6px;flex-wrap:wrap}.gadd{margin:0 0 12px;padding:10px 12px;border:1px dashed rgba(20,20,22,.25);border-radius:12px}.gadd summary{cursor:pointer;font-weight:600;font-size:14px}.gform{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-top:10px}.gform label{display:grid;gap:4px;font-size:12px}.gform label.w{flex:1 1 320px}.gform input,.gform select{font-size:16px}
+/* the supplier catalogue: a card per product, the drawing it opens on, its name and brand; never a price */
+.cgal{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px}
+.cgal article{border:1px solid var(--line);background:#fff;border-radius:14px;padding:10px;display:grid;grid-template-rows:auto 1fr auto;gap:8px;min-width:0}
+.cgal img{width:100%;aspect-ratio:1;object-fit:contain;background:var(--fog);border-radius:10px;padding:6%;box-sizing:border-box}
+.cgal .nm{display:grid;gap:3px;align-content:start;min-width:0}.cgal .nm b{font-weight:500;font-size:13.5px;line-height:1.25;overflow-wrap:anywhere}.cgal .nm small{color:var(--dim);font-size:12px;overflow-wrap:anywhere}
+.cgal .btn{justify-content:center;min-height:44px;width:100%;font-size:13px}
+.cmore{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:center;margin:18px 0 0}
+@media (max-width:520px){.cgal{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.cgal article{padding:8px}#secCatalog .tools .t{flex:1 1 100%;max-width:none!important}}
 </style>
 <script src="/feedback.js"></script>
 <link rel="stylesheet" href="/cue.css">
@@ -82,8 +90,8 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
     <span class="mono" style="display:block;margin-top:14px">Our library</span><h1>The sketch pack.</h1>
     <div class="forline hidden" id="forLine" role="status"></div>
     <p class="note">Every flat sketch we draw from: <span id="count">382</span> drawings, men's, women's, accessories, bags and footwear, each with its front and back (a bag also its side; a shoe its outside, inside, top, bottom and heel), plus the pockets, zips, collars, trims and buttons cut from them. Pick one: choose its cloth and its colour, and it opens in the Studio with both in place. Or <a href="/lab/studio">start from scratch</a> on a blank page.</p>
-    <div class="tools"><div class="seg" role="tablist"><button type="button" data-sec="sketches" aria-pressed="true">Sketches</button><button type="button" data-sec="parts" aria-pressed="false">Parts</button></div>
-      <input class="t" id="q" type="search" placeholder="Search: cargo, pleated, halter, bomber…" aria-label="Search the sketches" style="flex:1;min-width:200px;max-width:380px"><select class="t" id="range" aria-label="Range"><option value="">All ranges</option></select><select class="t" id="style" aria-label="Style"><option value="">All styles</option></select><span class="msg" id="msg" role="status"></span></div>
+    <div class="tools"><div class="seg" role="tablist"><button type="button" data-sec="sketches" aria-pressed="true">Sketches</button><button type="button" data-sec="catalog" aria-pressed="false">Catalogue</button><button type="button" data-sec="parts" aria-pressed="false">Parts</button></div>
+      <span id="skTools" style="display:contents"><input class="t" id="q" type="search" placeholder="Search: cargo, pleated, halter, bomber…" aria-label="Search the sketches" style="flex:1;min-width:200px;max-width:380px"><select class="t" id="range" aria-label="Range"><option value="">All ranges</option></select><select class="t" id="style" aria-label="Style"><option value="">All styles</option></select><span class="msg" id="msg" role="status"></span></span></div>
     <section id="secSketches"><div class="gal" id="gal"></div></section>
     <!-- a sketch picked opens here, over the gallery: the cloth, then the colour, then the Studio with both in place -->
     <dialog id="sheet" aria-labelledby="shName"><form method="dialog" class="sh">
@@ -98,6 +106,13 @@ h1{font-size:clamp(28px,4.4vw,42px);letter-spacing:-.035em;font-weight:500;margi
       </div>
       <div class="shFoot"><span class="note" id="shSum"></span><button class="btn go" type="button" id="openDesign">Open in the Studio</button></div>
     </form></dialog>
+    <!-- the supplier catalogue: every product as something to start from, on the drawing its name was sent to (src/lab-catalog.js). No prices. -->
+    <section id="secCatalog" class="hidden">
+      <p class="note" style="margin-bottom:10px">Every product our supplier makes, as something to start from: <b id="cCount">1,846 products</b>. Each opens in the Studio on the drawing shown on its card: a sketch, a bag or a shoe from the library, or the product's own flat with its print area (mugs, tumblers, posters, pillows, phone cases and the rest). Search by any word, or pick a group.</p>
+      <div class="tools" style="margin-top:0"><input class="t" id="cSearch" type="search" placeholder="Search: tumbler, hoodie, tote, Nike…" aria-label="Search the catalogue" style="flex:1;min-width:200px;max-width:380px"><select class="t" id="cGroup" aria-label="Product group"><option value="">All products</option></select><span class="msg" id="cMsg" role="status"></span></div>
+      <div class="cgal" id="cgal"></div>
+      <div class="cmore"><button type="button" class="btn hidden" id="cMore">Show more</button></div>
+    </section>
     <section id="secParts" class="hidden"><div class="row" id="pkinds" style="margin-bottom:10px"></div><div class="parts" id="parts"></div><p class="note" style="margin-top:10px">Parts go on the flats (Design → Parts from the sketch pack) and on a concept or a graphic in the studio (Add → From the sketch pack).</p></section>
   </div>
 </main>
@@ -115,7 +130,7 @@ const FW_GROUP=Object.fromEntries(FOOTWEAR_TEMPLATES.map(s=>['shoe:'+s.type,s.gr
 // a library drawing (a bag or a shoe): its kind, the view it is shown by, and the smaller views beside it
 const drawn=t=>t?.bag?'bags':t?.shoe?'footwear':null,mainView=t=>t?.shoe?'lateral':'front',sideViews=t=>t?.shoe?['medial','top','back']:['back','side'];
 import { FLAT_PARTS, PART_KINDS } from '/lab/lab-flat-parts.js';
-import { STYLES, TEMPLATE_URL } from '/lab/flats.js';
+import { STYLES, TEMPLATE_URL, renderSvg, defaultParams } from '/lab/flats.js';
 import { fabricFit, rankFabrics } from '/lab/lab-fabric-fit.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}}; // staff sign in at the work console; a client with the Design Lab on their room signs in at their hub
@@ -223,13 +238,33 @@ $('#openDesign').addEventListener('click',async()=>{if(!CUR)return;const b=$('#o
 $('#sheet').addEventListener('click',e=>{if(e.target===$('#sheet'))$('#sheet').close()}); // a tap on the shade closes it
 $('#sheet').addEventListener('close',()=>{$$('#gal [data-tpl]').forEach(b=>b.setAttribute('aria-pressed','false'))});
 let qT=0;$('#q').addEventListener('input',()=>{Q.q=$('#q').value;clearTimeout(qT);qT=setTimeout(paint,150)});$('#range').addEventListener('change',()=>{Q.range=$('#range').value;paint()});$('#style').addEventListener('change',()=>{Q.style=$('#style').value;paint()});
-document.querySelector('.seg').addEventListener('click',e=>{const b=e.target.closest('[data-sec]');if(!b)return;$$('.seg [data-sec]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));$('#secSketches').classList.toggle('hidden',b.dataset.sec!=='sketches');$('#secParts').classList.toggle('hidden',b.dataset.sec!=='parts');if(b.dataset.sec==='parts')paintParts()});
+document.querySelector('.seg').addEventListener('click',e=>{const b=e.target.closest('[data-sec]');if(!b)return;$$('.seg [data-sec]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));$('#secSketches').classList.toggle('hidden',b.dataset.sec!=='sketches');$('#secParts').classList.toggle('hidden',b.dataset.sec!=='parts');$('#secCatalog').classList.toggle('hidden',b.dataset.sec!=='catalog');$('#skTools').style.display=b.dataset.sec==='sketches'?'contents':'none';if(b.dataset.sec==='parts')paintParts();if(b.dataset.sec==='catalog'&&!CAT.loaded)loadCat(true)});
+// ---- the Catalogue: the supplier's products (GET /v1/lab/catalog: id, name, brand and the base each opens on; never a price), a page at a
+// time, and Open in the Studio (POST /v1/lab/concepts/from-catalog) ----
+const CAT={q:QP.get('cq')||'',group:'',items:[],total:0,count:0,loaded:false,busy:false,seq:0},PAGE=48,nf=n=>Number(n||0).toLocaleString('en-US');
+// the drawing a product opens on: the library's own thumbnail for a sketch, a bag or a shoe; a style drawn from its measurements (a beanie, a
+// tote, a product type) is drawn here by the flats' own code
+const DRAWN={};function drawnThumb(style){if(!(style in DRAWN)){try{const p=defaultParams(style);DRAWN[style]=p?'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(renderSvg({...p,template:'none'},'front',{plain:true,scale:0})):''}catch{DRAWN[style]=''}}return DRAWN[style]}
+const baseThumb=b=>b.kind==='bag'?`/lab/bag-templates/thumbs/${b.template}.webp`:b.kind==='shoe'?`/lab/footwear-templates/thumbs/${b.template}.webp`:b.template?`/lab/flat-templates/thumbs/${b.template}.webp`:drawnThumb(b.kind==='new'?b.type:b.style);
+const catCard=i=>`<article data-item="${esc(i.id)}"><img loading="lazy" alt="${esc(i.base.label)}" src="${esc(baseThumb(i.base))}"><span class="nm"><b>${esc(i.name)}</b><small>${esc([i.brand,'Opens on: '+i.base.label].filter(Boolean).join(' · '))}</small></span><button type="button" class="btn sm go" data-open="${esc(i.id)}">Open in the Studio</button></article>`;
+async function loadCat(reset){const seq=++CAT.seq;if(reset){CAT.items=[];$('#cgal').innerHTML='';$('#cMsg').textContent='Loading…'}CAT.busy=true;$('#cMore').disabled=true;
+  try{const j=await api(`/v1/lab/catalog?q=${encodeURIComponent(CAT.q)}&group=${encodeURIComponent(CAT.group)}&limit=${PAGE}&offset=${CAT.items.length}`);if(seq!==CAT.seq)return;
+    CAT.loaded=true;CAT.total=j.total;CAT.count=j.count;CAT.items.push(...j.items);$('#cCount').textContent=`${nf(j.count)} products`;
+    $('#cGroup').innerHTML=`<option value="">All products${CAT.q?` (${nf(j.groups.reduce((a,g)=>a+g.count,0))})`:''}</option>`+j.groups.map(g=>`<option value="${esc(g.name)}" ${g.name===CAT.group?'selected':''}>${esc(g.name)} (${nf(g.count)})</option>`).join('');
+    $('#cgal').insertAdjacentHTML('beforeend',j.items.map(catCard).join(''));if(!CAT.items.length)$('#cgal').innerHTML='<p class="note">No product matches. Try fewer words.</p>';
+    $('#cMsg').textContent=`${nf(CAT.total)} product${CAT.total===1?'':'s'}${CAT.items.length<CAT.total?` · showing ${nf(CAT.items.length)}`:''}`;const more=$('#cMore'),left=CAT.total-CAT.items.length;more.classList.toggle('hidden',left<=0);more.textContent=`Show ${nf(Math.min(PAGE,left))} more`}
+  catch(x){if(seq===CAT.seq)$('#cMsg').textContent=x.message}finally{if(seq===CAT.seq){CAT.busy=false;$('#cMore').disabled=false}}}
+let cT=0;$('#cSearch').addEventListener('input',()=>{CAT.q=$('#cSearch').value.trim();clearTimeout(cT);cT=setTimeout(()=>loadCat(true),200)});
+$('#cGroup').addEventListener('change',()=>{CAT.group=$('#cGroup').value;loadCat(true)});$('#cMore').addEventListener('click',()=>{if(!CAT.busy)loadCat(false)});
+$('#cgal').addEventListener('click',async e=>{const b=e.target.closest('[data-open]');if(!b)return;b.disabled=true;const was=b.textContent;b.textContent='Opening…';
+  try{const r=await fetch('/v1/lab/concepts/from-catalog',{method:'POST',headers:{Authorization:'Bearer '+TOKEN(),'Content-Type':'application/json'},body:JSON.stringify({item:b.dataset.open})}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'The product could not be opened');location.href=j.studio}
+  catch(x){b.disabled=false;b.textContent=was;$('#cMsg').textContent=x.message}});
 function paintParts(){const kinds=Object.entries(PART_KINDS).map(([id,label])=>({id,label:label+'s'}));$('#pkinds').innerHTML=kinds.map(k=>`<button type="button" class="btn sm ${k.id===PK?'':'q'}" data-pk="${k.id}" aria-pressed="${k.id===PK}">${esc(k.label)}</button>`).join('');
   const l=FLAT_PARTS.filter(p=>p.kind===PK);$('#parts').innerHTML=l.map(p=>`<div><img loading="lazy" alt="" src="/lab/flat-parts/${p.file}">${esc(p.label)}</div>`).join('')||'<p class="note">No parts of this kind.</p>'}
 $('#pkinds').addEventListener('click',e=>{const b=e.target.closest('[data-pk]');if(b){PK=b.dataset.pk;paintParts()}});
 (async()=>{if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}try{await api('/v1/lab/concepts?limit=1')}catch(x){if(x.status===401||x.status===403){$('#needSignin').classList.remove('hidden');return}}
   $('#app').classList.remove('hidden');if(LINE){const b=$('#forLine');b.classList.remove('hidden');const paintFor=()=>{b.innerHTML=`<span>Starting <b>${esc(LINE.name||'a piece')}</b> from the line plan. Pick a sketch: the concept you open goes on that piece.${Q.cat?'':' (No sketches in its category, so every sketch is shown.)'}</span>${Q.cat?'<button type="button" class="btn sm" id="allCats">Show every sketch</button>':''}`;$('#allCats')?.addEventListener('click',()=>{Q.cat='';paintFor();paint()})};paintFor();$('#openDesign').textContent='Open in the Studio for this piece'}
-  paintFilters();paint();loadConcepts();loadGrown();const first=new URLSearchParams(location.search).get('t');if(first){const t=FLAT_TEMPLATES.find(x=>x.id===first);if(t)show(t)}})();
+  paintFilters();paint();loadConcepts();loadGrown();if(QP.get('src')==='catalog'||QP.get('cq')){$('#cSearch').value=CAT.q;document.querySelector('.seg [data-sec=catalog]').click()}const first=new URLSearchParams(location.search).get('t');if(first){const t=FLAT_TEMPLATES.find(x=>x.id===first);if(t)show(t)}})();
 </script>
 <script src="/helper.js" defer></script>
 </body>

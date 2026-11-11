@@ -63,6 +63,7 @@ import { registerLabRoutes, seedLab } from './lab-routes.js';
 import { registerLabConceptRoutes } from './lab-concept-routes.js';
 import { registerLabViewRoutes } from './lab-view-routes.js';
 import { registerLabShoeDrawRoutes } from './lab-shoe-draw-routes.js';
+import { registerLabCatalogRoutes } from './lab-catalog-routes.js';
 import { registerLabStudioRoutes } from './lab-studio-routes.js';
 import { registerLabLibraryRoutes } from './lab-library-routes.js';
 import { registerLabMaterialsRoutes } from './lab-materials-routes.js';
@@ -801,6 +802,7 @@ async function claimClientPack(productId,clientId,userId){
 const labConcepts = registerLabConceptRoutes(app, { pool, ...labDeps, claimClientPack, getSetting, learn: learnLabTaste, log: app.log, art: labArt, createProduct: args => createClientProduct(args), attachArtwork: (productId, items) => attachLabArtwork(productId, items), sendFlats: (id, productId) => labFlats.sendToPack(id, productId), flatThumb: id => labFlats.thumbSoonById(id), flatsCheck: id => labFlats.startCheck(id) });
 registerLabViewRoutes(app, { pool, ...labDeps, log: app.log, flatPictures: id => labFlats.flatPictures(id) }); // labFlats is set up below; asked only on a request
 registerLabShoeDrawRoutes(app, { pool, ...labDeps, log: app.log });
+registerLabCatalogRoutes(app, { pool, ...labDeps, flatThumb: id => labFlats.thumbSoonById(id) }); // the supplier catalogue as products to start from; no price leaves it
 registerLabStudioRoutes(app, { pool, ...labDeps, pictureToPack: (productId, jpeg, name) => studioPictureToPack(productId, jpeg, name) }); // a picture used in the Studio on a product's concept becomes that product's first rendering
 // their starting techniques and materials are put in once the tables are migrated (seeding while the migration alters them deadlocked)
 let migratedNow; const migrated = new Promise(r => { migratedNow = r; });
@@ -948,6 +950,7 @@ app.get('/lab/vendor/three/*', (req, reply) => {
 });
 app.get('/lab/lab-neck.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-neck.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-wash.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-wash.js', import.meta.url), 'utf8')));
+app.get('/lab/lab-goods.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-goods.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-flat-panels.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flat-panels.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-flats.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
 app.get('/lab/flats.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-flats.js', import.meta.url), 'utf8')));
