@@ -2099,9 +2099,25 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
     the other part gets a catch for it: a ledge on its wall behind the head, 0.1 mm from it, the beam 0.2 mm clear. The check measures
     each hook off the two parts: that its root is joined to its part, that there is a wall to catch on and how far away it is, how far
     the head catches under the catch (0.4 mm or more), how much the beam bends as it is pushed home (1.5 × thickness × catch ÷ length²)
-    against what the resin takes once, and that nothing is behind the beam where it has to bend. The strain figures are guide values for
-    a first design, to be confirmed on the resin's datasheet: PC 4%, PP and POM 4%, Tritan 3%, PC/ABS and PETG 2.5%, ABS 2%, HIPS,
-    PMMA and glass-filled PA66 1.5%. A starting assembly's cover gets its hooks where they measure clear (the middle of each wall is
+    against what the resin takes once, and that nothing is behind the beam where it has to bend. Each strain figure has its source
+    (`SNAP_LIMITS` in `src/lab-assembly.js`), and the finding names it. A grade's own datasheet still decides:
+    - **From a resin maker's table of snap-fit strains, for a hook pushed home once at 23°C:** PC 4%, PC/ABS 2.5% and ABS 1.8% (Bayer
+      Corporation, *Part and Mold Design: A Design Guide*, KU-GE028, 2000, table 4-1: Makrolon, Bayblend, Lustran ABS; Bayer's
+      *Snap-Fit Joints for Plastics* has the same PC and PC/ABS figures in its table 2). Acetal 6% and glass-filled PA66 1.2% (DuPont,
+      *General Design Principles for DuPont Engineering Polymers, Module I*, table 9.04: Delrin 500 used once; glass-reinforced Zytel
+      dry, 0.8 to 1.2%. Bayer's table gives 1.5% for a 30% glass PA dry; the lower one is used). Both guides say to take about 60% of
+      the figure, or less, for a hook that is opened and closed often: the check is for one that is pushed home once.
+    - **Worked from a grade's datasheet, where no maker's table lists the resin.** Bayer's guides give the rule: in one brief
+      snap-fitting an amorphous resin may be strained to about 70% of its strain at yield, a partly crystalline one almost to it. The
+      check takes 70% for both. Tritan 4.2% (Eastman Tritan TX1001: 6% at yield, ASTM D638), PETG 2.8% (Eastman Eastar 6763: 4% at
+      yield, on film, ASTM D882), PP 7% (LyondellBasell Moplen HP500N: 10% at yield, ISO 527), HIPS 1% (INEOS Styrolution PS 495F:
+      1.5% at yield, ISO 527).
+    - **Acrylic is held at 1.5%, with no source of its own.** It has no yield point and no maker's table lists it. The guides' rule
+      for a material with no yield point is half the strain at break, which would be 2.7% (Plexiglas 8N breaks at 5.5%, ISO 527);
+      acrylic crazes and is notch-sensitive, so the lower figure stays until a moulder says otherwise.
+
+    These replaced guide values on 12 November 2026: ABS came down from 2%, HIPS from 1.5% and glass-filled PA66 from 1.5%; acetal
+    went up from 4%, PP from 4%, Tritan from 3% and PETG from 2.5%. A starting assembly's cover gets its hooks where they measure clear (the middle of each wall is
     tried first): the desk device's front (4), the cassette player's front (2) and the smart speaker's grille (4) have them, each
     catching 0.8 mm and bending 0.77%. The handheld's, the round device's and the power bank's covers have none drawn at their default
     sizes: the board, the light ring or the cells are within 1.5 mm of the wall, and a hook needs 2.2 mm; their fix still says snap, and
@@ -2131,14 +2147,18 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   - **A belt** (`around`, `len`, kind `belt`). A ring that says which two round parts it runs round (`around: [a, b]`) is drawn round
     them, at the height it is set at: its outline, place and size across are worked out each time from the two, so it follows them. A
     part with a flange carries the belt on the flange. `len` is the length the belt is bought at, round its inside, lying slack. The
-    check measures off the two parts: the path (two straight runs and the wrap on each), the stretch of the bought length over it (3 to
-    10% drives without slipping or loading the bearings; slack, or over 15%, is fix before tooling), the wrap on the smaller part (120°
+    check measures off the two parts: the path (two straight runs and the wrap on each), the stretch of the bought length over it (slack, or over 15%, is fix before
+    tooling; outside 3 to 10% is a warning), the wrap on the smaller part (120°
     or more), the belt level on both running surfaces (off the edge of one is fix before tooling), and the smaller part at least 8 times
     the belt's thickness across. The turntable now has the motor's pulley on its shaft, up through the plinth (⌀12 mm, on the parts
     list), and a flat 3 × 0.8 mm belt round it and the ⌀60 mm sub-platter under the platter: a 478.5 mm path at the default size,
     bought at 456 mm (stretched 4.9%), wrapping 165° of the pulley. In the files: the belt is a part with its own closed solid in the
     assembly STL and exact faces in the STEP (arcs on the two parts, flat runs between). It is drawn in place, stretched; the bought
-    length is on the finding, not in the solid.
+    length is on the finding, not in the solid. Where the 5% comes from: it is how flat rubber phono belts are sized in the trade, not
+    a belt maker's datasheet figure. V-M Audio Enthusiasts' belt measuring help takes 5% off a worn belt's measured length
+    ("multiply by .95 to compensate for belt stretch"), and repairers take about 5% off a string run round the belt's path. No maker's
+    figure was found for how far such a belt may be stretched, so the 3 to 10% that passes without a warning, and the 15% that fails,
+    are this check's own allowance either side of 5%; the finding says so, and the belt's maker has the last word.
   - **An opening of a part's own, and a cover that slides over it** (`holes`, `slides`, kind `opening`). A part can carry openings that
     nothing passes through (`holes: [{ at, size, axis, round }]`: a sip opening, a vent), cut with the same machinery as the openings for
     parts that pass through; one that cannot be cut where it is asked (off the part, within 0.3 mm of its edge, on another opening) is

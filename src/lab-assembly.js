@@ -477,9 +477,20 @@ function lipPair(a, b) {
 }
 // A part that says it has snap hooks (`snaps`) gets each hook as bodies on it: the beam, the head at its end, and a foot that joins its root
 // to the part's wall when the root is not already in the part; the part it catches on gets a catch for each, a ledge on its wall behind the
-// head, 0.1 mm from it, with the beam 0.2 mm clear of it. The strain a hook may see once, as it is pushed home, is a guide value for a
-// first design (%), to be confirmed on the resin's datasheet.
-export const SNAP_STRAIN = { 'PC': 4, 'PC clear': 4, 'PC/ABS': 2.5, 'ABS': 2, 'HIPS': 1.5, 'PP': 4, 'POM (acetal)': 4, 'PA66 GF30': 1.5, 'PMMA (acrylic)': 1.5, 'Tritan': 3, 'PETG': 2.5 };
+// head, 0.1 mm from it, with the beam 0.2 mm clear of it.
+// The strain a hook may see once, as it is pushed home (%), each with where the figure is from (docs/design-lab.md has the full references).
+// Where a resin maker's design guide has a table of snap-fit strains, the figure is the table's. Where none does, it is worked from a
+// grade's datasheet by the rule in Bayer's guides (a hook pushed home once may be strained to about 70% of the strain at yield), and
+// says so. A grade's own datasheet still decides: these are for a first design.
+const BAYER = 'Bayer, Part and Mold Design, table 4-1', DUPONT = 'DuPont, General Design Principles, table 9.04', RULE = (pc, grade) => `70% of the ${pc}% it yields at, ${grade} datasheet`;
+export const SNAP_LIMITS = {
+  'PC': [4, BAYER], 'PC clear': [4, BAYER], 'PC/ABS': [2.5, BAYER], 'ABS': [1.8, BAYER],
+  'POM (acetal)': [6, `${DUPONT}, Delrin 500 used once`], 'PA66 GF30': [1.2, `${DUPONT}, glass-reinforced Zytel, dry`],
+  'Tritan': [4.2, RULE(6, 'Eastman Tritan TX1001')], 'PETG': [2.8, RULE(4, 'Eastman Eastar 6763')], 'PP': [7, RULE(10, 'LyondellBasell Moplen HP500N')], 'HIPS': [1, RULE(1.5, 'INEOS Styrolution PS 495F')],
+  // acrylic has no yield point and no published snap-fit figure: held well under half the 5.5% it breaks at, which is the guides' rule for a material with no yield point
+  'PMMA (acrylic)': [1.5, 'no published figure: held under half the 5.5% it breaks at, Plexiglas 8N datasheet'] };
+export const SNAP_STRAIN = Object.fromEntries(Object.entries(SNAP_LIMITS).map(([resin, [pc]]) => [resin, pc]));
+const snapFrom = resin => SNAP_LIMITS[resin]?.[1] || '';
 const HEAD = 1.5, LEDGE = 1.5, FOOT = 2.5, wayOf = d => { const v = [0, 0, 0]; v['xyz'.indexOf(d[1])] = d[0] === '-' ? -1 : 1; return v; }, bare = p => featuresOf({ ...p, adds: undefined });
 // how far from a point, along a direction, to a part's own material with nothing cut out of it (0 inside it); null when there is none within `max`
 function reachTo(p, F, w, d, max) { const at = t => inPart(p, F, [w[0] + d[0] * t, w[1] + d[1] * t, w[2] + d[2] * t], true); if (at(0)) return 0;
@@ -1212,11 +1223,11 @@ export function fitOf(s) {
       let tight = null; for (const f of [.5, .75, 1]) for (const tw of [-.4, 0, .4]) { const need = (H.eng + .1) * f * f, w0 = H.pos(S.len * f - (f === 1 ? .05 : 0), -S.t / 2 - .02).map((v, i) => v + H.T3[i] * tw * S.w);
         for (let j = 0; j < n && !tight; j++) { if (w0.some((v, i) => v < B[j].lo[i] - 2 || v > B[j].hi[i] + 2)) continue; for (let d = 0; d <= need + 1e-9; d += .05) if (inPart(parts[j], F[j], w0.map((v, i) => v - H.O[i] * d))) { tight = { j, gap: r2(d), need: r2(need) }; break; } } }
       if (tight) return tell(k, 'bad', `it cannot bend: ${low(parts[tight.j])} is ${tight.gap} mm behind it and it has to move ${tight.need} mm there to pass its catch. Move the hook, or what is behind it.`, { behind: parts[tight.j].id, gap: tight.gap });
-      if (lim && strain > lim) return tell(k, strain > lim * 1.5 ? 'bad' : 'warn', `it bends ${strain}% as it is pushed home and ${a.resin} takes about ${lim}%: it will whiten or break. Lengthen it to ${r1(Math.sqrt(150 * S.t * H.eng / lim) + Math.min(HEAD, S.len / 3))} mm, thin it, or let it catch less.`, { strain, engaged: H.eng });
+      if (lim && strain > lim) return tell(k, strain > lim * 1.5 ? 'bad' : 'warn', `it bends ${strain}% as it is pushed home and ${a.resin} takes about ${lim}% (${snapFrom(a.resin)}): it will whiten or break. Lengthen it to ${r1(Math.sqrt(150 * S.t * H.eng / lim) + Math.min(HEAD, S.len / 3))} mm, thin it, or let it catch less.`, { strain, engaged: H.eng });
       if (H.eng < .4) return tell(k, 'warn', `it catches only ${H.eng} mm under its catch (0.4 mm or more holds). Let its head stand further out.`, { engaged: H.eng });
       worst = Math.max(worst, strain); least = Math.min(least, H.eng); });
     if (!wrong && S.hooks.length < 2) say('snap', a.id, 'warn', `${name(a)} is held on ${low(b)} by one snap hook: it will rock on it. Give it two or more, on opposite sides.`, { with: b.id, hooks: 1 });
-    else if (!wrong) say('snap', a.id, 'ok', `Snap fit: ${low(a)} holds on ${low(b)} by ${S.hooks.length} hooks (${S.len} mm long, ${S.t} mm thick, ${S.w} mm wide). Each catches ${least} mm under a catch on ${low(b)} and bends ${worst}% as it is pushed home (${a.resin} takes about ${lim}%), with room behind it to bend.`, { with: b.id, hooks: S.hooks.length, engaged: least, strain: worst }); }
+    else if (!wrong) say('snap', a.id, 'ok', `Snap fit: ${low(a)} holds on ${low(b)} by ${S.hooks.length} hooks (${S.len} mm long, ${S.t} mm thick, ${S.w} mm wide). Each catches ${least} mm under a catch on ${low(b)} and bends ${worst}% as it is pushed home (${a.resin} takes about ${lim}%: ${snapFrom(a.resin)}), with room behind it to bend.`, { with: b.id, hooks: S.hooks.length, engaged: least, strain: worst }); }
   // ---- a thread: the two diameters agreeing (the one part's outside with the thread on it inside the other's bore), the flanks catching, the
   //      turns fitting in the length the two overlap; measured off the two parts. The thread's turns are not in the solids. ----
   for (const a of parts) { if (!a.thread) continue; const T = a.thread, b = parts.find(p => p.id === T.onto), ax = axisOf(a), cr = [0, 1, 2].filter(k => k !== ax), circ = p => ROUND.has(p.shape) && Math.abs(p.size[cr[0]] - p.size[cr[1]]) < .05;
@@ -1266,8 +1277,8 @@ export function fitOf(s) {
     const what = `${name(p)} round ${low(G.P1)} (⌀${r1(2 * G.s1.r)} mm) and ${low(G.P2)} (⌀${r1(2 * G.s2.r)} mm), ${r1(G.C)} mm apart: a path of ${path} mm`;
     if (offs.length) say('belt', p.id, 'bad', `${what}, but it is not level on ${offs.map(([P, v]) => `${low(P)} (${v} mm of its ${p.size[ax]} mm width is off the edge)`).join(' or ')}: it will walk off. Set the belt and the two running surfaces at one height.`, { ...more, off: offs[0][1] });
     else if (stretch == null) say('belt', p.id, 'warn', `${what}. No length is given for the belt: buy one ${r0(G.path / 1.05)} mm round the inside (5% under its path).`, more);
-    else if (stretch <= 0 || stretch > 15) say('belt', p.id, 'bad', `${what}, and the belt is bought at ${p.len} mm: ${stretch <= 0 ? `it is ${r1(p.len - G.path)} mm too long and hangs slack` : `it has to stretch ${stretch}%, which it will not take for long`}. Buy one ${r0(G.path / 1.05)} mm round the inside (5% under its path; 3 to 10% drives without slipping or loading the bearings).`, more);
-    else { const notes = [(stretch < 3 || stretch > 10) && `bought at ${p.len} mm it is stretched ${stretch}% (3 to 10% drives without slipping or loading the bearings; ${r0(G.path / 1.05)} mm is 5%)`, wrap < 120 && `it wraps only ${wrap}° of ${low(G.P2)} (120° or more grips)`, G.s2.r < 4 * p.wall && `${low(G.P2)} is ⌀${r1(2 * G.s2.r)} mm for a belt ${p.wall} mm thick (8 times the thickness or more lets it bend round)`].filter(Boolean);
+    else if (stretch <= 0 || stretch > 15) say('belt', p.id, 'bad', `${what}, and the belt is bought at ${p.len} mm: ${stretch <= 0 ? `it is ${r1(p.len - G.path)} mm too long and hangs slack` : `it has to stretch ${stretch}%, which it will not take for long`}. Buy one ${r0(G.path / 1.05)} mm round the inside (5% under its path, the rule belt sellers size a flat rubber belt by; this check lets 3 to 10% pass).`, more);
+    else { const notes = [(stretch < 3 || stretch > 10) && `bought at ${p.len} mm it is stretched ${stretch}% (${r0(G.path / 1.05)} mm is 5%, the rule belt sellers size a flat rubber belt by; this check lets 3 to 10% pass, and the belt's maker has the last word)`, wrap < 120 && `it wraps only ${wrap}° of ${low(G.P2)} (120° or more grips)`, G.s2.r < 4 * p.wall && `${low(G.P2)} is ⌀${r1(2 * G.s2.r)} mm for a belt ${p.wall} mm thick (8 times the thickness or more lets it bend round)`].filter(Boolean);
       if (notes.length) say('belt', p.id, 'warn', `${what}: ${notes.join('; ')}.`, more);
       else say('belt', p.id, 'ok', `${what}. Bought at ${p.len} mm round the inside, it is stretched ${stretch}%, wraps ${wrap}° of ${low(G.P2)} and lies level on both.`, more); } }
   // ---- a part's own openings: each one really cut; and a cover that slides over one: it covers it shut, clears it open, stays on and meets nothing ----

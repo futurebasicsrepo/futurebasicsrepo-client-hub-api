@@ -1553,6 +1553,15 @@ await journey('J99', 'a missing view is asked for, not overridden: staff request
   const m = await room('99'); await waitAi(call, m.token, m.id);
   const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (p, o = {}) => call(p, { token: admin, ...o });
   const draft = async () => (await call(`/v1/products/${m.id}/tech-pack/draft`, { token: m.token })).json;
+  // On this server the studio carries on by itself after the draft: a hero image is made and approved, and the two views the pack is
+  // missing are drawn from it. That used to race this journey: some runs, a view it had asked the client for was drawn before the page
+  // opened, and the request (rightly) no longer named it. So the studio is let finish first, and the views it drew are taken out of the
+  // draft again: what is missing is then this journey's to ask for, and nothing draws it a second time (that starts on a hero's approval).
+  // Their pictures are cleared and the views kept: a save that drops a view the studio has just drawn has it put back (keepFreshViews).
+  let drew = null; for (let i = 0; i < 150; i++) { drew = (await adm(`/v1/admin/products/${m.id}/tech-pack/views`)).json; if (drew.run && !drew.run.running) break; await sleep(400); }
+  ok(Boolean(drew.run && !drew.run.running), 'the studio has finished with the pack before anything is asked of the client', drew.run);
+  if (drew.sketches?.length) { const d0 = await draft(), data0 = structuredClone(d0.techPack.data), drawn = new Set(drew.sketches.map(k => k.id)); for (const k of data0.sketches) if (drawn.has(k.id)) k.image = '';
+    const put = await call(`/v1/products/${m.id}/tech-pack/draft`, { method: 'PUT', token: m.token, body: { data: data0, etag: d0.techPack.etag } }); ok(put.status === 200, 'the pictures the studio drew are cleared from the draft, so those views are missing again', [put.status, put.json.error]); }
   let d = await draft(); ok(d.techPack.viewRequest === null, 'nothing is asked of the client to begin with');
   const refused = await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: {} });
   ok(refused.status === 409 && Array.isArray(refused.json.missingViews) && refused.json.missingViews.length >= 1, 'the publish refusal names the views that are missing', [refused.status, refused.json.missingViews]);
