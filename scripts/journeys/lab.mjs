@@ -5136,6 +5136,12 @@ await journey('J311', 'A mug is designed as a mug: its two views are its sides a
       await tfr.evaluate(() => document.querySelector('.tabs [data-tab=garment]').click());
       const tee = await tfr.evaluate(() => ({ tab: document.querySelector('.tabs [data-tab=garment]').textContent, fit: Boolean(document.querySelector('#gFit')), wash: Boolean(document.querySelector('#washSec')), heads: [...document.querySelectorAll('#pGarment h4')].map(h => h.textContent) }));
       ok(await seg() === 'Flat front | Flat back' && tee.tab === 'Garment' && tee.fit && tee.wash && tee.heads.some(h => /^Drawing/.test(h)) && tee.heads.some(h => /Sample size \(M\) measurements/.test(h)) && !errs.length, '12. a tee is as it was: Flat front and Flat back, a Garment tab with its fit, wash and sketches', [await seg(), tee.heads, errs.slice(0, 2)]);
+      // a new mark and a new graphic on the tee, through the page's own controls
+      await tfr.evaluate(() => document.querySelector('.tabs [data-tab=pl]').click()); await tfr.waitForSelector('[data-addmark=mark]');
+      const madeAs = () => tfr.evaluate(() => { const all = [...document.querySelectorAll('select[data-k=techniqueId]')], s = all[all.length - 1]; return s ? { n: all.length, picked: s.selectedOptions[0]?.textContent, groups: [...s.querySelectorAll('optgroup')].map(g => [g.label, g.querySelectorAll('option').length]) } : { n: 0 }; });
+      const n0 = (await madeAs()).n; await tfr.click('[data-addmark=mark]'); for (let i = 0; i < 40 && (await madeAs()).n === n0; i++) await page.waitForTimeout(150);
+      const mark = await madeAs(), tf = (await C(`/concepts/${tid}/flats`)).json, nameOf = id => tf.techniques.find(x => x.id === id)?.name;
+      ok(mark.n === n0 + 1 && mark.picked === 'Satin stitch embroidery' && mark.groups.some(([l, n]) => l === 'Other ways' && n >= 4) && mark.groups.reduce((a, g) => a + g[1], 0) === 44 && nameOf(tf.firstTechnique?.cloth) === 'Plastisol screen print' && nameOf(tf.firstTechnique?.mark) === 'Satin stitch embroidery' && !errs.length, '13. on a tee a new mark starts as satin stitch embroidery and a new graphic as a plastisol screen print (the plain one of each: they started as the first by name, 3D puff and crackle), and all 44 ways are offered, the other ways (a metal plaque, rhinestones, studs) among them', [mark.picked, nameOf(tf.firstTechnique?.cloth), mark.groups, errs.slice(0, 2)]);
     } finally { await b.close(); }
   } finally { for (const id of made) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });

@@ -18,7 +18,9 @@ export const cleanSurfaces = v => { const out = [...new Set((Array.isArray(v) ? 
 export const PRODUCT_TECHNIQUES = ['sublimation on blanks', 'UV print', 'pad print', 'laser engraving', 'screen print on glass', 'digital print', 'offset print'];
 export const TECHNIQUE_BASES = [...GRAPHIC_TECHNIQUES, ...PRODUCT_TECHNIQUES];
 // the technique a new graphic on a product type starts with, by what the product is made of (a technique's key, below)
-export const SURFACE_FIRST = { soft: 'sublimation', ceramic: 'sublimation-blank', glass: 'glass-screen', metal: 'sublimation-blank', plastic: 'uv-print', paper: 'digital-print', wood: 'uv-print' };
+// (on cloth a graphic starts as the plain screen print; a brand mark on cloth as the plain embroidery, MARK_FIRST)
+export const MARK_FIRST = 'satin-embroidery';
+export const SURFACE_FIRST = { cloth: 'plastisol', soft: 'sublimation', ceramic: 'sublimation-blank', glass: 'glass-screen', metal: 'sublimation-blank', plastic: 'uv-print', paper: 'digital-print', wood: 'uv-print' };
 export const TECHNIQUE_KINDS = [{ id: 'embroidery', label: 'Embroidery' }, { id: 'print', label: 'Print' }, { id: 'heat_transfer', label: 'Heat transfer' }, { id: 'patch', label: 'Patches and appliqué' }, { id: 'other', label: 'Other ways: knit, laser, metal, stones' }, { id: 'distress', label: 'Distressing and wash' }];
 // what each way of making it can do: the finest line it holds (mm), how many inks or threads it is usually priced for (0: no limit), the largest size (inches),
 // how near a seam it can go, and for embroidery the stitches per square inch (for the stitch count). Used by the "can it be made" check on the flats.
