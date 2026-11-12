@@ -225,7 +225,10 @@ if(CID&&!GMODE){$('#matBtn').classList.remove('hidden');if(QS.get('fabric'))setT
 
 // ---------- room for the drawing: the panel on the right folds away, Focus takes the whole screen (both kept for next time) ----------
 const LAYOUT={panel:true,focus:false};try{const v=JSON.parse(localStorage.getItem('fb.design.layout')||'{}');if(typeof v.panel==='boolean')LAYOUT.panel=v.panel;if(typeof v.focus==='boolean')LAYOUT.focus=v.focus}catch{}
-function applyLayout({full=false}={}){$('#app').dataset.panel=LAYOUT.panel?'on':'off';if(LAYOUT.focus)document.documentElement.dataset.focus='1';else delete document.documentElement.dataset.focus;
+// Focus belongs to a drawing. With nothing open (the list of concepts, the sign-in notice) it is kept for next time but not put on: left on,
+// the tool palette floated over the list with nothing to draw on, and the console's own header and menu were hidden there.
+const studioOpen=()=>!$('#app').classList.contains('hidden');
+function applyLayout({full=false}={}){$('#app').dataset.panel=LAYOUT.panel?'on':'off';if(LAYOUT.focus&&studioOpen())document.documentElement.dataset.focus='1';else delete document.documentElement.dataset.focus;
   $('#panelBtn').setAttribute('aria-pressed',String(LAYOUT.panel));$('#focusBtn').setAttribute('aria-pressed',String(LAYOUT.focus));FF()?.layout?.(LAYOUT);patLayout();
   try{localStorage.setItem('fb.design.layout',JSON.stringify(LAYOUT))}catch{}
   // full screen only on a press (browsers allow it only then), and left again with Focus
@@ -240,8 +243,10 @@ window.FBLAYOUT=z=>{PALZ=z;palRoom();if(VMODE==='picture'&&typeof FITTED!=='unde
 $('#flatFrame')?.addEventListener('load',()=>setTimeout(palRoom,0));
 $('#patFrame')?.addEventListener('load',patLayout);
 $('#panelBtn').onclick=()=>{LAYOUT.panel=!LAYOUT.panel;applyLayout()};$('#focusBtn').onclick=()=>{LAYOUT.focus=!LAYOUT.focus;applyLayout({full:true})};
-document.addEventListener('keydown',e=>{if(e.target.closest?.('input,textarea,select,[contenteditable]'))return;if(e.key==='\\'&&(e.metaKey||e.ctrlKey)&&!e.altKey){e.preventDefault();$('#panelBtn').click();return}if(e.metaKey||e.ctrlKey||e.altKey)return;if(false){}else if(e.key==='f'||e.key==='F'){e.preventDefault();$('#focusBtn').click()}});
+document.addEventListener('keydown',e=>{if(!studioOpen()||e.target.closest?.('input,textarea,select,[contenteditable]'))return;if(e.key==='\\'&&(e.metaKey||e.ctrlKey)&&!e.altKey){e.preventDefault();$('#panelBtn').click();return}if(e.metaKey||e.ctrlKey||e.altKey)return;if(false){}else if(e.key==='f'||e.key==='F'){e.preventDefault();$('#focusBtn').click()}});
 applyLayout();
+// the drawing is shown once it has loaded (and the page can come back from the browser's back-forward cache as it was left): the layout follows
+{let was=studioOpen();new MutationObserver(()=>{if(studioOpen()!==was){was=studioOpen();applyLayout()}}).observe($('#app'),{attributes:true,attributeFilter:['class']});window.addEventListener('pageshow',e=>{if(e.persisted)applyLayout()})}
 
 // ---------- tags and labels in the studio ----------
 async function tagStart(){const t=TAGM.spec,k=Math.max(6,Math.min(24,1600/Math.max(t.widthMm,t.heightMm)));W=Math.round(t.widthMm*k);H=Math.round(t.heightMm*k);

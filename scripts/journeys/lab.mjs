@@ -4894,7 +4894,16 @@ await journey('J294', 'The tool palette in Focus: the rail becomes one glass doc
     await page.click('#railNames'); await page.waitForTimeout(300);
     const grouped = await page.evaluate(() => [...document.querySelectorAll('.rail button[data-tool].tg-off')].map(x => ({ t: x.dataset.tool, shown: Boolean(x.offsetParent) })));
     ok(grouped.length > 0 && grouped.every(x => x.shown), '8. with its names shown the rail lists every tool, none hidden in a group', grouped);
-    ok(!errs.length, '9. no page errors', errs.slice(0, 3));
+    // Focus is remembered (it was switched off above; the page's start-up puts it back on), and it belongs to a drawing: on the Studio's
+    // list of concepts nothing is open, so there is no palette over the list and the console's own header is there to leave by
+    await page.goto(`${BASE}/lab/studio`, { waitUntil: 'load' }); await page.waitForSelector('#pickC:not(.hidden)', { timeout: 15000 }); await page.waitForFunction(() => window.PALETTE, null, { timeout: 15000 }); await page.waitForSelector(`#pickList [data-pick="${cid}"]`, { timeout: 15000 });
+    const seen = () => page.evaluate(() => ({ focus: document.documentElement.dataset.focus || '', palette: !document.querySelector('#palette').hidden, pin: !document.querySelector('#palPin').hidden, header: (h => Boolean(h && h.getBoundingClientRect().height > 0))(document.querySelector('body>header')), kept: JSON.parse(localStorage.getItem('fb.design.layout') || '{}').focus }));
+    let at = await seen(); ok(!at.focus && !at.palette && !at.pin && at.header && at.kept === true, '9. on the list of concepts, with nothing open, Focus is not put on: no palette over the list, the page\'s header is there, and Focus is still kept for the next drawing', at);
+    await page.keyboard.press('f'); await page.waitForTimeout(200); at = await seen(); ok(!at.focus && !at.palette && at.kept === true, '   and F does nothing there', at);
+    await page.click(`#pickList [data-pick="${cid}"]`); await page.waitForFunction(() => window.PALETTE && typeof TOOL === 'string' && !document.querySelector('#app').classList.contains('hidden'), null, { timeout: 30000 }); await page.waitForFunction(() => !document.querySelector('#palette').hidden, null, { timeout: 15000 }).catch(() => {});
+    at = await seen(); ok(at.focus === '1' && at.palette, '   a drawing opened from the list is in Focus again, with its palette', at);
+    await page.locator('#palette [data-pt=ellipse]').click(); await page.waitForTimeout(300); ok(await page.evaluate(() => TOOL) === 'ellipse', '   and the palette works there');
+    ok(!errs.length, '10. no page errors', errs.slice(0, 3));
   } finally { await b.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
