@@ -235,6 +235,19 @@ test('lip and groove: where two housing halves close, the lip of one stands in t
   c = fitOf(tight).lip; assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /hard against the wall of its groove/); assert.equal(c[0].clear[0], 0);
 });
 
+test('snap strain limits: each resin has its figure and where the figure is from', async () => {
+  const { SNAP_LIMITS, SNAP_STRAIN } = await import('../src/lab-assembly.js');
+  // a maker's table of snap-fit strains (Bayer's Part and Mold Design table 4-1, DuPont's General Design Principles table 9.04) ...
+  assert.deepEqual(SNAP_STRAIN, { 'PC': 4, 'PC clear': 4, 'PC/ABS': 2.5, 'ABS': 1.8, 'POM (acetal)': 6, 'PA66 GF30': 1.2, 'Tritan': 4.2, 'PETG': 2.8, 'PP': 7, 'HIPS': 1, 'PMMA (acrylic)': 1.5 });
+  for (const resin of ['PC', 'PC clear', 'PC/ABS', 'ABS']) assert.match(SNAP_LIMITS[resin][1], /^Bayer, Part and Mold Design, table 4-1$/, resin);
+  for (const resin of ['POM (acetal)', 'PA66 GF30']) assert.match(SNAP_LIMITS[resin][1], /^DuPont, General Design Principles, table 9\.04, /, resin);
+  // ... or 70% of the strain at yield on a named grade's datasheet, never more
+  for (const [resin, y] of [['Tritan', 6], ['PETG', 4], ['PP', 10], ['HIPS', 1.5]]) { assert.ok(SNAP_STRAIN[resin] <= y * .7 + 1e-9, `${resin}: ${SNAP_STRAIN[resin]}% is within 70% of ${y}%`); assert.match(SNAP_LIMITS[resin][1], new RegExp(`^70% of the ${String(y).replace('.', '\\.')}% it yields at, .+ datasheet$`), resin); }
+  // acrylic has neither: it says so, and stays under half of what it breaks at
+  assert.ok(SNAP_STRAIN['PMMA (acrylic)'] < 5.5 / 2); assert.match(SNAP_LIMITS['PMMA (acrylic)'][1], /^no published figure/);
+  for (const [resin, [pc, from]] of Object.entries(SNAP_LIMITS)) assert.ok(pc > 0 && from.length > 10, resin);
+});
+
 test('snap hooks: a cover that snaps on has its hooks and their catches as bodies, and the check measures the catch, the bend and the room to bend', async () => {
   const { stepOf } = await import('../src/lab-step.js'), { SNAP_STRAIN } = await import('../src/lab-assembly.js');
   const snapOf = s => fitOf(cleanAssembly(s)).snap, edit = (a, fn) => { const s = JSON.parse(JSON.stringify(archetype(a))); fn(id => s.parts.find(p => p.id === id), s); return s; };
@@ -260,7 +273,7 @@ test('snap hooks: a cover that snaps on has its hooks and their catches as bodie
   let c = snapOf(edit('desk', P => { P('front').snaps.y = 2; })); assert.equal(c.length, 4); assert.ok(c.every(x => x.level === 'bad' && /its head stands 2 mm out and the wall of back housing is 1\.2 mm away/.test(x.text)), c[0].text);
   const shorter = (A, len) => { const by = A.snaps.len - len; A.snaps.len = len; A.snaps.hooks.forEach(h => { h.at['xyz'.indexOf(h.along[1])] += (h.along[0] === '-' ? -1 : 1) * by; }); }; // a shorter beam, its head where it was
   c = snapOf(edit('desk', P => { shorter(P('front'), 5); P('front').snaps.hooks.forEach(h => { h.at['xyz'.indexOf(h.along[1])] -= (h.along[0] === '-' ? -1 : 1) * 5; }); })); assert.ok(c.every(x => x.level === 'bad' && /it bends 9\.8% as it is pushed home and PC\/ABS takes about 2\.5%/.test(x.text)), c[0].text); assert.match(c[0].text, /Lengthen it to 8\.4 mm/);
-  c = snapOf(edit('cassette', P => { shorter(P('front'), 9); })); assert.ok(c.every(x => x.level === 'warn' && /it bends 2\.13% as it is pushed home and ABS takes about 2%/.test(x.text)), c[0].text);
+  c = snapOf(edit('cassette', P => { shorter(P('front'), 9); })); assert.ok(c.every(x => x.level === 'warn' && /it bends 2\.13% as it is pushed home and ABS takes about 1\.8% \(Bayer, Part and Mold Design, table 4-1\)/.test(x.text)), c[0].text);
   c = snapOf(edit('desk', P => { P('front').snaps.y = .5; })); assert.ok(c.every(x => x.level === 'warn' && /catches only 0\.3 mm/.test(x.text)), c[0].text);
   c = snapOf(edit('desk', P => { P('front').snaps.hooks[0].at['xyz'.indexOf(P('front').snaps.hooks[0].out[1])] *= .8; })); assert.equal(c.filter(x => x.level === 'bad').length, 1); assert.match(c[0].text, /snap hook 1 of 4: it is not joined to front housing: there is no wall within 4 mm of its root/);
   c = snapOf(edit('desk', (P, s) => { const A = P('front'), h = A.snaps.hooks[0], o = 'xyz'.indexOf(h.out[1]), al = 'xyz'.indexOf(h.along[1]), at = h.at.map((v, k) => v + A.at[k]); at[o] -= (h.out[0] === '-' ? -1 : 1) * 2.2; at[al] += (h.along[0] === '-' ? -1 : 1) * 11; s.parts.push({ id: 'rib', name: 'Rib', shape: 'box', size: [3, 3, 3], at, r: 0 }); }));
