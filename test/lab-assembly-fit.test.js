@@ -298,3 +298,31 @@ test('a thread: the tumbler lid screws onto the cup, the two diameters, the flan
   c = thr(edit((P, s) => { s.parts.push({ id: 'plug', name: 'Plug', shape: 'cyl', size: [120, 120, 10], at: [0, 0, 150] }); P('lid').thread.onto = 'plug'; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /plug is solid, so there is nothing for lid to screw into/);
   assert.equal(cleanAssembly(edit(P => { P('lid').thread.onto = 'gone'; })).parts.find(p => p.id === 'lid').thread, undefined); assert.equal(cleanPart({ shape: 'box', thread: { onto: 'body' } }).thread, undefined, 'only a round part carries a thread');
 });
+
+test('a hinge: knuckles on the case\'s base and lid, the pin through them, and the lid turned about the pin to measure how far it opens', async () => {
+  const { stepOf } = await import('../src/lab-step.js');
+  const hin = s => fitOf(cleanAssembly(s)).hinge, edit = fn => { const s = JSON.parse(JSON.stringify(archetype('case'))); fn(id => s.parts.find(p => p.id === id), s); return s; };
+  for (const dims of [{}, { w: 60, d: 40, h: 25 }, { w: 800, d: 600, h: 400 }, { w: 300, d: 200, h: 100 }]) { const s = archetype('case', dims), base = s.parts.find(p => p.id === 'base'), lid = s.parts.find(p => p.id === 'lid'), pin = s.parts.find(p => p.id === 'hinge'), f = fitOf(s).hinge;
+    assert.equal(base.knuckles.at.length, 3); assert.equal(lid.knuckles.at.length, 2); assert.equal(base.knuckles.pin, 'hinge');
+    assert.equal(base.adds.filter(x => x.kind === 'knuckle').length, 6, 'three knuckles on the base, each a ring round the pin and a lug to the back wall'); assert.equal(lid.adds.filter(x => x.kind === 'knuckle').length, 4);
+    assert.equal(f.length, 1); assert.equal(f[0].level, 'ok', f[0].text); assert.equal(f[0].kind, 'hinge'); assert.equal(f[0].id, 'hinge'); assert.equal(f[0].knuckles, 5); assert.equal(f[0].opens, 180); assert.equal(f[0].bore, 3.2); assert.ok(Math.abs(f[0].slack - .4) < .06);
+    // the pin lies in each ring's bore, 0.1 mm clear all round, and each ring's material is its housing's; the lug joins it to the wall
+    const ring = base.adds.find(x => x.kind === 'knuckle' && x.shape === 'ring'), rc = ring.at.map((v, k) => v + base.at[k]); assert.deepEqual([rc[1], rc[2]], [pin.at[1], pin.at[2]], 'the knuckle is on the pin\'s axis');
+    assert.equal(inMaterial(base, rc), false, 'the bore'); assert.equal(inMaterial(base, [rc[0], rc[1] + 2.5, rc[2]]), true, 'the ring'); assert.equal(inMaterial(base, [rc[0], rc[1] - 2.6, rc[2] - 1.5]), true, 'the lug, on the base\'s side of the pin'); assert.equal(inMaterial(base, [rc[0], rc[1] - 2.6, rc[2] + 1.5]), true, 'the ring above the lug');
+    assert.equal(inMaterial(lid, [rc[0], rc[1] + 2.5, rc[2]]), false);
+    const made = extentOf(s.parts).size; assert.ok(Math.abs(made[1] - s.dims.d) < .11, `knuckles and latch are inside the ${s.dims.d} mm asked for: ${made[1]}`);
+    assert.deepEqual(fitOf(s).clash.filter(c => c.level !== 'ok').map(c => c.text), []); assert.deepEqual(fitOf(s).contact.filter(c => c.level !== 'ok').map(c => c.text), [], 'the pin is held by the knuckles'); }
+  const s0 = archetype('case'); assert.match(stepOf(s0, { only: 'base' }), /MANIFOLD_SOLID_BREP\('Base: knuckle'/); assert.equal((stepOf(s0, { only: 'lid' }).match(/MANIFOLD_SOLID_BREP\('Lid: knuckle'/g) || []).length, 4);
+  assert.deepEqual(cleanAssembly(cleanAssembly(s0)), cleanAssembly(s0));
+  // broken on purpose
+  let c = hin(edit(P => { P('hinge').at[2] -= 1.5; })); assert.equal(c.length, 1); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /it opens only 0° before lid meets base/, 'a pin 1.5 mm below where the walls meet: the lid\'s lugs are in the base\'s wall, found by turning the lid about the pin'); assert.equal(c[0].opens, 0);
+  c = hin(edit(P => { P('hinge').at[1] -= .5; })); assert.equal(c.length, 5); assert.ok(c.every(x => x.level === 'bad')); assert.match(c[0].text, /the knuckle of base at -70\.4 mm \(7 mm across\) is 0\.3 mm into the wall behind it, which is 3\.2 mm from the pin/); assert.match(c[0].text, /Move the pin 0\.5 mm out/);
+  c = hin(edit(P => { P('hinge').at[1] += 5; })); assert.equal(c.length, 5); assert.match(c[0].text, /is not joined to it: no wall of base is within 6\.5 mm of the pin/);
+  c = hin(edit(P => { P('hinge').size[0] -= 30; })); assert.equal(c.length, 2); assert.match(c[0].text, /it stops 14\.8 mm short of the end of the knuckle of base at -70\.4 mm/); assert.equal(c[0].short, 14.8);
+  c = hin(edit(P => { P('lid').knuckles.at = P('lid').knuckles.at.map(v => v + 10); })); assert.equal(c.length, 2); assert.match(c[0].text, /the knuckles at -25\.2 mm \(lid\) and 0 mm \(base\) are 9\.6 mm into each other along it/);
+  c = hin(edit(P => { delete P('lid').knuckles; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /only base has knuckles on it; a hinge joins two parts/);
+  c = hin(edit(P => { P('lid').knuckles.len -= 10; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /lid can slide 5\.4 mm along the pin/);
+  c = hin(edit(P => { P('hinge').size[1] = P('hinge').size[2] = 6; })); assert.equal(c.length, 5); assert.match(c[0].text, /7 mm across on a 6 mm pin: under 0\.6 mm of wall round the bore/);
+  c = hin(edit(P => { P('hinge').shape = 'box'; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /a pin is a round bar/);
+  assert.equal(cleanAssembly(edit(P => { P('base').knuckles.pin = 'gone'; })).parts.find(p => p.id === 'base').knuckles, undefined);
+});

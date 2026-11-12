@@ -360,6 +360,8 @@ export function cleanPart(q = {}, i = 0) {
   // a thread: the round part it screws onto (or into), its pitch, how many turns hold it and how deep the thread form is; the two diameters
   // are the two parts' own (the one's outside, the other's bore)
   if (ROUND.has(shape) && q.thread && ID.test(String(q.thread.onto || ''))) p.thread = { onto: q.thread.onto, pitch: r2(num(q.thread.pitch, .5, 12, 4)), turns: r2(num(q.thread.turns, .25, 12, 1.5)), depth: r2(num(q.thread.depth, .3, 4, 1.2)) };
+  // hinge knuckles: the pin they turn on, where each is along the pin (from the pin's middle), how long each is and how wide across
+  if ((shape === 'shell' || shape === 'cup') && q.knuckles && ID.test(String(q.knuckles.pin || '')) && Array.isArray(q.knuckles.at) && q.knuckles.at.length) p.knuckles = { pin: q.knuckles.pin, len: r1(num(q.knuckles.len, 1, 400, 8)), d: r1(num(q.knuckles.d, 2, 40, 7)), at: q.knuckles.at.slice(0, 12).map(v => r2(num(v, -2000, 2000, 0))) };
   if (Array.isArray(q.through)) { const t = [...new Set(q.through.map(String).filter(x => ID.test(x)))].slice(0, 4); if (t.length) p.through = t; }
   if (Array.isArray(q.spots) && p.qty > 1) { const sp = q.spots.slice(0, p.qty - 1).map(a => v3(a, -3000, 3000, 0)); if (sp.length) p.spots = sp; }
   if (Array.isArray(q.cuts)) { const cs = q.cuts.slice(0, 40).map(c => ({ at: v3(c?.at, -3000, 3000, 0), size: v3(c?.size, .2, 3000, 1), axis: AXN.includes(c?.axis) ? c.axis : 'z', ...(c?.round ? { round: true } : {}), ...(ID.test(String(c?.for || '')) ? { for: c.for } : {}) })); if (cs.length) p.cuts = cs; }
@@ -379,6 +381,7 @@ export function cleanAssembly(s = {}) {
   for (const p of parts) if (p.lip && (!seen.has(p.lip.into) || p.lip.into === p.id)) delete p.lip;
   for (const p of parts) if (p.snaps && (!seen.has(p.snaps.into) || p.snaps.into === p.id)) delete p.snaps;
   for (const p of parts) if (p.thread && (!seen.has(p.thread.onto) || p.thread.onto === p.id)) delete p.thread;
+  for (const p of parts) if (p.knuckles && (!seen.has(p.knuckles.pin) || p.knuckles.pin === p.id)) delete p.knuckles;
   moulded(parts);
   const v = Number(s.v) >= 2 ? 2 : 1; // 2: made since parts say what they pass through; 1 (nothing saved): made before
   openings(parts, v < 2);
@@ -468,6 +471,20 @@ function hookBodies(a, b, Fa, Fb, S, h) {
   const ledge = gapB != null && gapB >= .45 ? box('catch', za - LEDGE, za, t / 2 + .2, t / 2 + gapB + SINK, S.w + 1, b) : null;
   return { mine, ledge, joined: rooted || gapA != null, gapA, gapB, eng: ledge ? r2(Math.min(S.y, gapB) - .2) : 0, hd, pos, O, T3 };
 }
+// A housing that says it has hinge `knuckles` on a pin gets each as bodies on it: a ring round the pin, bored 0.2 mm over the pin's diameter,
+// and a lug that joins the ring to the housing's nearest wall, kept on the housing's own side of the pin so the other half can swing past.
+function knuckleBodies(h, pin, Fh, off) {
+  const pa = axisOf(pin), cr = [0, 1, 2].filter(k => k !== pa), pd = Math.min(...cr.map(k => pin.size[k])), K = h.knuckles, C = pin.at.map((v, k) => (k === pa ? v + off : v)), wall = r2((K.d - pd - .2) / 2);
+  if (pin.shape !== 'cyl' || wall < .6) return { C, pd, pa };
+  const ring = { kind: 'knuckle', shape: 'ring', axis: pin.axis, size: [0, 1, 2].map(k => (k === pa ? K.len : K.d)), at: C.map((v, k) => r2(v - h.at[k])), wall };
+  // the nearest wall of the housing, out from the pin across it, looked for on the housing's own side of the pin (where the lug will be)
+  let g = null, dir = null; for (const c of cr) for (const s of [1, -1]) { const sd = cr.find(k => k !== c), d = [0, 1, 2].map(k => (k === c ? s : 0)), r = reachTo(h, Fh, C.map((v, k) => (k === sd ? v + (h.at[sd] < C[sd] ? -1 : 1) * K.d / 4 : v)), d, K.d / 2 + 3); if (r && (g == null || r < g)) { g = r; dir = d; } }
+  if (inPart(h, Fh, C, true)) g = 0; // the pin itself is in the housing's wall
+  if (g == null || g < pd / 2 + .3) return { C, pd, pa, ring, g };
+  const c = dir.findIndex(Boolean), sd = cr.find(k => k !== c), ss = h.at[sd] < C[sd] ? -1 : 1, a0 = pd / 2 + .7, a1 = g + SINK;
+  const lug = a1 - a0 > .2 ? { kind: 'knuckle', shape: 'box', axis: 'z', r: 0, size: [0, 1, 2].map(k => r2(k === pa ? K.len : k === c ? a1 - a0 : K.d / 2 - .3)), at: C.map((v, k) => r2(v + (k === c ? dir[c] * (a0 + a1) / 2 : k === sd ? ss * (K.d / 2 + .3) / 2 : 0) - h.at[k])) } : null;
+  return { C, pd, pa, ring, lug, g };
+}
 function moulded(parts) {
   const byId = Object.fromEntries(parts.map(p => [p.id, p])); for (const p of parts) { delete p.adds; delete p.groove; }
   for (const a of parts) { if (!a.lip) continue; const b = byId[a.lip.into], L = lipPair(a, b); if (L.why || b.groove) continue;
@@ -475,6 +492,7 @@ function moulded(parts) {
     b.groove = { h: r2(a.lip.h - L.gap + LIP_TOP), t: L.gw, for: a.id }; }
   for (const a of parts) { if (!a.snaps) continue; const b = byId[a.snaps.into], Fa = bare(a), Fb = bare(b);
     for (const h of a.snaps.hooks) { const H = hookBodies(a, b, Fa, Fb, a.snaps, h); (a.adds ||= []).push(...H.mine); if (H.ledge) (b.adds ||= []).push({ ...H.ledge, for: a.id }); } }
+  for (const h of parts) { if (!h.knuckles) continue; const pin = byId[h.knuckles.pin], Fh = bare(h); for (const off of h.knuckles.at) { const K = knuckleBodies(h, pin, Fh, off); if (K.ring) (h.adds ||= []).push(K.ring); if (K.lug) h.adds.push(K.lug); } }
 }
 
 
@@ -831,15 +849,16 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     add({ id: 'straw', name: 'Straw', shape: 'ring', size: [8, 8, H - 2 - w - 1], at: [0, -D * .15, (H + 2 + w + 1) / 2], wall: .9, resin: 'Tritan', process: 'injection moulding', finish: 'SPI A-2 (high gloss)', draft: .5, through: ['lid'], fix: 'place', order: 5, lvl: 4.4, food: true });
     add({ id: 'base', name: 'Base pad', shape: 'cyl', size: [Db - 8, Db - 8, 2], at: [0, 0, 1], resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'press', order: 6, dir: [0, 0, -1], lvl: 1.2 });
   } else if (arch === 'case') {
-    // a case: base and lid on four moulded-in feet, the hinge pin along the back and the latch on the front, inside the depth asked
-    const W = num(dims.w, 60, 800, 220), D = num(dims.d, 40, 600, 160), H = num(dims.h, 25, 400, 72), w = 2.5, zb = 2, Ds = e2(D - 6.4), hb = e2((H - zb) * .7), fx = W * .38, fy = Ds * .35;
+    // a case: base and lid on four moulded-in feet, hinged along the back and latched on the front, inside the depth asked. The pin lies behind
+    // the two back walls at the height where they meet, 3.7 mm out, in five knuckles 7 mm across: three on the base, two on the lid between them
+    const W = num(dims.w, 60, 800, 220), D = num(dims.d, 40, 600, 160), H = num(dims.h, 25, 400, 72), w = 2.5, zb = 2, Ds = e2(D - 10.4), yc = -2, hb = e2((H - zb) * .7), fx = W * .38, fy = Ds * .35, Lp = r1(W * .8), kp = Lp / 5, kn = { pin: 'hinge', len: r1(kp - .4), d: 7 };
     made = [W, D, H];
-    add({ id: 'base', name: 'Base', shape: 'shell', size: [W, Ds, hb], at: [0, 0, zb + hb / 2], r: 10, wall: w, open: '+', lip: { into: 'lid' }, resin: 'PP', finish: 'SPI D-2 (textured)', draft: 3, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
-    add({ id: 'foam', name: 'Foam insert', shape: 'box', size: [W - 2 * w - 1, Ds - 2 * w - 1, hb * .7], r: 6, at: [0, 0, zb + w + .2 + hb * .35], resin: 'EVA foam', process: 'die cut', fix: 'place', order: 2, parent: 'base', lvl: 1.6 });
-    add({ id: 'lid', name: 'Lid', shape: 'shell', size: [W, Ds, H - zb - hb], at: [0, 0, zb + hb + (H - zb - hb) / 2], r: 10, wall: w, open: '-', resin: 'PP', finish: 'SPI D-2 (textured)', draft: 3, undercuts: 1, fix: 'place', order: 3, lvl: 3, main: true });
-    add({ id: 'hinge', name: 'Hinge pin', shape: 'cyl', axis: 'x', size: [W * .8, 3, 3], at: [0, D / 2 - 1.5, zb + hb], resin: 'stainless 304', process: 'bought in', cost: .12, qty: 1, fix: 'press', order: 4, dir: [0, 1, 0], lvl: 1.5 });
+    add({ id: 'base', name: 'Base', shape: 'shell', size: [W, Ds, hb], at: [0, yc, zb + hb / 2], r: 10, wall: w, open: '+', lip: { into: 'lid' }, knuckles: { ...kn, at: [-2 * kp, 0, 2 * kp] }, resin: 'PP', finish: 'SPI D-2 (textured)', draft: 3, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
+    add({ id: 'foam', name: 'Foam insert', shape: 'box', size: [W - 2 * w - 1, Ds - 2 * w - 1, hb * .7], r: 6, at: [0, yc, zb + w + .2 + hb * .35], resin: 'EVA foam', process: 'die cut', fix: 'place', order: 2, parent: 'base', lvl: 1.6 });
+    add({ id: 'lid', name: 'Lid', shape: 'shell', size: [W, Ds, H - zb - hb], at: [0, yc, zb + hb + (H - zb - hb) / 2], r: 10, wall: w, open: '-', knuckles: { ...kn, at: [-kp, kp] }, resin: 'PP', finish: 'SPI D-2 (textured)', draft: 3, undercuts: 1, fix: 'place', order: 3, lvl: 3, main: true });
+    add({ id: 'hinge', name: 'Hinge pin', shape: 'cyl', axis: 'x', size: [Lp, 3, 3], at: [0, D / 2 - 3.5, zb + hb], resin: 'stainless 304', process: 'bought in', cost: .12, qty: 1, fix: 'press', order: 4, dir: [0, 1, 0], lvl: 1.5 });
     add({ id: 'latch', name: 'Latch', shape: 'box', size: [Math.min(30, W * .4), 3.2, Math.min(16, (H - zb) * .5)], r: 1, at: [0, -D / 2 + 1.6, zb + hb], resin: 'POM (acetal)', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'snap', order: 5, dir: [0, -1, 0], lvl: 1.5 });
-    add({ id: 'feet', name: 'Foot', shape: 'cyl', size: [Math.min(12, W * .15), Math.min(12, W * .15), 2], at: [fx, fy, 1], resin: 'TPE', process: 'overmoulding', qty: 4, spots: [[-2 * fx, 0, 0], [-2 * fx, -2 * fy, 0], [0, -2 * fy, 0]], fix: 'moulded in', order: 6, dir: [0, 0, -1], lvl: 1.2 });
+    add({ id: 'feet', name: 'Foot', shape: 'cyl', size: [Math.min(12, W * .15), Math.min(12, W * .15), 2], at: [fx, yc + fy, 1], resin: 'TPE', process: 'overmoulding', qty: 4, spots: [[-2 * fx, 0, 0], [-2 * fx, -2 * fy, 0], [0, -2 * fy, 0]], fix: 'moulded in', order: 6, dir: [0, 0, -1], lvl: 1.2 });
   } else if (arch === 'figure') {
     // a vinyl figure on its base: legs, body, arms and head each seated on the next (the plugs that join them are not drawn)
     const H = num(dims.h, 60, 600, 180), k = H / 184;
@@ -1066,7 +1085,7 @@ const boxOf = p => { const os = [[0, 0, 0], ...(p.spots || [])], bs = [...(p.bos
 // everything the fit checks measure, by kind: { contact, clash, fasteners, size }, each a list of { id, level, kind, text, ... }
 export function fitOf(s) {
   const parts = s.parts, n = parts.length, F = parts.map(featuresOf), B = parts.map(boxOf), S = new Array(n), smp = i => S[i] || (S[i] = samplesOf(parts[i], F[i])), name = p => p.name, low = p => p.name.toLowerCase();
-  const out = { contact: [], clash: [], fasteners: [], size: [], lip: [], snap: [], thread: [] }, say = (kind, id, level, text, more = {}) => out[kind].push({ id, level, kind, text, ...more });
+  const out = { contact: [], clash: [], fasteners: [], size: [], lip: [], snap: [], thread: [], hinge: [] }, say = (kind, id, level, text, more = {}) => out[kind].push({ id, level, kind, text, ...more });
   const gap = (i, j) => Math.max(...[0, 1, 2].map(k => Math.max(B[j].lo[k] - B[i].hi[k], B[i].lo[k] - B[j].hi[k])));
   // ---- clash: one part's material in another's, deeper than a rounding ----
   const hard = [];
@@ -1166,6 +1185,30 @@ export function fitOf(s) {
     else { const notes = [grip < T.depth * .6 && `the flanks catch ${grip} mm of their ${T.depth} mm (${r2(clear)} mm clear on the diameter; 0.2 to 0.8 mm is usual): it may jump under load`, clear < .2 && `only ${r2(clear)} mm clear on the diameter: it will bind once the parts shrink (0.2 to 0.8 mm is usual)`, T.turns < 1 && `${T.turns} of a turn holds it: less than one full turn will not pull the lid down square`, T.depth > T.pitch * .6 && `a thread ${T.depth} mm deep at ${T.pitch} mm pitch is too steep to mould and release (keep the depth under 0.6 of the pitch)`].filter(Boolean);
       if (notes.length) say('thread', a.id, 'warn', `${what}: ${notes.join('; ')}.`, more);
       else say('thread', a.id, 'ok', `${what}: the diameters agree with ${r2(clear)} mm clear, the flanks catch ${grip} mm, and ${T.turns} turns take ${need} mm of the ${over} mm the two overlap. The STL and STEP show the two walls at the thread's roots (⌀${neck} mm and ⌀${bore} mm); the turns themselves are not drawn in them.`, more); } }
+  // ---- a hinge: the pin through the knuckles of two housings, each knuckle joined to its housing, their places along the pin, and how far
+  //      the half that moves swings before it meets the other, turned about the pin and measured point by point ----
+  for (const pin of parts) { const hs = parts.filter(h => h.knuckles?.pin === pin.id); if (!hs.length) continue; const pa = axisOf(pin), lo = pin.at[pa] - pin.size[pa] / 2, hi = pin.at[pa] + pin.size[pa] / 2; let wrong = 0;
+    const tell = (level, text, more = {}) => { wrong++; say('hinge', pin.id, level, `${name(pin)}: ${text}`, more); };
+    if (pin.shape !== 'cyl') { tell('bad', `${hs.map(low).join(' and ')} turn on it, and a pin is a round bar. Make it a cylinder.`); continue; }
+    const ks = hs.flatMap(h => { const Fh = bare(h); return h.knuckles.at.map(off => ({ h, off, ...knuckleBodies(h, pin, Fh, off) })); }).sort((x, y) => x.off - y.off), pd = ks[0].pd;
+    if (hs.length !== 2) tell('bad', `only ${low(hs[0])} has knuckles on it; a hinge joins two parts. Give the other half its knuckles.`);
+    for (const k of ks) { const a0 = pin.at[pa] + k.off - k.h.knuckles.len / 2, a1 = a0 + k.h.knuckles.len, at = r1(k.off);
+      if (!k.ring) tell('bad', `the knuckle of ${low(k.h)} at ${at} mm is ${k.h.knuckles.d} mm across on a ${pd} mm pin: under 0.6 mm of wall round the bore. Make it ${r1(pd + 1.4)} mm or more across.`, { part: k.h.id });
+      else if (a0 < lo - .05 || a1 > hi + .05) tell('bad', `it stops ${r1(Math.max(lo - a0, a1 - hi))} mm short of the end of the knuckle of ${low(k.h)} at ${at} mm. Lengthen the pin, or move the knuckle onto it.`, { part: k.h.id, short: r1(Math.max(lo - a0, a1 - hi)) });
+      else if (k.g == null) tell('bad', `the knuckle of ${low(k.h)} at ${at} mm is not joined to it: no wall of ${low(k.h)} is within ${r1(k.h.knuckles.d / 2 + 3)} mm of the pin. Move the pin to the wall.`, { part: k.h.id });
+      else if (k.g < k.h.knuckles.d / 2 - .26) tell('bad', `the knuckle of ${low(k.h)} at ${at} mm (${k.h.knuckles.d} mm across) is ${r1(k.h.knuckles.d / 2 - k.g)} mm into the wall behind it, which is ${r1(k.g)} mm from the pin: the other half's wall is in the same place, so the two cannot turn. Move the pin ${r1(k.h.knuckles.d / 2 + .2 - k.g)} mm out.`, { part: k.h.id, wall: r1(k.g) }); }
+    // along the pin: no two knuckles in the same place, and the two halves' knuckles close enough that neither slides
+    let slack = 0; for (let i = 1; i < ks.length; i++) { const a = ks[i - 1], b = ks[i], gp = r2((b.off - b.h.knuckles.len / 2) - (a.off + a.h.knuckles.len / 2));
+      if (gp < .05) tell('bad', `the knuckles at ${r1(a.off)} mm (${low(a.h)}) and ${r1(b.off)} mm (${low(b.h)}) are ${gp < 0 ? `${-gp} mm into each other` : 'hard against each other'} along it. Leave 0.2 mm or more between them.`, { gap: gp }); else if (a.h !== b.h) slack = Math.max(slack, gp); }
+    if (wrong || hs.length !== 2) continue;
+    const [fx, mv] = hs[0].order <= hs[1].order ? hs : [hs[1], hs[0]], ifx = parts.indexOf(fx), imv = parts.indexOf(mv), c1 = (pa + 1) % 3, c2 = (pa + 2) % 3;
+    const turn = (w, q) => { const o = [...w], y = w[c1] - pin.at[c1], z = w[c2] - pin.at[c2], cs = Math.cos(q), sn = Math.sin(q); o[c1] = pin.at[c1] + y * cs - z * sn; o[c2] = pin.at[c2] + y * sn + z * cs; return o; };
+    const hits = (i, j, q) => smp(i).some(w0 => { const w = turn(w0, q); return !w.some((v, k) => v < B[j].lo[k] - 1e-6 || v > B[j].hi[k] + 1e-6) && inPart(parts[j], F[j], w) && depthIn(parts[j], F[j], w) >= CLASH; });
+    let opens = 0; for (const sgn of [1, -1]) { let a = 180; for (let d = 5; d <= 180; d += 5) if (hits(imv, ifx, sgn * d * Math.PI / 180) || hits(ifx, imv, -sgn * d * Math.PI / 180)) { a = d - 5; break; } opens = Math.max(opens, a); }
+    const n1 = ks.length, more = { parts: [fx.id, mv.id], knuckles: n1, opens, slack, bore: r2(pd + .2) }, what = `Hinge: ${low(mv)} turns on ${low(pin)} (⌀${pd} mm, in ⌀${r2(pd + .2)} mm bores) through ${n1} knuckles, ${ks.filter(k => k.h === fx).length} on ${low(fx)} and ${ks.filter(k => k.h === mv).length} on ${low(mv)}`;
+    if (opens < 45) say('hinge', pin.id, 'bad', `${what}, but it opens only ${opens}° before ${low(mv)} meets ${low(fx)}. Move the pin out to the back of the two walls, at the height where they meet.`, more);
+    else if (opens < 90 || slack > 1) say('hinge', pin.id, 'warn', `${what}: ${[opens < 90 && `it opens ${opens}° before ${low(mv)} meets ${low(fx)} (90° or more lets a hand in)`, slack > 1 && `${low(mv)} can slide ${slack} mm along the pin between the other half's knuckles (keep it under 1 mm)`].filter(Boolean).join('; ')}.`, more);
+    else say('hinge', pin.id, 'ok', `${what}, each joined to its half by a lug, ${slack} mm apart along the pin. ${name(mv)} opens ${opens === 180 ? 'right over (180°)' : `${opens}°`} before it meets ${low(fx)}.`, more); }
   return out;
 }
 // the moulding and fit checks: [{ id, level: 'bad'|'warn'|'ok', text }]
@@ -1210,7 +1253,7 @@ export function dfm(s) {
     if (d[0] <= SMALL.d && d[1] <= SMALL.d && d[2] <= SMALL.h) say(p.id, s.age === '0+' ? 'bad' : 'warn', s.age === '0+' ? `${p.name}: fits the small-parts cylinder (${SMALL.d} × ${SMALL.h} mm): not allowed for under-3s if it can come off (16 CFR 1501, EN 71-1). Make it larger or fix it so it passes the torque and tension tests.` : `${p.name}: a small part; label "Choking hazard: small parts. Not for children under 3 years" (16 CFR 1500.19).`);
   }
   // do the parts go together: clash by outline, contact, fasteners and size, measured off the parts as built (fitOf)
-  const fit = fitOf(s); out.push(...fit.clash, ...fit.contact, ...fit.fasteners, ...fit.size, ...fit.lip, ...fit.snap, ...fit.thread);
+  const fit = fitOf(s); out.push(...fit.clash, ...fit.contact, ...fit.fasteners, ...fit.size, ...fit.lip, ...fit.snap, ...fit.thread, ...fit.hinge);
   if (s.kind === 'electronics') out.push(...elecChecks(s));
   return out;
 }

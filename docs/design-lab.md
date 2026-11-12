@@ -2117,6 +2117,17 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
     over the thread in a ⌀84 mm bore at the default size, 4 mm pitch, 1.2 mm deep, 1.5 turns over 6 mm of a 14 mm overlap.
     In the files: the STL and STEP show the cup and the lid's bore at the thread's roots, with the room for the thread between them. The
     turns themselves are not drawn: the solids have no helical faces, so the toolmaker cuts the thread from the numbers in the finding.
+  - **A hinge** (`knuckles`, kind `hinge`). A housing says which pin its knuckles turn on, where each is along the pin, how long and how
+    wide across (`knuckles: { pin, at, len, d }`). Each knuckle is a ring round the pin, bored 0.2 mm over the pin, and a lug that joins it
+    to the housing's nearest wall on the housing's own side of the pin. The check goes along the pin: two parts have knuckles on it, the
+    pin reaches through every one, each is joined to its housing and none sits in a wall, no two are in the same place and the moving
+    half cannot slide more than 1 mm between the other's. Then the half that goes on later is turned about the pin in 5° steps, both
+    ways, and every point of it is tested against the other half: how far it opens before the two meet (under 45° is fix before tooling,
+    under 90° is watch). The case has five knuckles 7 mm across on a ⌀3 mm pin, three on the base and two on the lid, 0.4 mm apart;
+    the pin lies 3.7 mm behind the back walls at the height where they meet, and the lid opens right over (180°). The case's shells are
+    4 mm shallower than before to keep the knuckles inside the depth asked.
+    In the files: rings and lugs are closed bodies in their housing's STL and solids in its STEP, starting 0.3 mm inside the wall; not
+    fused into the housing's skin. The pin is a part, as it was.
 - **An assembly saved before these rules** (it carries no `v`; a starting point or a design from a concept made now carries `v: 2`) is read as
   it was meant when it is opened: a part that plainly goes through a wall (in on one side and out on the other or flush with the far
   face, much narrower than the wall, and not a part that sits inside that housing) gets its opening, worked out each time and never written
