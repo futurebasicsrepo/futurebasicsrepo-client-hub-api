@@ -80,6 +80,31 @@ test('the drawing, the BOM and the CSV', () => {
   const csv = bomCsv(E).split('\n'); assert.equal(csv[0], 'Item,Part,Qty,Material,Process,Finish,Colour,Mass (g),Unit cost ($),Tool cost ($)'); assert.equal(csv.length, rows.length + 1);
 });
 
+test('the product as lines for a page to draw over: from the top and the front at one scale, the outline of the whole and of each part that shows', async () => {
+  const { lineViews, extentOf, RESINS } = await import('../src/lab-assembly.js');
+  const W = 1400, H = 1400, count = (L, v, lv) => { let n = 0; for (let y = v.y - 1; y <= v.y + v.h + 1; y++) for (let x = v.x - 1; x <= v.x + v.w + 1; x++) if (L.edges[y * W + x] === lv) n++; return n; };
+  for (const a of Object.keys(ARCHES).filter(k => k !== 'custom')) { const s = archetype(a), L = lineViews(s, { W, H }), [top, front] = L.views, E = extentOf(s.parts).size;
+    assert.deepEqual(L.views.map(v => v.name), ['Top', 'Front'], a); assert.ok(L.k > 0, a);
+    // real size: both views are the product's width across, the top one its depth up the page and the front one its height
+    assert.ok(Math.abs(top.w / L.k - front.w / L.k) < .01 && Math.abs(top.x - front.x) < 1, `${a}: the two views share their width`);
+    const across = top.mm[0], sizes = [across, top.mm[1], front.mm[1]].sort((x, y) => x - y), want = [...E].sort((x, y) => x - y); assert.ok(sizes.every((v, i) => Math.abs(v - want[i]) < .2), `${a}: ${sizes} against the assembly's ${want.map(v => Math.round(v * 10) / 10)}`);
+    assert.ok(Math.abs(top.w - across * L.k) <= 1 && Math.abs(front.h - front.mm[1] * L.k) <= 1, `${a}: drawn at ${L.k.toFixed(2)} px a mm`);
+    // on the page, the top view over the front view, with room for a line of words under each
+    assert.ok(top.y >= 0 && top.y + top.h < front.y - 40 && front.y + front.h + 40 <= H && top.x >= 0 && top.x + top.w <= W, `${a}: both views are on the page`);
+    for (const v of L.views) { const out = count(L, v, 2); assert.ok(out >= 2 * (v.w + v.h) * .8, `${a} ${v.name}: an outline all the way round (${out} px for a ${v.w} × ${v.h} view)`); }
+    assert.ok(count(L, top, 1) + count(L, front, 1) > 50, `${a}: the parts that show are drawn inside the outline`); }
+  // what is inside does not show: the round device's board and battery are under its top, and the three keys on top are there
+  const puck = archetype('puck'), L = lineViews(puck, { W, H }), top = L.views[0], at = id => { const p = puck.parts.find(q => q.id === id); return [Math.round(top.x + (p.at[0] + 48) * L.k), Math.round(top.y + (48 - p.at[1]) * L.k)]; };
+  const ringAt = (id, r) => { const [cx, cy] = at(id); let n = 0; for (let t = 0; t < 360; t += 6) { const x = Math.round(cx + Math.cos(t / 57.3) * r * L.k), y = Math.round(cy + Math.sin(t / 57.3) * r * L.k); let hit = false; for (let dy = -2; dy <= 2 && !hit; dy++) for (let dx = -2; dx <= 2 && !hit; dx++) if (L.edges[(y + dy) * W + x + dx]) hit = true; if (hit) n++; } return n / 60; };
+  assert.ok(ringAt('key1', 4.5) > .9 && ringAt('key2', 4.5) > .9, 'the keys on top are drawn'); assert.ok(ringAt('p13', 26) < .2, 'the speaker driver inside is not');
+  // a clear part is seen through: the turntable's platter shows under its dust cover, and the cover's own outline is there
+  { const tt = archetype('turntable'), T = lineViews(tt, { W, H }), tv = T.views[0], X = extentOf(tt.parts), pl = tt.parts.find(q => q.id === 'platter'), cx = tv.x + (pl.at[0] - X.lo[0]) * T.k, cy = tv.y + (X.hi[1] - pl.at[1]) * T.k; let n = 0;
+    for (let t = 0; t < 360; t += 6) { const x = Math.round(cx + Math.cos(t / 57.3) * 150 * T.k), y = Math.round(cy + Math.sin(t / 57.3) * 150 * T.k); let hit = false; for (let dy = -3; dy <= 3 && !hit; dy++) for (let dx = -3; dx <= 3 && !hit; dx++) if (T.edges[(y + dy) * W + x + dx]) hit = true; if (hit) n++; }
+    assert.ok(RESINS[tt.parts.find(q => q.id === 'cover').resin].clear && n / 60 > .85, `the platter's rim is drawn under the clear cover (${n} of 60 points round it)`); }
+  // a device chosen when the concept was started is the one built, whatever its words say
+  assert.equal(guessArch({ name: 'Untitled electronics', category: 'electronics', spec: {} }), 'puck'); assert.equal(guessArch({ name: 'Untitled electronics', category: 'electronics', spec: { arch: 'turntable' } }), 'turntable'); assert.equal(guessArch({ name: 'A turntable', category: 'electronics', spec: { arch: 'spaceship' } }), 'turntable');
+});
+
 test('the files carry the parts\' real shapes: the same 3D parts the page shows, built on the server', async () => {
   const s = archetype('cdplayer'), real = realMeshes(s), tris = id => real[id].reduce((a, m) => a + m.tri.length / 9, 0);
   assert.deepEqual(Object.keys(real).sort(), s.parts.map(p => p.id).sort(), 'every part is built');

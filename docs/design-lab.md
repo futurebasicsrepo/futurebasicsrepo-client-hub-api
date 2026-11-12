@@ -1007,13 +1007,21 @@ The catalogue sells things the Studio had no drawing for. Each is now a style of
 
 ## Starting from scratch
 
-**Design** (`/lab/studio`, with no concept chosen) offers **Start from scratch**: name it (optional), choose what it is and, for clothes, the style
-(`POST /v1/lab/concepts/from-scratch {name?, category, style?, shape?}`). The concept has no plan and uses no AI. Design opens on white paper with
-the product's own outline under it as a locked **guide**:
+**Design** (`/lab/studio`, with no concept chosen) offers **Start from scratch**: name it (optional), choose what it is and which one: the
+style for clothes and shoes, the shape for a plush, and for an electronic or an object what kind it is (a round device, a turntable, headphones,
+a figure, a tumbler…: `POST /v1/lab/concepts/from-scratch {name?, category, style?, shape?, arch?}`). The concept has no plan and uses no AI.
+Design opens on white paper with the product's own outline under it as a locked **guide**:
 
 - a garment shows its flat's pieces;
-- a plush shows its shape;
-- footwear, toys and electronics get a dot grid.
+- a plush shows its shape, a shoe its pattern;
+- an electronic, a toy or an object shows the assembly Engineering starts it from, seen from the top and from the front, one above the other
+  at one scale as on a drawing, each with its size in mm under it (`lineViews` in `src/lab-assembly.js`). Each view is drawn as an eye sees
+  it: the outline of the whole, and of every part that shows (the keys on a speaker's top, not the board under it). A clear part, such as a
+  turntable's dust cover, is seen through. It used to open on a dot grid, which read as a blank page while Engineering already had the product;
+- anything whose outline cannot be read gets a dot grid.
+
+The kind of device chosen is kept on the concept (`spec.arch`), so Engineering starts from that assembly. One started without choosing (or
+before this) is still guessed from its words, and an electronic with no words to go on starts as the round device.
 
 The guide is drawn at real size, so the studio knows the inches from the start (no ruler needed). Hide or delete the guide in Layers when you are
 done. A garment started from scratch draws its flats as a plain outline to draw over (`template: 'none'`), not from a sketch in the sketch pack.

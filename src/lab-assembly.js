@@ -936,6 +936,7 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
 }
 // the archetype a concept reads as, from its words (the designer's own words first)
 export function guessArch(c = {}) {
+  if (ARCHES[c.spec?.arch]) return c.spec.arch; // chosen when it was started from scratch
   const t = [c.name, c.spec?.silhouette, c.spec?.description, c.spec?.category].join(' ').toLowerCase();
   if (/\b(cd|compact disc|disc player)\b/.test(t) && /\b(player|deck|hi-?fi|component|stereo|disc)\b/.test(t)) return 'cdplayer';
   if (/\b(cassette|walkman|tape (player|deck))\b/.test(t)) return 'cassette';
@@ -950,6 +951,28 @@ export function guessArch(c = {}) {
   if (/\b(figure|figurine|vinyl|collectible|doll|action figure|statue|mascot)\b/.test(t)) return 'figure';
   if (/\b(case|box|organi[sz]er|storage|container|tray|caddy|tin)\b/.test(t)) return 'case';
   return c.category === 'toys' ? 'figure' : 'case';
+}
+// The product seen square on, as lines, for a page to draw over: from the top and from the front, one above the other at one scale as on a
+// drawing (the top view over the front view, sharing their width). Each view is worked out the way an eye sees it: which part is nearest
+// at every point, and a line wherever that changes. So the outline of the whole is there (2), and of each part that shows (1), and nothing
+// that is inside. A clear part (a dust cover, a lens) is seen through: its own outline is drawn, and so is what is under it.
+// → { k: px per mm, edges: one number a pixel, views: [{ name, x, y, w, h, mm: [across, up] }] }
+export function lineViews(s, { W = 1400, H = 1400, fill = .8, gap = 90, foot = 40 } = {}) {
+  const f = frontOf(s), r = [-f[1], f[0], 0], dotv = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; // across the page: the same way in both views
+  const VIEWS = [{ name: 'Top', u: [-f[0], -f[1], 0], near: [0, 0, 1] }, { name: 'Front', u: [0, 0, 1], near: f }]; // up the page, and which way is toward the eye
+  const meshes = s.parts.map(p => meshOf(p)), span = v => { let lo = Infinity, hi = -Infinity; for (const m of meshes) for (let i = 0; i < m.length; i += 3) { const d = m[i] * v[0] + m[i + 1] * v[1] + m[i + 2] * v[2]; if (d < lo) lo = d; if (d > hi) hi = d; } return [lo, hi]; };
+  const R = span(r), U = VIEWS.map(v => span(v.u)), wide = R[1] - R[0], tall = U.reduce((t, x) => t + x[1] - x[0], 0); if (!(wide > 0) || !(tall > 0)) return { k: 0, edges: new Uint8Array(W * H), views: [] };
+  const k = Math.min(W * fill / wide, (H * fill - gap - 2 * foot) / tall), x0 = Math.round((W - wide * k) / 2); let y = Math.round((H - (tall * k + gap + 2 * foot)) / 2);
+  const ids = new Int16Array(W * H), depth = new Float32Array(W * H), cids = new Int16Array(W * H), cdepth = new Float32Array(W * H), edges = new Uint8Array(W * H), views = [], clear = s.parts.map(p => Boolean(RESINS[p.resin]?.clear));
+  VIEWS.forEach((v, vi) => { const h = Math.round((U[vi][1] - U[vi][0]) * k), w = Math.round(wide * k), top = y; depth.fill(-Infinity, top * W, Math.min(H, top + h + 1) * W); cdepth.fill(-Infinity, top * W, Math.min(H, top + h + 1) * W);
+    meshes.forEach((m, pi) => { const I = clear[pi] ? cids : ids, Z = clear[pi] ? cdepth : depth; for (let i = 0; i < m.length; i += 9) { const P = [0, 1, 2].map(j => { const q = [m[i + j * 3], m[i + j * 3 + 1], m[i + j * 3 + 2]]; return [x0 + (dotv(q, r) - R[0]) * k, top + (U[vi][1] - dotv(q, v.u)) * k, dotv(q, v.near)]; });
+      const area = (P[1][0] - P[0][0]) * (P[2][1] - P[0][1]) - (P[2][0] - P[0][0]) * (P[1][1] - P[0][1]); if (Math.abs(area) < 1e-9) continue;
+      const xa = Math.max(0, Math.floor(Math.min(P[0][0], P[1][0], P[2][0]))), xb = Math.min(W - 1, Math.ceil(Math.max(P[0][0], P[1][0], P[2][0]))), ya = Math.max(top, Math.floor(Math.min(P[0][1], P[1][1], P[2][1]))), yb = Math.min(Math.min(H - 1, top + h), Math.ceil(Math.max(P[0][1], P[1][1], P[2][1])));
+      for (let py = ya; py <= yb; py++) for (let px = xa; px <= xb; px++) { const cx = px + .5, cy = py + .5, a = ((P[1][0] - cx) * (P[2][1] - cy) - (P[2][0] - cx) * (P[1][1] - cy)) / area, b = ((P[2][0] - cx) * (P[0][1] - cy) - (P[0][0] - cx) * (P[2][1] - cy)) / area, c = 1 - a - b; if (a < -1e-6 || b < -1e-6 || c < -1e-6) continue;
+        const z = a * P[0][2] + b * P[1][2] + c * P[2][2], o = py * W + px; if (z > Z[o]) { Z[o] = z; I[o] = pi + 1; } } } });
+    for (let py = Math.max(0, top - 1); py <= Math.min(H - 2, top + h); py++) for (let px = Math.max(0, x0 - 1); px <= Math.min(W - 2, x0 + w); px++) { const o = py * W + px; for (const n of [o + 1, o + W]) { const lv = Boolean(ids[o] || cids[o]) !== Boolean(ids[n] || cids[n]) ? 2 : ids[o] !== ids[n] || cids[o] !== cids[n] ? 1 : 0; if (lv) { if (edges[o] < lv) edges[o] = lv; if (edges[n] < lv) edges[n] = lv; } } }
+    views.push({ name: v.name, x: x0, y: top, w, h, mm: [r1(wide), r1(U[vi][1] - U[vi][0])] }); y = top + h + foot + gap; });
+  return { k, edges, views };
 }
 export const radioOf = c => { const t = [c.name, c.spec?.description, c.spec?.silhouette].join(' ').toLowerCase(); return /\bwi-?fi\b|\bsmart (home|hub|display)\b/.test(t) ? 'wifi' : /\b(bluetooth|wireless|ble|app)\b/.test(t) ? 'ble' : c.category === 'electronics' ? 'ble' : 'none'; };
 

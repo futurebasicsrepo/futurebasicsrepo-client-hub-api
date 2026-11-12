@@ -2917,6 +2917,11 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
   ok(bad.spec?.build.head === 'none' && bad.spec.build.legs === 'none', '   parts that do not go on a body are left off (a bean is its own head; four legs go on a four-legged body)', bad.spec?.build);
   const shoe = await K('/concepts/from-scratch', { body: { category: 'toys', name: `Scratch toy ${stamp}` } }), sp = (await K(`/concepts/${shoe.json.concept.id}/pattern`)).json;
   ok(sp.kind === 'soon' && /engineered as 3D parts/.test(sp.soon) && (await K(`/concepts/${shoe.json.concept.id}/pattern.dxf`)).status === 422, '   toys and objects are engineered as 3D parts (the Engineering page), not cut from a pattern', sp.soon);
+  // a product that is engineered says what it is when it is started: Engineering starts from that, not from a guess at its words
+  const tt = await K('/concepts/from-scratch', { body: { category: 'electronics', arch: 'turntable' } }), el = await K('/concepts/from-scratch', { body: { category: 'electronics', arch: 'spaceship', name: `Scratch device ${stamp}` } });
+  const ta = (await K(`/concepts/${tt.json.concept?.id}/assembly`)).json, ea = (await K(`/concepts/${el.json.concept?.id}/assembly`)).json;
+  ok(tt.status === 201 && tt.json.concept.name === 'Untitled turntable' && ta.spec?.arch === 'turntable' && ta.saved === false, '   an electronic started as a turntable is a turntable in Engineering', [tt.json.concept, ta.spec?.arch]);
+  ok(el.status === 201 && ea.spec?.arch === 'puck', '   one that names no device (or one that is not there) starts as the round device, as before', ea.spec?.arch);
   if (!playwright) { ok(true, 'needs a browser'); return; }
   const b = await playwright.chromium.launch();
   try {
@@ -2925,6 +2930,13 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
     // the picker offers it
     await page.goto(`${BASE}/lab/studio`, { waitUntil: 'networkidle' }); await page.waitForSelector('#scratchF');
     await page.selectOption('#scCat', 'bottoms'); ok(await page.evaluate(() => [...document.querySelectorAll('#scStyle option')].map(o => o.value).join()) === 'pants,shorts,skirt,leggings', '4. the picker offers Start from scratch, with the styles of what you are making');
+    await page.selectOption('#scCat', 'electronics'); const devs = await page.evaluate(() => [...document.querySelectorAll('#scStyle option')].map(o => o.value));
+    ok(devs[0] === 'puck' && devs.includes('turntable') && devs.includes('headphones') && await page.evaluate(() => !document.querySelector('#scStyle').classList.contains('hidden')), '   an electronic picks what kind of device it is', devs);
+    // an electronic started from scratch does not open on a blank page: the device Engineering starts it from is the guide, from the top and the front
+    for (const [id, what, mm] of [[el.json.concept.id, 'round device', [96, 96]], [tt.json.concept.id, 'turntable', [420, 340]]]) {
+      await page.goto(`${BASE}/lab/studio?concept=${id}&scratch=1`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+      const g = await page.evaluate(() => { const l = LAYERS[1], c = l.raster, d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let ink = 0, x0 = 1e9, x1 = -1; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) { ink++; const x = (i >> 2) % c.width; if (x < x0) x0 = x; if (x > x1) x1 = x; } return { name: l.name, locked: l.locked, ink, wide: x1 - x0, ppi: PPI, set: PPISET, guide: GUIDE_PPI }; });
+      ok(new RegExp(`^Guide: the ${what} from the top and the front, at real size`).test(g.name) && g.locked && g.ink > 8000 && g.set && Math.abs(g.wide / g.guide * 25.4 - mm[0]) < 2, `   an electronic opens on its ${what} as a locked guide (${mm[0]} mm across, at real size), not a blank page`, g); }
     await page.goto(`${BASE}${made.json.studio}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
     const st = await page.evaluate(() => ({ names: LAYERS.map(l => l.name), locked: LAYERS[1]?.locked, ppi: PPI, set: PPISET }));
     ok(st.names[0] === 'Paper' && /hoodie outline/i.test(st.names[1] || '') && st.locked && st.ppi > 10 && st.set, '5. Design opens on white paper with the hoodie\'s outline as a locked guide, and knows the inches from it', st);
@@ -2943,7 +2955,7 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
     const pp2 = await ph.newPage(); pp2.on('pageerror', e => errs.push(String(e))); await pp2.goto(`${BASE}/lab/pattern?concept=${cid}&embed=1`, { waitUntil: 'networkidle' }); await pp2.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
     ok(await pp2.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), '   the pattern fits a phone');
     ok(errs.length === 0, 'no page errors', errs); await oc.close(); await ph.close();
-  } finally { await b.close(); for (const id of [cid, pid, shoe.json.concept?.id]) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
+  } finally { await b.close(); for (const id of [cid, pid, shoe.json.concept?.id, tt.json.concept?.id, el.json.concept?.id]) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
 await journey('J245', 'Footwear: a shoe started from scratch is drafted on its last (length, girths, heel, toe spring from the size and the style), with the size run, the moulds and lasts it takes, and the upper exploded into its pieces off the side and the bottom; the style, size and width change it; the last is drawn for the last maker; the files come out in the size asked for', async () => {

@@ -15,6 +15,7 @@ import { proofCard, proofPage, proveSizes } from './lab-pattern-proof.js';
 import { cleanConstruction, constructionWords, SLEEVES, COLLARS, OPENINGS, POCKETS, WAISTS, LEGS, PANELS } from './lab-construction.js';
 import { PLUSH_TYPE, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_MANES, PLUSH_TAILS, PLUSH_PARTS, garmentPattern, bagPattern, BAG_KINDS, applyEdits, cutWords, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
 import { CATEGORIES, planLineOf, putOnLine } from './lab.js';
+import { ARCHES } from './lab-assembly.js';
 import { silhouette, readShoe, proposal } from './lab-shoe-read.js';
 import { readPlush, plushProposal } from './lab-plush-read.js';
 import { reviewShoe, openaiAsk, BAR as REVIEW_BAR } from './lab-shoe-review.js';
@@ -401,9 +402,11 @@ export function registerLabPatternRoutes(app, d) {
     const guessed = line && !b.style && category !== 'footwear' && category !== 'plush' ? detectStyle({ name: line.name, category, spec: { silhouette: line.name, description: '' } })?.style : null;
     const shoe = category === 'footwear' ? (FW_STYLES[b.style] ? b.style : 'sneaker') : null, style = !shoe && STYLES[b.style] ? b.style : !shoe && fits(guessed) ? guessed : null, shape = PLUSH_SHAPES[b.shape] ? b.shape : 'bear';
     if (style && STYLES[style].category !== category && !(category === 'knitwear' && STYLES[style].category === 'tops')) return bad(reply, 'That style is not in that category');
-    const label = shoe ? FW_STYLES[shoe].label : category === 'plush' ? PLUSH_TYPE[shape] : style ? STYLES[style].label : CATEGORIES.find(x => x.id === category).label;
+    // a product that is engineered (electronics, toys and objects) says what it is: Engineering starts from that assembly, and the page's guide is its outline
+    const arch = ['electronics', 'toys', 'home'].includes(category) && ARCHES[b.arch] && b.arch !== 'custom' ? b.arch : null;
+    const label = shoe ? FW_STYLES[shoe].label : category === 'plush' ? PLUSH_TYPE[shape] : style ? STYLES[style].label : arch ? ARCHES[arch].label.split(' (')[0] : CATEGORIES.find(x => x.id === category).label;
     const name = clip(b.name, 120) || line?.name || `Untitled ${label.toLowerCase()}`;
-    const spec = { description: 'Started from scratch in Design.', silhouette: style ? STYLES[style].label : category === 'plush' || shoe ? label : '', fabric: '', fit: '', details: [], trims: '', colors: [], scratch: true, ...(style ? { style, template: 'none' } : {}), ...(category === 'plush' ? { plush: { shape } } : {}), ...(shoe ? { footwear: { style: shoe } } : {}) };
+    const spec = { description: 'Started from scratch in Design.', silhouette: style ? STYLES[style].label : category === 'plush' || shoe || arch ? label : '', fabric: '', fit: '', details: [], trims: '', colors: [], scratch: true, ...(style ? { style, template: 'none' } : {}), ...(arch ? { arch } : {}), ...(category === 'plush' ? { plush: { shape } } : {}), ...(shoe ? { footwear: { style: shoe } } : {}) };
     const r = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,$2,'core',$3,'',$4,$5) returning id`, [name, category, spec, actorOf(req), own(req)])).rows[0];
     if (shoe) await pool.query(`insert into lab_patterns(concept_id, kind, spec, updated_by) values($1,'footwear',$2,$3) on conflict do nothing`, [r.id, fwDefaults(shoe), actorOf(req)]);
     if (category === 'plush') await pool.query(`insert into lab_patterns(concept_id, kind, spec, updated_by) values($1,'plush',$2,$3) on conflict do nothing`, [r.id, plushDefaults(shape), actorOf(req)]);
