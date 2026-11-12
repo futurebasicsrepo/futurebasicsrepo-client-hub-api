@@ -64,7 +64,7 @@ html[data-focus] .studio[data-v=board] .boardhost{padding-top:72px;height:100%}.
     const wait = document.getElementById('bWait'); if (!f) { if (wait) wait.textContent = FF()?.unsupported?.() || 'The flats are not drawn for this piece.'; return; }
     wait?.remove();
     const piece = document.getElementById('bPiece'), size = f.size();
-    piece.insertAdjacentHTML('beforeend', fig('front', own(f.frame('front')), 'Flat front', size) + fig('back', own(f.frame('back')), 'Flat back', size));
+    piece.insertAdjacentHTML('beforeend', fig('front', own(f.frame('front')), f.viewLabels?.()?.wrap ? f.viewLabels().front : 'Flat front', size) + fig('back', own(f.frame('back')), f.viewLabels?.()?.wrap ? f.viewLabels().back : 'Flat back', size)); // a cup's two flats are its sides and its wrap
     const cws = f.colourways().filter(c => c.hex);
     body.insertAdjacentHTML('beforeend', `<h4>Colourways</h4><div class="row">${cws.length ? cws.map(c => fig('front', own(f.frame('front', { color: c.hex })), `<i class="sw" style="background:${esc(c.hex)}"></i>${esc(c.name || c.hex)}`, esc(c.pantone || ''), 'data-cw="1"')).join('') : '<p class="note">No colourways on the concept yet: add them under Materials, and each one is drawn here.</p>'}</div>`);
     body.insertAdjacentHTML('beforeend', `<h4>Turns</h4><div class="row" id="bTurns"><p class="note">Looking for the turns…</p></div><h4>Walk</h4><div class="row" id="bWalk"></div>`); paintTurns();

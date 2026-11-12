@@ -1,7 +1,7 @@
 // Decorations as the factory sees them: how big a graphic is on the garment in inches, whether that suits where it goes and how it is made,
 // and what it costs per piece. Used by the studio (a layer measured with the ruler), the flats (placements already in inches), the
 // decoration sheet and the bill of materials.
-import { cleanRules } from './lab-library.js';
+import { cleanRules, PRODUCT_TECHNIQUES } from './lab-library.js';
 
 const r2 = v => Math.round(v * 100) / 100;
 const fmt = v => `${r2(v)} in`;
@@ -63,9 +63,14 @@ export const DECOR_COST = {
   'all-over sublimation': { setup: 0, unit: 150, perIn2: .35, bands: [1, 1, 1] },
   'all-over screen print': { setup: 6000, perSetup: 'screen', unit: 250, perColour: 60, perIn2: .05, bands: [1, 1, 1] }
 };
+// The techniques for product types that are not cloth (a mug's sublimation, a UV print, a pad print: src/lab-library.js PRODUCT_TECHNIQUES)
+// have no figures here: every one above was worked out for garments, and a base this table does not know used to be costed as a screen
+// print. Those say so instead: no estimate, nothing added to the piece's cost, until a factory's figures are put in this table.
+export const unpriced = base => PRODUCT_TECHNIQUES.includes(base) && !DECOR_COST[base];
 const band = w => (w <= 4 ? 0 : w <= 10 ? 1 : 2);
 // → { unitCents, setupCents, perPieceCents, basis } for one decoration on one piece, at a planned quantity
 export function decorationCost({ base = 'screen print', rules = {}, widthIn = 4, heightIn = 4, colours = 1, coverage = .6, qty = 300, calibration = null }) {
+  if (unpriced(base)) return { unitCents: 0, setupCents: 0, perPieceCents: 0, qty: Math.max(1, Math.round(qty || 300)), basis: 'no estimate yet: the supplier\'s quote sets it', unpriced: true };
   const d = { ...(DECOR_COST[base] || DECOR_COST['screen print']), ...((rules && rules.cost) || {}) }, n = Math.max(1, Math.round(colours || 1)), area = Math.max(.25, widthIn * heightIn * Math.min(1, Math.max(.05, coverage)));
   let unit = d.unit + (d.perColour || 0) * (n - 1) + (d.perIn2 || 0) * area, setup = d.setup || 0, basis = [];
   if (base === 'embroidery') { const st = Math.round(area * ((rules && rules.density) || 1800) / 100) * 100; unit += (d.per1000 || 18) * st / 1000; basis.push(`about ${st.toLocaleString('en-US')} stitches`); }
@@ -82,7 +87,7 @@ export function decorationCost({ base = 'screen print', rules = {}, widthIn = 4,
 // a decoration line for the concept's costing and the pack's bill of materials
 export const decorationLine = ({ name, technique, base, widthIn, heightIn, colours, pantones = [], cost, view = 'front', placement = '' }) => ({
   name: String(name || 'Decoration').slice(0, 60), technique: String(technique || base || '').slice(0, 60), base, widthIn: r2(widthIn), heightIn: r2(heightIn), colours, pantones: pantones.slice(0, 8), view, placement: String(placement).slice(0, 160),
-  unitCents: cost.unitCents, setupCents: cost.setupCents, perPieceCents: cost.perPieceCents, qty: cost.qty, basis: cost.basis
+  unitCents: cost.unitCents, setupCents: cost.setupCents, perPieceCents: cost.perPieceCents, qty: cost.qty, basis: cost.basis, ...(cost.unpriced ? { unpriced: true } : {})
 });
 
 // ---- one artwork size per group of garment sizes ----

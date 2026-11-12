@@ -30,7 +30,8 @@ import { sewoutBox, sewoutPng, sewoutFrames, digitizeReview } from './lab-sewout
 import { jobFile, jobZip } from './lab-jobfile.js';
 import { indexSeparate } from './lab-index-sep.js';
 import { zip as zipFiles } from './zip.js';
-import { cleanRules } from './lab-library.js';
+import { cleanRules, cleanSurfaces } from './lab-library.js';
+import { STYLES as FLAT_STYLES, techniqueFits } from './lab-flats.js';
 import { GRAPHIC_PLACE } from './lab-concepts.js';
 import { brandHits } from './lab-concepts.js';
 import { logoSvg, COLORS } from './brand-kit.js';
@@ -133,9 +134,11 @@ export function registerLabStudioRoutes(app, d) {
   const note = async (id, req, body) => pool.query(`insert into lab_concept_comments(concept_id,user_id,name,body) values($1,$2,$3,$4)`, [id, actorOf(req), await nameOf(req), clip(body, 1000)]);
   const concept = async (req, reply) => {
     if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404), null;
-    const r = (await pool.query('select id, name, category, status, spec, plan_id, product_id, (raw is not null) has_plain, (image is not null) has_image, exists(select 1 from lab_flats f where f.concept_id=lab_concepts.id) has_flats from lab_concepts where id=$1', [req.params.id])).rows[0];
+    const r = (await pool.query('select id, name, category, status, spec, plan_id, product_id, (raw is not null) has_plain, (image is not null) has_image, exists(select 1 from lab_flats f where f.concept_id=lab_concepts.id) has_flats, (select style from lab_flats f where f.concept_id=lab_concepts.id) flat_style from lab_concepts where id=$1', [req.params.id])).rows[0];
     if (!r) return bad(reply, 'Not found', 404), null; return r;
   };
+  // the flat style a concept is drawn as: its saved flat's, or the one a catalogue product names; none known, a garment (cloth)
+  const pieceStyle = c => (FLAT_STYLES[c.flat_style] ? c.flat_style : c.spec?.catalog && FLAT_STYLES[c.spec?.style] ? c.spec.style : 'tee');
   const fontList = async req => (await pool.query('select id, name, family, format, created_at from lab_fonts where ($1::uuid is null or client_id=$1) order by lower(name)', [own(req)])).rows.map(fontShape); // a room has only its own fonts; Future Basics staff see every font
   const uses = new Map(), dayOf = () => new Date().toISOString().slice(0, 10);
   const cap = () => Number(env.LAB_DAILY_STUDIO_AI ?? 60);
@@ -154,7 +157,8 @@ export function registerLabStudioRoutes(app, d) {
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
       palette, graphics: (c.spec?.graphics || []).filter(g => g.art).map(g => ({ art: g.art, name: clip(g.name, 60) })), graphicNames: (c.spec?.graphics || []).map(g => clip(g.name, 60)).filter(Boolean),
       ai: { connected: cfg.configured, model: cfg.model || null, left: left() }, fonts: await fontList(req),
-      techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, t.rules, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived and ($1::uuid is null or t.client_id=$1 or (t.client_id is null and t.builtin)) order by kind, builtin desc, name`, [own(req)]).catch(() => ({ rows: [] }))).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base) })), placements: Object.entries(PLACEMENTS).map(([id, p]) => ({ id, label: p.label, w: p.w }))
+      // the techniques made on what this piece is (src/lab-flats.js techniqueFits): a garment's for a garment, a mug's for a mug
+      techniques: (await pool.query(`select t.id, t.kind, t.name, t.summary, t.base, t.finish, t.rules, t.surfaces, (select count(*)::int from lab_technique_photos p where p.technique_id=t.id) photos from lab_techniques t where not archived and ($1::uuid is null or t.client_id=$1 or (t.client_id is null and t.builtin)) order by kind, builtin desc, name`, [own(req)]).catch(() => ({ rows: [] }))).rows.map(t => ({ ...t, rules: cleanRules(t.rules || {}, t.base), surfaces: cleanSurfaces(t.surfaces) || ['cloth'] })).filter(t => techniqueFits(t, pieceStyle(c))), placements: Object.entries(PLACEMENTS).map(([id, p]) => ({ id, label: p.label, w: p.w }))
     };
   });
 

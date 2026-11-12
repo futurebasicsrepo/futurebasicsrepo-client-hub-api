@@ -3,6 +3,9 @@
 // and back where the product has two sides. They are the product types the supplier catalogue sells and the Studio did not have
 // (src/lab-catalog.js sends each catalogue item to one). src/lab-flats.js adds them to STYLES as kind 'goods' and draws them with goodsGeom().
 // They are printed or bought in, not cut and sewn by the Lab, so they have no pattern and one size.
+// Drinkware is printed on a wrap, so it is drawn two ways: its sides (the cup from the front and from the back) and its wrap laid flat at true
+// size, where one graphic can run right round it (wrapGeom, below). Each type also says what it is decorated on (SURFACES): the techniques a
+// graphic can be made with, and what the Studio offers beside the drawing, follow from that.
 // The same file runs in the page (served as /lab/lab-goods.js) and on the service, so it uses neither the DOM nor Node.
 //
 // Each type: label, category (the concept's category in the Lab), group (how the catalogue is browsed), shape (one of the drawings below),
@@ -94,6 +97,21 @@ export const GOODS = {
   other: G('Other product', 'Other', 'panel', { width: 12, height: 12 }, 'a 12 in square panel to place the artwork on: the product itself is not drawn')
 };
 
+// what each type is decorated on. A technique says which of these it is made on (src/lab-library.js); a product offers the techniques made on
+// its own, so a mug is not embroidered and a towel is not pad printed. `any` is the plain panel, whose product is not known: it takes them all.
+// Typical of each product, not a supplier's word: a coaster may be cork, a clock face paper.
+export const SURFACES = { cloth: 'Cloth', soft: 'Fabric-faced foam and rubber', ceramic: 'Ceramic', glass: 'Glass', metal: 'Coated metal', plastic: 'Plastic and composites', paper: 'Paper, card and canvas', wood: 'Wood' };
+const ON = {
+  cloth: 'tapestry flag pillow pillowcase blanket towel teatowel rug showercurtain curtain placemat napkin tablerunner tablecloth bedding apron stocking petbed petcollar pettee seatcover wheelcover socks scarf bandana facemask belt bib cooler umbrella',
+  soft: 'cancooler mousepad deskmat laptopsleeve doormat carmat petmat yogamat flipflop slide clog',
+  ceramic: 'mug coaster', glass: 'canglass pintglass wineglass rocksglass', metal: 'tumbler tumblerhandle bottle petbowl sign plate',
+  plastic: 'clock phonecase powerbank speaker earbudscase chargingpad ball paddle', paper: 'poster canvas sticker notebook puzzle card calendar recordsleeve', wood: 'skateboard', any: 'other'
+};
+for (const [surface, types] of Object.entries(ON)) for (const k of types.split(' ')) GOODS[k].surface = surface;
+// what the Studio offers beside the drawing of a product type: cloth, sewn-in labels and sewing details (pockets, zips, stitch lines) only for
+// what is sewn from cloth; a wash, a fit and a garment sketch for none of them
+export const goodsTakes = S => { const sewn = S?.surface === 'cloth' || S?.surface === 'any'; return { cloth: sewn, labels: sewn, sewing: sewn, wash: false, fit: false, sketch: false }; };
+
 export const GOODS_POM = { diameter: 'Diameter', baseDiameter: 'Diameter at the base', innerDiameter: 'Diameter of the opening', wrapWidth: 'Wrap print area, around', printHeight: 'Print area, height', depth: 'Depth of the edge', bibWidth: 'Bib width, top edge', legLength: 'Leg, top edge to the bottom of the heel', footLength: 'Foot, heel to toe', length: 'Length', chest: 'Chest, flat', neckWidth: 'Neck, flat', handle: 'Handle length' };
 
 // ---- the drawings ----
@@ -161,10 +179,16 @@ function disc(S, m, view) {
   return out(poly, parts, named(S, view, poly), keep, [{ key: 'diameter', from: [-r, 2 * r + .7], to: [r, 2 * r + .7] }]);
 }
 // drinkware and other round things seen from the side. profile: [[how far down, 't' the top diameter | 'b' the base | a share of the top]...]
-function cup(S, m, view) {
-  const t = m.diameter, b = m.baseDiameter || t, lid = S.lid || 0, H = m.height, bodyH = H - lid, back = view === 'back', sg = back ? -1 : 1;
+// what a cup's drawings share: its side profile, and its print area (as tall as printHeight, starting printTop below the lid or centred on the body)
+function cupFrame(S, m) {
+  const t = m.diameter, b = m.baseDiameter || t, lid = S.lid || 0, H = m.height, bodyH = H - lid;
   const prof = (S.profile || [[0, 't'], [1, 'b']]).map(([f, d]) => [lid + f * bodyH, (d === 't' ? t : d === 'b' ? b : d * t) / 2]);
   const halfAt = y => { for (let i = 0; i + 1 < prof.length; i++) { const [y0, w0] = prof[i], [y1, w1] = prof[i + 1]; if (y >= y0 - 1e-9 && y <= y1 + 1e-9) return y1 === y0 ? Math.min(w0, w1) : w0 + (w1 - w0) * (y - y0) / (y1 - y0); } return prof[prof.length - 1][1]; };
+  const ph = Math.min(m.printHeight || bodyH, bodyH), top = lid + Math.min(S.printTop ?? (bodyH - ph) / 2, bodyH - ph);
+  return { t, b, lid, H, bodyH, prof, halfAt, ph, top };
+}
+function cup(S, m, view) {
+  const { t, b, lid, H, bodyH, prof, halfAt, ph, top } = cupFrame(S, m), back = view === 'back', sg = back ? -1 : 1;
   const right = prof.map(([y, w]) => [w, y]), poly = [...flip(right), ...right.slice().reverse()];
   const parts = [closed(poly)], extra = [], keep = [];
   if (lid) { const lw = prof[0][1] + .08; parts.push(closed(rrect(-lw, 0, lw, lid, Math.min(.15, lid / 3)))); }
@@ -175,9 +199,67 @@ function cup(S, m, view) {
   if ((S.marks || []).includes('grille')) for (let y = lid + bodyH * .08; y < lid + bodyH * .3; y += .18) parts.push(line([-halfAt(y) + .15, y], [halfAt(y) - .15, y], 'rib'));
   // the part of the wrap that shows from this side: as tall as the print area, and as wide as the side is at its narrowest there (less a little
   // for the curve), or half the wrap if that is less
-  const ph = Math.min(m.printHeight || bodyH, bodyH), top = lid + Math.min(S.printTop ?? (bodyH - ph) / 2, bodyH - ph), ys = [top, top + ph, ...prof.map(q => q[0]).filter(y => y > top && y < top + ph)];
+  const ys = [top, top + ph, ...prof.map(q => q[0]).filter(y => y > top && y < top + ph)];
   const half = Math.min(...ys.map(halfAt)) * .92, pw = Math.min(half, (m.wrapWidth || t * 3) / 4), area = rrect(-pw, top, pw, top + ph);
   return out(poly, parts, named(S, view, area), keep, [{ key: 'diameter', from: [-t / 2, -.5 - (S.straw ? 2.2 : 0)], to: [t / 2, -.5 - (S.straw ? 2.2 : 0)] }, { key: 'height', from: [-Math.max(t, b) / 2 - .7, 0], to: [-Math.max(t, b) / 2 - .7, H] }], extra);
+}
+
+// ---- drinkware's wrap ----
+// A cup is printed on a wrap: one sheet, wrapWidth × printHeight, laid round it. So a cup has two drawings: its sides (seen from the front, and
+// from the back beside it when it has two sides) and its wrap laid flat at true size. A graphic placed on the wrap is where it prints; the sides
+// show what falls on each.
+export const hasWrap = S => S?.shape === 'cup';
+// The wrap of a cup at these measurements, in inches the way it is seen from outside (x 0 its middle, to the viewer's right positive):
+//   W, ph, top   its width, its height, and how far below the top edge of the cup it starts (the sides measure down from the same edge)
+//   r, C         the cup's half width where it is printed (the mean over the print area) and the way round it there
+//   at           where the centres fall, from the middle of the wrap. A cup with a handle is wrapped from one side of the handle round to the
+//                other: the middle of the wrap is opposite the handle, the front (drawn with the handle to the right) a quarter turn to the
+//                right of it, the back a quarter turn to the left, the handle half a turn either way. A cup with no handle is wrapped from the
+//                middle of its front, and its ends meet at the back.
+//   straight     the cup is as wide at the top of the print area as at the bottom (a mug, a tumbler), so a flat sheet lies on it as drawn; a
+//                glass that tapers takes a sheet curved to fit it, which the supplier's template gives
+//   rows         the print area in bands down the cup, each with the half width there: how the sides draw what is on the wrap
+export function wrapOf(S, m) {
+  const f = cupFrame(S, m), n = 8, halves = Array.from({ length: n + 1 }, (_, i) => f.halfAt(f.top + f.ph * i / n)), r = halves.reduce((a, v) => a + v, 0) / halves.length, C = 2 * Math.PI * r;
+  const W = m.wrapWidth || f.t * 3, straight = Math.max(...halves) - Math.min(...halves) < r * .02;
+  const rows = straight ? [{ y0: f.top, y1: f.top + f.ph, half: r }] : Array.from({ length: n }, (_, i) => ({ y0: f.top + f.ph * i / n, y1: f.top + f.ph * (i + 1) / n, half: (halves[i] + halves[i + 1]) / 2 }));
+  return { W, ph: f.ph, top: f.top, r, C, straight, rows, handle: Boolean(S.handle), at: S.handle ? { front: C / 4, back: -C / 4, handle: C / 2 } : { front: 0, back: C / 2 } };
+}
+// the guide lines on the wrap (a centre that falls on it) and what is said under it (a centre or a handle that falls past its ends, ends that overlap)
+function wrapGuides(S, m) {
+  const w = wrapOf(S, m), half = w.W / 2, on = x => Math.abs(x) <= half + 1e-6, guides = [], notes = [], gap = (w.C - w.W) / 2, far = gap > .0625; // far: the ends stop at least an eighth short of meeting
+  if (on(w.at.front)) guides.push({ key: 'front', x: w.at.front, label: 'Centre of the front' });
+  if (w.handle) {
+    if (on(w.at.back)) guides.push({ key: 'back', x: w.at.back, label: 'Centre of the back' });
+    if (!on(w.at.front)) notes.push({ t: 'The centres of the front and the back are % past the ends of this wrap', v: w.C / 4 - half });
+    if (far) notes.push({ t: 'The handle is % past each end of the wrap', v: gap });
+    else for (const sg of [-1, 1]) guides.push({ key: 'handle', x: sg * Math.min(w.at.handle, half), label: 'Handle' });
+  } else if (far) notes.push({ t: 'The wrap stops % short of the centre of the back at each end', v: gap });
+  else { for (const sg of [-1, 1]) guides.push({ key: 'back', x: sg * Math.min(w.at.back, half), label: 'Centre of the back' }); if (gap < -.03125) notes.push({ t: 'The wrap is % longer than the way round, so its ends overlap at the back', v: -gap * 2 }); }
+  if (!w.straight) notes.push({ t: 'This one tapers: the supplier\'s template curves the sheet to fit it' });
+  return { w, guides, notes };
+}
+// the wrap laid flat: a rectangle wrapWidth × printHeight, its top as far below the top edge of the cup as the print area starts
+function wrapGeom(S, m) {
+  const { w, guides, notes } = wrapGuides(S, m), x = w.W / 2, y0 = w.top, y1 = w.top + w.ph, poly = rrect(-x, y0, x, y1);
+  return { ...out(poly, [closed(poly)], { 'wrap print area': poly }, [], [{ key: 'wrapWidth', from: [-x, y1 + .7], to: [x, y1 + .7] }, { key: 'printHeight', from: [x + .7, y0], to: [x + .7, y1] }]), guides, notes, wrap: w };
+}
+// how far to the right of the front the back is drawn: clear of both handles, a whole number of inches so it seldom moves when a measurement is typed
+const backX = (S, m) => { const need = q => Math.ceil(cup(S, q, 'front').bounds.x1 - cup(S, q, 'back').bounds.x0 + 1); return Math.max(need(S.base), need(m)); };
+export const backSideX = (S, m) => (hasWrap(S) && S.sides === 2 ? backX(S, m) : 0);
+const shiftD = (d, dx) => d.replace(/([ML])\s*(-?[\d.]+) (-?[\d.]+)/g, (_, c, x, y) => `${c}${+(+x + dx).toFixed(3)} ${y}`);
+const moved = (g, dx) => { const mv = pts => pts.map(([x, y]) => [x + dx, y]); return { ...g, outline: mv(g.outline), parts: g.parts.map(q => ({ ...q, d: shiftD(q.d, dx) })), regions: Object.fromEntries(Object.entries(g.regions).map(([k, v]) => [k, mv(v)])), keepouts: g.keepouts.map(k => ({ ...k, poly: mv(k.poly) })), pom: g.pom.map(q => ({ ...q, from: [q.from[0] + dx, q.from[1]], to: [q.to[0] + dx, q.to[1]] })), bounds: { ...g.bounds, x0: g.bounds.x0 + dx, x1: g.bounds.x1 + dx } }; };
+// a cup's sides: the front where it always was (its centre line x 0), and the back beside it when the cup has two sides. `side` gives one alone
+// (a tech pack's front and back pictures). wrapOn: how each side shows what is placed on the wrap (its centre line, and where on the wrap it faces)
+function sidesGeom(S, m, side = null) {
+  const w = wrapOf(S, m), A = cup(S, m, 'front'), two = S.sides === 2, dx = two ? backX(S, m) : 0, B = two ? moved(cup(S, m, 'back'), dx) : null;
+  const centres = [{ key: 'front', x: 0, s: w.at.front }, ...(two ? [{ key: 'back', x: dx, s: w.at.back }] : [])], H = m.height;
+  const one = (g, key) => ({ ...g, outlines: [g.outline], sides: centres.filter(c => c.key === key), wrapOn: { ...w, centres: centres.filter(c => c.key === key) } });
+  if (!two || side === 'front') return one(A, 'front');
+  if (side === 'back') return one(B, 'back');
+  return { ...A, outlines: [A.outline, B.outline], parts: [...A.parts, ...B.parts], regions: { ...A.regions, ...B.regions }, keepouts: [...A.keepouts, ...B.keepouts],
+    bounds: { x0: Math.min(A.bounds.x0, B.bounds.x0), y0: Math.min(A.bounds.y0, B.bounds.y0), x1: Math.max(A.bounds.x1, B.bounds.x1), y1: Math.max(A.bounds.y1, B.bounds.y1) },
+    labels: [{ x: 0, y: H + .9, text: 'Front' }, { x: dx, y: H + .9, text: 'Back' }], sides: centres, wrapOn: { ...w, centres } };
 }
 // a sock laid flat, toe to the viewer's right on its outer side: the leg from the top edge to the heel, the foot from the heel to the toe
 function sock(S, m, view) {
@@ -245,7 +327,11 @@ function paddle(S, m, view) {
   return out(poly, parts, named(S, view, rrect(-w + .7, .7, w - .7, face - .7), 'face print area'), [], [{ key: 'width', from: [-w, -.6], to: [w, -.6] }, { key: 'length', from: [w + .7, 0], to: [w + .7, L] }]);
 }
 const SHAPES = { panel, disc, cup, sock, sole, apron, triangle, pettee, seatcover, paddle };
-// → { outline, parts: [{d, kind}], regions: {name: polygon}, keepouts, pom, bounds, anchorName }, as src/lab-flats.js geometry() gives for a garment
-export function goodsGeom(S, m, view = 'front') { return (SHAPES[S.shape] || panel)(S, m, view === 'back' ? 'back' : 'front'); }
-// does the product have a second side to print? (a mug's other side, a pillow's back; a poster has none)
-export const goodsSides = S => (S?.sides === 2 ? ['front', 'back'] : ['front']);
+// → { outline, parts: [{d, kind}], regions: {name: polygon}, keepouts, pom, bounds, anchorName }, as src/lab-flats.js geometry() gives for a garment.
+// A cup's 'front' is its sides and its 'back' is its wrap (above): they also give outlines (one a side), labels, guides and notes to draw.
+export function goodsGeom(S, m, view = 'front', { side = null } = {}) {
+  if (hasWrap(S)) return view === 'back' ? wrapGeom(S, m) : sidesGeom(S, m, side);
+  return (SHAPES[S.shape] || panel)(S, m, view === 'back' ? 'back' : 'front');
+}
+// the drawings a product has: a second side to print (a mug's wrap, a pillow's back) or one (a poster has none)
+export const goodsSides = S => (S?.sides === 2 || hasWrap(S) ? ['front', 'back'] : ['front']);

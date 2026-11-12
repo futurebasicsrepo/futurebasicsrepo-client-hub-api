@@ -173,6 +173,14 @@ Labels chosen on a garment are drawn on its flats where they are sewn, with thei
   bottles, glasses), wall art (posters, canvas, metal signs, tapestries, flags), home textiles (pillows, blankets, towels, rugs, curtains, aprons),
   tech (phone cases, mouse pads, desk mats, laptop sleeves), paper goods (stickers, notebooks, puzzles), pet, sports and car products, socks,
   scarves and sandals. Start one from the Catalogue. These have no pattern and one size; say "place your artwork", not "design the pattern".
+  - **Drinkware has a wrap.** A mug, tumbler, bottle or glass has two views, **Sides** and **Wrap**. The Wrap is the print area laid flat at
+    true size, with lines for the centre of the front, the centre of the back and the handle. Lay one graphic right round it, then switch to
+    Sides to see it on the mug from the front and from the back. A good shot: drag a band across the Wrap, cut to Sides.
+  - **Each product is offered its own techniques**, 7 of them new: sublimation on coated blanks, UV print, pad print, screen print on glass,
+    laser engraving, digital print on paper and offset print. A mug is not offered embroidery. These seven show "No estimate yet" where a
+    garment's decoration shows a cost, so do not show or quote a decoration cost on a mug.
+  - The side panel for a product reads **Product**, not Garment, and has no cloth, wash, labels or fit unless the product is sewn (a towel, a
+    pillow, an apron keep their cloth and labels).
 - **Patterns:** the product shown exploded into the pieces it is cut from, with an AAMA/ASTM DXF export.
 - **Engineering:** hard goods, toys, home objects and electronics as 3D parts in an exploded view, with tooling and cost, a bill of materials,
   and STL and STEP files. Starting points include a CD player, turntable, headphones, a smart speaker, a power bank and a lamp.

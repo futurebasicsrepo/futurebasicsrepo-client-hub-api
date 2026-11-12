@@ -1885,7 +1885,7 @@ await journey('J229', 'Made as: a mark or graphic in the studio is made as any o
   const { brands, plan } = await conceptSetup();
   const line = plan.lines.find(l => l.category === 'tops') || plan.lines[0], c = (await K(`/plans/${plan.plan.id}/lines/${line.id}/concepts`, { body: { count: 1 } })).json.concepts[0];
   try {
-    const tl = await K('/library/techniques'); const T = tl.json.techniques, byKind = k => T.filter(t => t.kind === k);
+    const tl = await K('/library/techniques'); const T = tl.json.techniques, TC = T.filter(t => !t.surfaces || t.surfaces.includes('cloth')), byKind = k => TC.filter(t => t.kind === k); // what the Studio offers a garment: the ways made on cloth (a product type is offered its own, J311)
     ok(tl.status === 200 && T.length >= 44 && tl.json.kinds.length === 6 && byKind('embroidery').length >= 7 && byKind('print').length >= 12 && byKind('heat_transfer').length >= 8 && byKind('patch').length >= 7 && byKind('other').length >= 5, `1. the library has ${T.length} ways to make a graphic across ${tl.json.kinds.length} kinds`, Object.fromEntries(tl.json.kinds.map(k => [k.id, byKind(k.id).length])));
     ok(T.every(t => tl.json.effects.includes(t.finish.effect) && t.factoryNote && t.prompt) && tl.json.effects.includes('silicone') && tl.json.effects.includes('stud'), '   each one draws with a known effect and carries its factory note and its words for the image model');
     if (!playwright) { ok(true, 'needs a browser'); return; }
@@ -1906,9 +1906,9 @@ await journey('J229', 'Made as: a mark or graphic in the studio is made as any o
       ok((await fin()).effect === 'silicone' && (await fin()).raise === 5, '   the heat transfers: 3D silicone, thick and glossy', await fin());
       await page.click('#pLayers [data-tkind=other]'); const studs = T.find(t => t.key === 'rhinestones'); await page.waitForSelector(`#pLayers [data-tapply="${studs.id}"]`); await page.click(`#pLayers [data-tapply="${studs.id}"]`); await page.waitForFunction(id => selected().finish && selected().finish.id === id, studs.id);
       ok((await fin()).effect === 'stud', '   other ways: rhinestones');
-      await page.click('#pLayers [data-act=madeall]'); await page.waitForSelector('#madeDlg[open]'); await page.waitForFunction(n => document.querySelectorAll('#madeGrid [data-madeapply]').length === n, T.length, { timeout: 30000 });
-      ok((await page.locator('#madeGrid canvas').count()) === T.length && (await page.locator('#madeGrid h4').count()) === 6, `3. "See it made every way": the wordmark made all ${T.length} ways on a piece of cloth, grouped by kind`);
-      await page.selectOption('#madeCloth', 'denim'); await page.waitForFunction(n => document.querySelectorAll('#madeGrid canvas').length === n, T.length); ok(await page.evaluate(() => MADE.cloth === 'denim'), '   drawn again on denim');
+      await page.click('#pLayers [data-act=madeall]'); await page.waitForSelector('#madeDlg[open]'); await page.waitForFunction(n => document.querySelectorAll('#madeGrid [data-madeapply]').length === n, TC.length, { timeout: 30000 });
+      ok((await page.locator('#madeGrid canvas').count()) === TC.length && (await page.locator('#madeGrid h4').count()) === 6, `3. "See it made every way": the wordmark made all ${TC.length} ways on a piece of cloth, grouped by kind`);
+      await page.selectOption('#madeCloth', 'denim'); await page.waitForFunction(n => document.querySelectorAll('#madeGrid canvas').length === n, TC.length); ok(await page.evaluate(() => MADE.cloth === 'denim'), '   drawn again on denim');
       await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/lab-made-every-way.png` }).catch(() => {});
       const knit = T.find(t => t.key === 'knit-in'); await page.click(`#madeGrid [data-madeapply="${knit.id}"]`); await page.waitForFunction(id => selected().finish && selected().finish.id === id, knit.id);
       ok(!(await page.evaluate(() => document.getElementById('madeDlg').open)) && (await fin()).effect === 'knit', '   clicking one makes the layer that way and closes the wall');
@@ -5077,6 +5077,65 @@ await journey('J310', 'The supplier catalogue is something to start from: a clie
       const nc = await b.newContext({ viewport: { width: 390, height: 844 } }); await nc.addInitScript(x => { try { localStorage.setItem('fb.client.token', x); } catch {} }, without.t);
       const np = await nc.newPage(); await np.goto(`${BASE}/lab/sketches?src=catalog`, { waitUntil: 'networkidle' }); await np.waitForTimeout(600);
       ok(await np.locator('#needSignin').isVisible().catch(() => false) && !(await np.locator('#cgal article').count()), '9. a client without the Lab is shown the way in, not the catalogue');
+    } finally { await b.close(); }
+  } finally { for (const id of made) await K(`/concepts/${id}`, { method: 'DELETE' }); }
+});
+
+await journey('J311', 'A mug is designed as a mug: its two views are its sides and its wrap laid flat; a graphic placed across the wrap saves, reads back and is on the spec sheet as on the wrap, and shows on each side; the techniques offered are a mug\'s (sublimation, UV print, pad print, screen print on glass) and not embroidery, with no made-up cost; embroidery chosen on it fails the check; the panels that mean nothing for a mug (cloth, wash, labels, fit, sketches) are gone; a tee is offered what it always was', async () => {
+  const email = `lab-mug-${stamp}@selfserve.test`, st = await call('/v1/public/start', { body: { email, name: 'Mug maker', title: 'First piece', photos: [jpeg()] } });
+  const cid = st.json.client?.id || sql(`select client_id from users where lower(email)='${email}'`), uid = sql(`select id from users where lower(email)='${email}'`).split('\n')[0], slug = sql(`select slug from clients where id='${cid}'`).split('\n')[0];
+  sql(`update users set email_verified_at=now() where id='${uid}'`); const t = await forge({ sub: uid, clientId: cid, client: slug, role: 'client', email });
+  ok((await call(`/v1/admin/clients/${cid}/lab`, { token: kyleT, method: 'PATCH', body: { action: 'comp' } })).status === 200, 'the Lab is opened on the room');
+  const C = (path, o = {}) => call('/v1/lab' + path, { token: t, ...o }), made = [];
+  const start = async q => { const item = (await C(`/catalog?q=${encodeURIComponent(q)}&limit=1`)).json.items[0], r = await C('/concepts/from-catalog', { body: { item: item.id } }); if (r.json.concept?.id) made.push(r.json.concept.id); return r.json.concept?.id; };
+  try {
+    await C('/library/techniques'); // the starting techniques are in
+    const mid = await start('White 11oz Mug'), f = (await C(`/concepts/${mid}/flats`)).json, fits = f.techniques.filter(x => (x.surfaces || []).includes('ceramic')).map(x => x.name).sort();
+    ok(f.flat?.style === 'mug' && fits.join(' | ') === 'Pad print | Screen print on glass | Sublimation on coated blanks | UV print', '1. a mug is offered a mug\'s techniques: pad print, screen print on glass, sublimation on coated blanks, UV print', fits);
+    const emb = f.techniques.find(x => /Satin stitch embroidery/.test(x.name)), sub = f.techniques.find(x => x.name === 'Sublimation on coated blanks');
+    ok(emb && emb.surfaces.join() === 'cloth' && !f.techniques.some(x => x.kind === 'embroidery' && x.surfaces.includes('ceramic')) && f.firstTechnique?.ceramic === sub?.id, '   embroidery is made on cloth, not on a mug; a new graphic on a mug starts as sublimation', [emb?.surfaces, f.firstTechnique]);
+    const { placements: _p, check: _c, saved: _s, updatedAt: _u, ...params } = f.flat;
+    const band = { id: 'band', name: 'Band', view: 'back', x: 0, y: 1.875, w: 8, h: 3, technique: 'screen print', source: 'extra' };
+    const put = await C(`/concepts/${mid}/flats`, { method: 'PUT', body: { ...params, color: '#1f2a44', placements: [band] } });
+    ok(put.status === 200 && !put.json.check.summary.fail && /^On the wrap, /.test(put.json.where.band), '2. a graphic 8 × 3 in across the wrap saves, with no problem, and is said to be on the wrap', [put.status, put.json.check?.findings, put.json.where]);
+    ok(put.json.decorations?.[0]?.technique === 'Sublimation on coated blanks' && put.json.decorations[0].unpriced === true && put.json.decorations[0].perPieceCents === 0, '   it is made as a mug is (sublimation), and no cost was made up for it: no estimate yet', put.json.decorations?.[0]);
+    const again = (await C(`/concepts/${mid}/flats`)).json, q = again.flat.placements[0];
+    ok(q.view === 'back' && q.wrap === true && q.x === 0 && q.y === 1.875 && q.w === 8 && q.h === 3 && again.sides.band === 'Wrap', '3. read back, it is where it was put, on the wrap', [q, again.sides]);
+    const sheet = await call(`/v1/lab/concepts/${mid}/flats/sheet.svg`, { token: t });
+    ok(sheet.status === 200 && sheet.text.includes('Wrap: On the wrap, ') && sheet.text.includes('Centre of the front') && sheet.text.includes('Centre of the back') && sheet.text.includes('data-wrap-shown="1"') && sheet.text.includes('Sublimation on coated blanks'), '4. the spec sheet has the sides with the band on them, the wrap with its centre lines, and the band listed as on the wrap', sheet.status);
+    const bad = await C(`/concepts/${mid}/flats/check`, { body: { ...params, placements: [{ ...band, techniqueId: emb.id }] } });
+    ok(bad.status === 200 && bad.json.check.summary.fail === 1 && /Satin stitch embroidery, which is not made on a mug/.test(bad.json.check.findings.band[0].text), '5. embroidery chosen on a mug fails the check, and says why', bad.json.check?.findings);
+    const tid = await start('Gildan Heavy Cotton T-Shirt'), tf = (await C(`/concepts/${tid}/flats`)).json, cloth = tf.techniques.filter(x => x.surfaces.includes('cloth'));
+    ok(cloth.length === 44 && cloth.some(x => x.kind === 'embroidery') && !cloth.some(x => ['UV print', 'Pad print', 'Laser engraving', 'Screen print on glass', 'Sublimation on coated blanks'].includes(x.name)), '6. a tee is offered the 44 garment techniques it always was, and none of a mug\'s', cloth.length);
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const ctx = await b.newContext({ viewport: { width: 1360, height: 900 } }); await ctx.addInitScript(x => { try { localStorage.setItem('fb.client.token', x); localStorage.setItem('fb.helper.on', '0'); localStorage.setItem('fb.lab.welcomed', '1'); } catch {} }, t);
+      const page = await ctx.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      const flats = async () => { for (let i = 0; i < 40; i++) { const fr = page.frames().find(x => /\/lab\/flats\?/.test(x.url())); if (fr && await fr.evaluate(() => Boolean(window.FBFlats?.ready())).catch(() => false)) return fr; await page.waitForTimeout(400); } return null; };
+      await page.goto(`${BASE}/lab/studio?concept=${mid}&view=back`, { waitUntil: 'networkidle' }); const fr = await flats();
+      const seg = async () => (await page.locator('#viewSeg [data-v=front], #viewSeg [data-v=back]').allInnerTexts()).join(' | ');
+      for (let i = 0; i < 20 && await seg() !== 'Sides | Wrap'; i++) await page.waitForTimeout(250);
+      ok(fr && await seg() === 'Sides | Wrap', '7. in the Studio a mug\'s two flat views are named Sides and Wrap', await seg());
+      const wrap = await fr.evaluate(() => { const s = document.querySelector('#canvas svg'); return { view: s?.dataset.view, text: s?.textContent || '', pl: Boolean(s?.querySelector('[data-pl="band"]')), help: document.querySelector('#helpLine').textContent }; });
+      ok(wrap.view === 'back' && wrap.pl && /Centre of the front/.test(wrap.text) && /Centre of the back/.test(wrap.text) && /The handle is .* past each end of the wrap/.test(wrap.text) && /The wrap laid flat at true size, 8½ in round and 3½ in tall/.test(wrap.help), '8. the Wrap shows the band on the wrap laid flat, with the centre of the front, the centre of the back and the handle marked, and says what it is', wrap);
+      const opts = await fr.evaluate(() => [...document.querySelectorAll('#pPl [data-q="band"] select[data-k=techniqueId] option')].map(o => o.textContent));
+      ok(opts.includes('Sublimation on coated blanks') && opts.includes('UV print') && opts.includes('Pad print') && opts.includes('Screen print on glass') && opts.length === 4 && !opts.some(o => /embroid|plastisol|patch/i.test(o)), '9. Made as offers a mug\'s four techniques, and no embroidery, garment print or patch', opts);
+      await fr.evaluate(() => document.querySelector('.tabs [data-tab=garment]').click());
+      const prod = await fr.evaluate(() => ({ tab: document.querySelector('.tabs [data-tab=garment]').textContent, heads: [...document.querySelectorAll('#pGarment h4')].map(h => h.textContent), fit: Boolean(document.querySelector('#gFit')), wash: Boolean(document.querySelector('#washSec')), text: document.querySelector('#pGarment').innerText }));
+      ok(prod.tab === 'Product' && !prod.fit && !prod.wash && !prod.heads.some(h => /Wash|Labels|Fabrics|Drawing|Details/.test(h)) && prod.heads.some(h => /Colour a part/.test(h)) && prod.heads.some(h => /^Measurements, inches$/.test(h)) && /Wrap print area, around/.test(prod.text), '10. the tab is Product: no cloth, labels, wash, fit, sketches or garment details; colouring a part, the product and its measurements stay', prod.heads);
+      await fr.evaluate(() => document.querySelector('.tabs [data-tab=design]').click());
+      const des = await fr.evaluate(() => [...document.querySelectorAll('#pDesign h4')].map(h => h.textContent));
+      ok(des.includes('Colour') && !des.some(h => /Cloth|Add a detail|From the sketch pack|Neckline/.test(h)) && !(await fr.evaluate(() => Boolean(document.querySelector('#redrawPic')))), '    and Design keeps its colour, with no cloth, pockets or sketch-pack parts', des);
+      await page.locator('#viewSeg [data-v=front]').click(); await page.waitForTimeout(600);
+      const sides = await fr.evaluate(() => { const s = document.querySelector('#canvas svg'); return { view: s?.dataset.view, shown: s?.querySelector('[data-wrap-shown]')?.dataset.wrapShown, strips: s?.querySelectorAll('[data-wrap-shown] svg').length, text: s?.textContent || '', drag: Boolean(s?.querySelector('[data-pl="band"]')), help: document.querySelector('#helpLine').textContent }; });
+      ok(sides.view === 'front' && sides.shown === '1' && sides.strips > 20 && /Front/.test(sides.text) && /Back/.test(sides.text) && !sides.drag && /A graphic placed on the Wrap is drawn here where it falls on each side/.test(sides.help), '11. the Sides show the mug from the front and from the back with the band where it falls on each, and say it is moved on the Wrap', sides);
+      ok(!errs.length, '    with no page error', errs.slice(0, 2));
+      await page.goto(`${BASE}/lab/studio?concept=${tid}&view=front`, { waitUntil: 'networkidle' }); const tfr = await flats();
+      for (let i = 0; i < 20 && await seg() !== 'Flat front | Flat back'; i++) await page.waitForTimeout(250);
+      await tfr.evaluate(() => document.querySelector('.tabs [data-tab=garment]').click());
+      const tee = await tfr.evaluate(() => ({ tab: document.querySelector('.tabs [data-tab=garment]').textContent, fit: Boolean(document.querySelector('#gFit')), wash: Boolean(document.querySelector('#washSec')), heads: [...document.querySelectorAll('#pGarment h4')].map(h => h.textContent) }));
+      ok(await seg() === 'Flat front | Flat back' && tee.tab === 'Garment' && tee.fit && tee.wash && tee.heads.some(h => /^Drawing/.test(h)) && tee.heads.some(h => /Sample size \(M\) measurements/.test(h)) && !errs.length, '12. a tee is as it was: Flat front and Flat back, a Garment tab with its fit, wash and sketches', [await seg(), tee.heads, errs.slice(0, 2)]);
     } finally { await b.close(); }
   } finally { for (const id of made) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
