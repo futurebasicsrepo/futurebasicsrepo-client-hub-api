@@ -2108,6 +2108,15 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
     no finding is made for a hook that is not there. Parts that snap on without being a housing half (a slider, a latch, ear pads, a
     cassette door) have no hooks drawn either. In the files: hooks and catches are closed bodies of their own in their part's STL and
     solids in the STEP, named for their part, each starting 0.3 mm inside what it stands on; they are not fused into the part's skin.
+  - **A thread** (`thread`, kind `thread`; fixed by **thread** on the parts list, "Screw on" in the assembly steps). A round part says
+    what it screws onto, the pitch, how many turns hold it and how deep the thread form is (`thread: { onto, pitch, turns, depth }`). The
+    two diameters are the two parts' own: the inner part's outside with the thread standing on it, and the outer part's bore. The check
+    measures them off the two parts: the thread's crests inside the bore with 0.2 to 0.8 mm clear on the diameter (larger than the bore
+    is fix before tooling), the flanks catching 60% of their depth or more (not reaching each other is fix before tooling), the two on
+    one axis, and the turns fitting in the length the two overlap with 1 mm to run out. The tumbler's lid screws onto the cup: ⌀83.6 mm
+    over the thread in a ⌀84 mm bore at the default size, 4 mm pitch, 1.2 mm deep, 1.5 turns over 6 mm of a 14 mm overlap.
+    In the files: the STL and STEP show the cup and the lid's bore at the thread's roots, with the room for the thread between them. The
+    turns themselves are not drawn: the solids have no helical faces, so the toolmaker cuts the thread from the numbers in the finding.
 - **An assembly saved before these rules** (it carries no `v`; a starting point or a design from a concept made now carries `v: 2`) is read as
   it was meant when it is opened: a part that plainly goes through a wall (in on one side and out on the other or flush with the far
   face, much narrower than the wall, and not a part that sits inside that housing) gets its opening, worked out each time and never written

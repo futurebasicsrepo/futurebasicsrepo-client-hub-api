@@ -50,7 +50,7 @@ export const PROCESSES = {
 };
 export const FINISHES = ['SPI A-2 (high gloss)', 'SPI B-1 (semi-gloss)', 'SPI C-1 (matte)', 'SPI D-2 (textured)', 'MT-11010 (fine texture)', 'soft-touch paint', 'spray paint', 'pad print', 'anodised', 'brushed', 'none'];
 const TEXTURED = /SPI D|MT-|texture/i;
-export const FIXES = { screws: { verb: 'Screw', s: 5 }, snap: { verb: 'Snap', s: 3 }, press: { verb: 'Press', s: 3 }, glue: { verb: 'Glue', s: 12 }, weld: { verb: 'Ultrasonic-weld', s: 6 }, adhesive: { verb: 'Stick', s: 4 }, solder: { verb: 'Solder', s: 8 }, place: { verb: 'Place', s: 3 }, 'moulded in': { verb: 'Moulded in with', s: 0 } };
+export const FIXES = { screws: { verb: 'Screw', s: 5 }, snap: { verb: 'Snap', s: 3 }, press: { verb: 'Press', s: 3 }, glue: { verb: 'Glue', s: 12 }, weld: { verb: 'Ultrasonic-weld', s: 6 }, adhesive: { verb: 'Stick', s: 4 }, solder: { verb: 'Solder', s: 8 }, place: { verb: 'Place', s: 3 }, thread: { verb: 'Screw on', s: 4 }, 'moulded in': { verb: 'Moulded in with', s: 0 } };
 export const SHAPES = { box: 'Box', shell: 'Shell (a housing, open one side)', cyl: 'Cylinder', cup: 'Cup (a round shell)', ring: 'Ring', ball: 'Ball', pcb: 'Circuit board' };
 // small-parts test cylinder (16 CFR 1501, EN 71-1): anything that fits inside it is a choking hazard for under-3s
 const SMALL = { d: 31.7, h: 57.1 };
@@ -357,6 +357,9 @@ export function cleanPart(q = {}, i = 0) {
   // leaves the part (from its centre), which way it runs and which way its head points
   if (q.snaps && ID.test(String(q.snaps.into || '')) && Array.isArray(q.snaps.hooks)) { const hs = q.snaps.hooks.slice(0, 12).filter(h => WAYS.includes(h?.along) && WAYS.includes(h?.out) && h.along[1] !== h.out[1]).map(h => ({ at: v3(h.at, -3000, 3000, 0), along: h.along, out: h.out }));
     if (hs.length) p.snaps = { into: q.snaps.into, len: r1(num(q.snaps.len, 3, 60, 8)), t: r2(num(q.snaps.t, .5, 4, 1)), w: r1(num(q.snaps.w, 1.5, 30, 5)), y: r2(num(q.snaps.y, .3, 3, 1)), hooks: hs }; }
+  // a thread: the round part it screws onto (or into), its pitch, how many turns hold it and how deep the thread form is; the two diameters
+  // are the two parts' own (the one's outside, the other's bore)
+  if (ROUND.has(shape) && q.thread && ID.test(String(q.thread.onto || ''))) p.thread = { onto: q.thread.onto, pitch: r2(num(q.thread.pitch, .5, 12, 4)), turns: r2(num(q.thread.turns, .25, 12, 1.5)), depth: r2(num(q.thread.depth, .3, 4, 1.2)) };
   if (Array.isArray(q.through)) { const t = [...new Set(q.through.map(String).filter(x => ID.test(x)))].slice(0, 4); if (t.length) p.through = t; }
   if (Array.isArray(q.spots) && p.qty > 1) { const sp = q.spots.slice(0, p.qty - 1).map(a => v3(a, -3000, 3000, 0)); if (sp.length) p.spots = sp; }
   if (Array.isArray(q.cuts)) { const cs = q.cuts.slice(0, 40).map(c => ({ at: v3(c?.at, -3000, 3000, 0), size: v3(c?.size, .2, 3000, 1), axis: AXN.includes(c?.axis) ? c.axis : 'z', ...(c?.round ? { round: true } : {}), ...(ID.test(String(c?.for || '')) ? { for: c.for } : {}) })); if (cs.length) p.cuts = cs; }
@@ -375,6 +378,7 @@ export function cleanAssembly(s = {}) {
   for (const p of parts) if (p.through) { p.through = p.through.filter(id => seen.has(id) && id !== p.id); if (!p.through.length) delete p.through; }
   for (const p of parts) if (p.lip && (!seen.has(p.lip.into) || p.lip.into === p.id)) delete p.lip;
   for (const p of parts) if (p.snaps && (!seen.has(p.snaps.into) || p.snaps.into === p.id)) delete p.snaps;
+  for (const p of parts) if (p.thread && (!seen.has(p.thread.onto) || p.thread.onto === p.id)) delete p.thread;
   moulded(parts);
   const v = Number(s.v) >= 2 ? 2 : 1; // 2: made since parts say what they pass through; 1 (nothing saved): made before
   openings(parts, v < 2);
@@ -816,13 +820,13 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     screw('screws-led', 'Screw, M2 × 6 (LED board)', 2, 6, 'z', [[-13, 0, st - 4 + 3], [13, 0, st - 4 + 3]], { through: [led], dir: [0, 0, -1], lvl: 1.6 });
     screw('screws-shade', 'Screw, M3 × 6 countersunk (shade)', 3, 6, 'z', [[-12, 0, H - 3], [12, 0, H - 3]], { through: ['shade'], lvl: 3.8 });
   } else if (arch === 'tumbler') {
-    // a tumbler: the cup on its base pad, a lid whose skirt comes down over the cup's rim with the seal squeezed between the rim and the
-    // lid, the straw through the lid, a slider over the sip opening. The width asked is the lid's, the height is to the straw's tip
-    const D = num(dims.w, 50, 160, 88), H = num(dims.h, 80, 400, 180), w = 2.2, lh = 18, Db = e2(D - 4.4), lt = H - 20, bt = lt - 4;
+    // a tumbler: the cup on its base pad, a lid whose skirt screws down over the cup's rim (1.5 turns of a 4 mm thread) with the seal squeezed
+    // between the rim and the lid, the straw through the lid, a slider over the sip opening. The width asked is the lid's, the height is to the straw's tip
+    const D = num(dims.w, 50, 160, 88), H = num(dims.h, 80, 400, 180), w = 2.2, lh = 18, Db = e2(D - 6.8), lt = H - 20, bt = lt - 4; // the cup is 2.8 mm inside the lid's bore all round: 2.4 mm of thread and 0.4 mm clear on the diameter
     made = [D, D, H];
     add({ id: 'body', name: 'Cup body', shape: 'cup', size: [Db, Db, bt - 2], at: [0, 0, 2 + (bt - 2) / 2], wall: w, open: '+', resin: 'Tritan', finish: 'SPI A-2 (high gloss)', draft: 1, fix: 'place', order: 1, lvl: 0, food: true, main: true });
     add({ id: 'gasket', name: 'Lid seal', shape: 'ring', size: [Db, Db, 2], at: [0, 0, bt + 1], wall: w + 1, resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'press', order: 2, lvl: 1.5, food: true });
-    add({ id: 'lid', name: 'Lid', shape: 'cup', size: [D, D, lh], at: [0, 0, lt - lh / 2], wall: 2, open: '-', resin: 'PP', finish: 'SPI C-1 (matte)', draft: 1.5, undercuts: 1, fix: 'press', order: 3, lvl: 2.5, food: true, main: true });
+    add({ id: 'lid', name: 'Lid', shape: 'cup', size: [D, D, lh], at: [0, 0, lt - lh / 2], wall: 2, open: '-', resin: 'PP', finish: 'SPI C-1 (matte)', draft: 1.5, undercuts: 1, fix: 'thread', thread: { onto: 'body', pitch: 4, turns: 1.5, depth: 1.2 }, order: 3, lvl: 2.5, food: true, main: true });
     add({ id: 'slider', name: 'Sip slider', shape: 'box', size: [16, Math.min(22, D * .3), 3], r: 3, at: [0, D * .22, lt + 1.5], resin: 'PP', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'snap', order: 4, lvl: 3.4, food: true });
     add({ id: 'straw', name: 'Straw', shape: 'ring', size: [8, 8, H - 2 - w - 1], at: [0, -D * .15, (H + 2 + w + 1) / 2], wall: .9, resin: 'Tritan', process: 'injection moulding', finish: 'SPI A-2 (high gloss)', draft: .5, through: ['lid'], fix: 'place', order: 5, lvl: 4.4, food: true });
     add({ id: 'base', name: 'Base pad', shape: 'cyl', size: [Db - 8, Db - 8, 2], at: [0, 0, 1], resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'press', order: 6, dir: [0, 0, -1], lvl: 1.2 });
@@ -1062,7 +1066,7 @@ const boxOf = p => { const os = [[0, 0, 0], ...(p.spots || [])], bs = [...(p.bos
 // everything the fit checks measure, by kind: { contact, clash, fasteners, size }, each a list of { id, level, kind, text, ... }
 export function fitOf(s) {
   const parts = s.parts, n = parts.length, F = parts.map(featuresOf), B = parts.map(boxOf), S = new Array(n), smp = i => S[i] || (S[i] = samplesOf(parts[i], F[i])), name = p => p.name, low = p => p.name.toLowerCase();
-  const out = { contact: [], clash: [], fasteners: [], size: [], lip: [], snap: [] }, say = (kind, id, level, text, more = {}) => out[kind].push({ id, level, kind, text, ...more });
+  const out = { contact: [], clash: [], fasteners: [], size: [], lip: [], snap: [], thread: [] }, say = (kind, id, level, text, more = {}) => out[kind].push({ id, level, kind, text, ...more });
   const gap = (i, j) => Math.max(...[0, 1, 2].map(k => Math.max(B[j].lo[k] - B[i].hi[k], B[i].lo[k] - B[j].hi[k])));
   // ---- clash: one part's material in another's, deeper than a rounding ----
   const hard = [];
@@ -1145,6 +1149,23 @@ export function fitOf(s) {
       worst = Math.max(worst, strain); least = Math.min(least, H.eng); });
     if (!wrong && S.hooks.length < 2) say('snap', a.id, 'warn', `${name(a)} is held on ${low(b)} by one snap hook: it will rock on it. Give it two or more, on opposite sides.`, { with: b.id, hooks: 1 });
     else if (!wrong) say('snap', a.id, 'ok', `Snap fit: ${low(a)} holds on ${low(b)} by ${S.hooks.length} hooks (${S.len} mm long, ${S.t} mm thick, ${S.w} mm wide). Each catches ${least} mm under a catch on ${low(b)} and bends ${worst}% as it is pushed home (${a.resin} takes about ${lim}%), with room behind it to bend.`, { with: b.id, hooks: S.hooks.length, engaged: least, strain: worst }); }
+  // ---- a thread: the two diameters agreeing (the one part's outside with the thread on it inside the other's bore), the flanks catching, the
+  //      turns fitting in the length the two overlap; measured off the two parts. The thread's turns are not in the solids. ----
+  for (const a of parts) { if (!a.thread) continue; const T = a.thread, b = parts.find(p => p.id === T.onto), ax = axisOf(a), cr = [0, 1, 2].filter(k => k !== ax), circ = p => ROUND.has(p.shape) && Math.abs(p.size[cr[0]] - p.size[cr[1]]) < .05;
+    if (!b || axisOf(b) !== ax || !circ(a) || !circ(b)) { say('thread', a.id, 'bad', `${name(a)} is to screw onto ${b ? low(b) : 'a part that is not there'}, and a thread needs two round parts on one axis. Make both round, lying the same way.`, { with: T.onto }); continue; }
+    const [m, f] = a.size[cr[0]] < b.size[cr[0]] ? [a, b] : [b, a], off = r2(Math.hypot(...cr.map(k => a.at[k] - b.at[k]))), neck = m.size[cr[0]], tf = shellLike(f) ? Math.min(f.wall, f.size[cr[0]] / 2 - .2) : null;
+    if (tf == null) { say('thread', a.id, 'bad', `${name(a)} and ${low(b)}: ${low(f)} is solid, so there is nothing for ${low(m)} to screw into. Make it a cup or a ring.`, { with: b.id }); continue; }
+    const bore = r2(f.size[cr[0]] - 2 * tf), major = r2(neck + 2 * T.depth), minor = r2(bore - 2 * T.depth), clear = r2(bore - major), grip = r2(T.depth - Math.max(clear, 0) / 2), need = r2(T.turns * T.pitch);
+    // the length the two overlap along the axis: the inner part's length inside the outer part's bore (past its floor, when it has one)
+    const o = openOf(f), flo = f.at[ax] - f.size[ax] / 2 + (o === '+' ? tf : 0), fhi = f.at[ax] + f.size[ax] / 2 - (o === '-' ? tf : 0), over = r2(Math.max(0, Math.min(fhi, m.at[ax] + m.size[ax] / 2) - Math.max(flo, m.at[ax] - m.size[ax] / 2)));
+    const more = { with: b.id, outside: m.id, inside: f.id, neck, major, bore, minor, clear, grip, need, over }, what = `Thread, ${low(f)} on ${low(m)} (⌀${major} mm over the thread on ${low(m)}, ⌀${bore} mm bore in ${low(f)}, ${T.pitch} mm pitch, ${T.depth} mm deep)`;
+    if (off > .15) say('thread', a.id, 'bad', `${what}: the two are ${off} mm off one axis, so the thread cannot start. Centre one on the other.`, { ...more, off });
+    else if (clear < 0) say('thread', a.id, 'bad', `${what}: the thread on ${low(m)} is ${r2(-clear)} mm larger than the bore it goes into, so it will not go on. Make ${low(m)} ⌀${r1(bore - .4 - 2 * T.depth)} mm or the bore ⌀${r1(major + .4)} mm.`, more);
+    else if (grip <= 0) say('thread', a.id, 'bad', `${what}: the two threads do not reach each other; there is ${r2(clear / 2)} mm each side between them and the thread is ${T.depth} mm deep. Make ${low(m)} ⌀${r1(bore - .4 - 2 * T.depth)} mm, or the thread deeper.`, more);
+    else if (need + 1 > over) say('thread', a.id, 'bad', `${what}: ${T.turns} turn${T.turns === 1 ? '' : 's'} need ${need} mm and 1 mm to run out, and ${low(f)} is over ${low(m)} for ${over} mm. Lengthen the overlap, or use fewer turns or a finer pitch.`, more);
+    else { const notes = [grip < T.depth * .6 && `the flanks catch ${grip} mm of their ${T.depth} mm (${r2(clear)} mm clear on the diameter; 0.2 to 0.8 mm is usual): it may jump under load`, clear < .2 && `only ${r2(clear)} mm clear on the diameter: it will bind once the parts shrink (0.2 to 0.8 mm is usual)`, T.turns < 1 && `${T.turns} of a turn holds it: less than one full turn will not pull the lid down square`, T.depth > T.pitch * .6 && `a thread ${T.depth} mm deep at ${T.pitch} mm pitch is too steep to mould and release (keep the depth under 0.6 of the pitch)`].filter(Boolean);
+      if (notes.length) say('thread', a.id, 'warn', `${what}: ${notes.join('; ')}.`, more);
+      else say('thread', a.id, 'ok', `${what}: the diameters agree with ${r2(clear)} mm clear, the flanks catch ${grip} mm, and ${T.turns} turns take ${need} mm of the ${over} mm the two overlap. The STL and STEP show the two walls at the thread's roots (⌀${neck} mm and ⌀${bore} mm); the turns themselves are not drawn in them.`, more); } }
   return out;
 }
 // the moulding and fit checks: [{ id, level: 'bad'|'warn'|'ok', text }]
@@ -1189,7 +1210,7 @@ export function dfm(s) {
     if (d[0] <= SMALL.d && d[1] <= SMALL.d && d[2] <= SMALL.h) say(p.id, s.age === '0+' ? 'bad' : 'warn', s.age === '0+' ? `${p.name}: fits the small-parts cylinder (${SMALL.d} × ${SMALL.h} mm): not allowed for under-3s if it can come off (16 CFR 1501, EN 71-1). Make it larger or fix it so it passes the torque and tension tests.` : `${p.name}: a small part; label "Choking hazard: small parts. Not for children under 3 years" (16 CFR 1500.19).`);
   }
   // do the parts go together: clash by outline, contact, fasteners and size, measured off the parts as built (fitOf)
-  const fit = fitOf(s); out.push(...fit.clash, ...fit.contact, ...fit.fasteners, ...fit.size, ...fit.lip, ...fit.snap);
+  const fit = fitOf(s); out.push(...fit.clash, ...fit.contact, ...fit.fasteners, ...fit.size, ...fit.lip, ...fit.snap, ...fit.thread);
   if (s.kind === 'electronics') out.push(...elecChecks(s));
   return out;
 }

@@ -270,3 +270,31 @@ test('snap hooks: a cover that snaps on has its hooks and their catches as bodie
   c = snapOf(edit('desk', P => { P('front').snaps.hooks.forEach(h => { h.at['xyz'.indexOf(h.along[1])] -= (h.along[0] === '-' ? -1 : 1) * -30; }); })); assert.ok(c.every(x => x.level === 'bad'), 'hooks moved off the joint find nothing');
   assert.equal(cleanAssembly(edit('desk', P => { P('front').snaps.into = 'gone'; })).parts.find(p => p.id === 'front').snaps, undefined);
 });
+
+test('a thread: the tumbler lid screws onto the cup, the two diameters, the flanks and the turns measured off the two parts', async () => {
+  const { stepOf } = await import('../src/lab-step.js');
+  const thr = s => fitOf(cleanAssembly(s)).thread, edit = fn => { const s = JSON.parse(JSON.stringify(archetype('tumbler'))); fn(id => s.parts.find(p => p.id === id), s); return s; };
+  for (const dims of [{}, { w: 50, h: 80 }, { w: 160, h: 400 }, { w: 70, h: 120 }]) { const s = archetype('tumbler', dims), lid = s.parts.find(p => p.id === 'lid'), body = s.parts.find(p => p.id === 'body'), f = fitOf(s).thread, E = engineer(s);
+    assert.equal(lid.fix, 'thread'); assert.deepEqual(lid.thread, { onto: 'body', pitch: 4, turns: 1.5, depth: 1.2 }); assert.equal(f.length, 1); assert.equal(f[0].level, 'ok', f[0].text); assert.equal(f[0].kind, 'thread');
+    assert.equal(f[0].outside, 'body'); assert.equal(f[0].inside, 'lid'); assert.equal(f[0].neck, body.size[0]); assert.equal(f[0].bore, lid.size[0] - 2 * lid.wall);
+    assert.ok(Math.abs(f[0].major - (body.size[0] + 2.4)) < .011 && Math.abs(f[0].clear - .4) < .011 && Math.abs(f[0].grip - 1) < .011, `over the thread ⌀${f[0].major} in a ⌀${f[0].bore} bore: 0.4 mm clear, flanks catching 1 mm`);
+    assert.equal(f[0].need, 6); assert.equal(f[0].over, 14, 'the lid\'s skirt is over the cup for 14 mm');
+    assert.match(f[0].text, /the turns themselves are not drawn in them/); assert.ok(E.checks.some(c => c.kind === 'thread' && c.level === 'ok')); assert.ok(E.steps.some(t => /Screw on lid/.test(t)), 'the assembly steps screw the lid on');
+    assert.deepEqual(notOk(fitOf(s)).map(c => c.text), [], 'and the seal still sits between the rim and the lid, so nothing floats'); }
+  // the files carry the two walls at the thread's roots and no thread faces: the lid's STEP is the same with and without the thread
+  const s0 = cleanAssembly(archetype('tumbler')), bare = cleanAssembly({ ...s0, parts: s0.parts.map(p => ({ ...p, thread: undefined })) }), faces = t => (t.match(/ADVANCED_FACE\(/g) || []).length;
+  assert.equal(faces(stepOf(s0, { only: 'lid' })), faces(stepOf(bare, { only: 'lid' }))); assert.equal(faces(stepOf(s0, { only: 'body' })), faces(stepOf(bare, { only: 'body' })));
+  // broken on purpose
+  const grow = by => edit(P => { P('body').size[0] += by; P('body').size[1] += by; });
+  let c = thr(grow(.6)); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /the thread on cup body is 0\.2 mm larger than the bore it goes into/); assert.equal(c[0].clear, -.2);
+  c = thr(grow(-3)); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /the two threads do not reach each other; there is 1\.7 mm each side between them and the thread is 1\.2 mm deep/);
+  c = thr(grow(-1)); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /the flanks catch 0\.5 mm of their 1\.2 mm \(1\.4 mm clear on the diameter/);
+  c = thr(grow(.3)); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /only 0\.1 mm clear on the diameter/);
+  c = thr(edit(P => { P('lid').at[0] += .3; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /0\.3 mm off one axis/);
+  c = thr(edit(P => { P('lid').thread.turns = 4; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /4 turns need 16 mm and 1 mm to run out, and lid is over cup body for 14 mm/);
+  c = thr(edit(P => { P('lid').thread.turns = .5; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /less than one full turn/);
+  c = thr(edit(P => { P('lid').thread.pitch = 1.5; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /1\.2 mm deep at 1\.5 mm pitch is too steep to mould/);
+  c = thr(edit(P => { P('lid').thread.onto = 'slider'; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /a thread needs two round parts on one axis/);
+  c = thr(edit((P, s) => { s.parts.push({ id: 'plug', name: 'Plug', shape: 'cyl', size: [120, 120, 10], at: [0, 0, 150] }); P('lid').thread.onto = 'plug'; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /plug is solid, so there is nothing for lid to screw into/);
+  assert.equal(cleanAssembly(edit(P => { P('lid').thread.onto = 'gone'; })).parts.find(p => p.id === 'lid').thread, undefined); assert.equal(cleanPart({ shape: 'box', thread: { onto: 'body' } }).thread, undefined, 'only a round part carries a thread');
+});
