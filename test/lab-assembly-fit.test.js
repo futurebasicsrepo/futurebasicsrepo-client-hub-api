@@ -159,6 +159,9 @@ test('the Engineering page lets a person set what a part passes through, where i
   assert.match(keypad, /<option value="top" selected>/); assert.ok(!/data-k="spot/.test(keypad) && !/data-act="boss"/.test(keypad), 'no pieces or bosses for a single keypad');
   for (const k of ['thru[012]', 'spot\\d+_[012]', 'boss\\d+_[012]', 'bossd\\d+']) assert.ok(html.includes(`/^${k}$/.test(k)`), `the page sets ${k}`);
   assert.ok(html.includes('p.cuts,p.bosses,p.flange'), 'the 3D part is rebuilt when its openings or bosses change');
+  // every piece has its fields, however many there are (the list scrolls)
+  const many = editor(cleanPart({ id: 'pins', name: 'Pin', shape: 'cyl', size: [2, 2, 8], qty: 14, spots: Array.from({ length: 13 }, (_, i) => [i * 5 + 5, 0, 0]) }));
+  assert.equal(n(many, /data-k="spot\d+_[012]"/g), 39, 'thirteen other pieces, three fields each'); assert.match(many, /data-k="spot12_0" value="65"/); assert.match(many, /class="pieces"/); assert.ok(!/keep the places they have/.test(many)); assert.match(html, /\.edit \.pieces\{[^}]*overflow:auto/);
   // a round part's flange: off, or at one end with the body's width behind it
   const spk = archetype('speaker'), woofer = editor.call(null, spk.parts.find(q => q.elec?.kind === 'woofer')), knob = editor(spk.parts.find(q => q.id === 'knob'));
   assert.match(woofer, /data-k="flend"[^]*<option value="-" selected>/); assert.match(woofer, /data-k="flbody" value="106.6"/); assert.match(woofer, /data-k="flt" value="4"/);

@@ -2073,7 +2073,7 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   with its body, and its screws go through the flange into the baffle. A housing carries screw `bosses` on its
   floor. Screws are parts: one line a kind, every position listed, lying through the part held and into the part that takes the thread.
   On the page, the chosen part's editor has **Passes through** (up to three parts), the places of its other pieces when its quantity is
-  over one, and for a housing its screw bosses (**Add a screw boss**: x, y, z of the free end from the part's centre, and the screw's
+  over one (every piece has its fields, in a list that scrolls), and for a housing its screw bosses (**Add a screw boss**: x, y, z of the free end from the part's centre, and the screw's
   diameter); for a round solid part, its flange (off, or at the near or far end, with the body's diameter behind it and the flange's
   thickness); it also says which openings are cut in the part and for what.
   Openings and bosses are in the part's solid: its STL, and its STEP as exact faces (holes through a floor or a solid part, bosses, and
