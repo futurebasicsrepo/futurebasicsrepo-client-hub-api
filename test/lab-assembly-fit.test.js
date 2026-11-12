@@ -159,6 +159,11 @@ test('the Engineering page lets a person set what a part passes through, where i
   assert.match(keypad, /<option value="top" selected>/); assert.ok(!/data-k="spot/.test(keypad) && !/data-act="boss"/.test(keypad), 'no pieces or bosses for a single keypad');
   for (const k of ['thru[012]', 'spot\\d+_[012]', 'boss\\d+_[012]', 'bossd\\d+']) assert.ok(html.includes(`/^${k}$/.test(k)`), `the page sets ${k}`);
   assert.ok(html.includes('p.cuts,p.bosses,p.flange'), 'the 3D part is rebuilt when its openings or bosses change');
+  // a round part's flange: off, or at one end with the body's width behind it
+  const spk = archetype('speaker'), woofer = editor.call(null, spk.parts.find(q => q.elec?.kind === 'woofer')), knob = editor(spk.parts.find(q => q.id === 'knob'));
+  assert.match(woofer, /data-k="flend"[^]*<option value="-" selected>/); assert.match(woofer, /data-k="flbody" value="106.6"/); assert.match(woofer, /data-k="flt" value="4"/);
+  assert.ok(/data-k="flend"/.test(knob) && /<option value="" selected>No flange/.test(knob) && !/data-k="flbody"/.test(knob), 'a plain round part: the flange is off, with no sizes to set'); assert.ok(!/data-k="flend"/.test(housing), 'a housing has no flange');
+  assert.ok(html.includes("k==='flend'") && html.includes("k==='flbody'||k==='flt'"), 'the page sets the flange');
 });
 
 test('an assembly saved before parts said what they pass through: a part plainly through a wall gets its opening when it is opened, the saved parts are not rewritten, and a real misfit still shows', () => {
