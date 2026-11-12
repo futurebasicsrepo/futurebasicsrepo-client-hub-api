@@ -455,6 +455,7 @@ $('#taskScope').onchange=loadTasks;
 async function loadEmailBox(id,prefill){
   const box=$('#emailBox');if(!box)return;
   let chk,tpls;try{[chk,tpls]=await Promise.all([api(`/v1/sales/contacts/${id}/email-check`),api('/v1/sales/templates')])}catch(x){box.innerHTML=`<span class="msg bad">${esc(x.message)}</span>`;return}
+  if(!box.isConnected)return; // the card was drawn again while this was loading (a tag added, a note saved): that draw loads its own box, and this one's is gone from the page
   const hard=chk.reasons.filter(r=>!/^Nothing shows they know us/.test(r));
   if(hard.length){box.innerHTML=hard.map(r=>`<p class="why">${esc(r)}</p>`).join('')+`<p class="sub">${chk.relationship.ok?'They know us: '+esc(chk.relationship.why)+'.':''}</p>`;return}
   box.innerHTML=`<div class="sub" style="margin-bottom:8px">From ${esc(chk.from)} · to ${esc(chk.to)} · ${chk.remainingToday} left today · ${chk.relationship.ok?'they know us: '+esc(chk.relationship.why):'nothing shows they know us yet'}</div>
