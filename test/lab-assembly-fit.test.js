@@ -238,13 +238,13 @@ test('lip and groove: where two housing halves close, the lip of one stands in t
 test('snap strain limits: each resin has its figure and where the figure is from', async () => {
   const { SNAP_LIMITS, SNAP_STRAIN } = await import('../src/lab-assembly.js');
   // a maker's table of snap-fit strains (Bayer's Part and Mold Design table 4-1, DuPont's General Design Principles table 9.04) ...
-  assert.deepEqual(SNAP_STRAIN, { 'PC': 4, 'PC clear': 4, 'PC/ABS': 2.5, 'ABS': 1.8, 'POM (acetal)': 6, 'PA66 GF30': 1.2, 'Tritan': 4.2, 'PETG': 2.8, 'PP': 7, 'HIPS': 1, 'PMMA (acrylic)': 1.5 });
+  assert.deepEqual(SNAP_STRAIN, { 'PC': 4, 'PC clear': 4, 'PC/ABS': 2.5, 'ABS': 1.8, 'POM (acetal)': 6, 'PA66 GF30': 1.2, 'Tritan': 4.2, 'PETG': 2.8, 'PP': 7, 'HIPS': 1, 'PMMA (acrylic)': 2 });
   for (const resin of ['PC', 'PC clear', 'PC/ABS', 'ABS']) assert.match(SNAP_LIMITS[resin][1], /^Bayer, Part and Mold Design, table 4-1$/, resin);
   for (const resin of ['POM (acetal)', 'PA66 GF30']) assert.match(SNAP_LIMITS[resin][1], /^DuPont, General Design Principles, table 9\.04, /, resin);
   // ... or 70% of the strain at yield on a named grade's datasheet, never more
   for (const [resin, y] of [['Tritan', 6], ['PETG', 4], ['PP', 10], ['HIPS', 1.5]]) { assert.ok(SNAP_STRAIN[resin] <= y * .7 + 1e-9, `${resin}: ${SNAP_STRAIN[resin]}% is within 70% of ${y}%`); assert.match(SNAP_LIMITS[resin][1], new RegExp(`^70% of the ${String(y).replace('.', '\\.')}% it yields at, .+ datasheet$`), resin); }
-  // acrylic has neither: it says so, and stays under half of what it breaks at
-  assert.ok(SNAP_STRAIN['PMMA (acrylic)'] < 5.5 / 2); assert.match(SNAP_LIMITS['PMMA (acrylic)'][1], /^no published figure/);
+  // acrylic is in no maker's table and has no yield point: a design guide's figure for a snap-fit used a few times, not its doubled one, and under half of what it breaks at
+  assert.equal(SNAP_STRAIN['PMMA (acrylic)'], 2); assert.ok(SNAP_STRAIN['PMMA (acrylic)'] < 5.5 / 2); assert.match(SNAP_LIMITS['PMMA (acrylic)'][1], /^Maier, PRW Design Guides, typical data for snap-fits: a snap-fit used a few times$/);
   for (const [resin, [pc, from]] of Object.entries(SNAP_LIMITS)) assert.ok(pc > 0 && from.length > 10, resin);
 });
 
@@ -348,7 +348,7 @@ test('the turntable\'s belt: drawn round the sub-platter and the motor pulley, i
     // the path, worked out here from the two parts: two straight runs and the wrap on each wheel
     const C = Math.hypot(pul.at[0] - hub.at[0], pul.at[1] - hub.at[1]), th = Math.acos((30 - 6) / C), path = 2 * Math.sqrt(C * C - 24 * 24) + (2 * Math.PI - 2 * th) * 30 + 2 * th * 6;
     assert.equal(f.length, 1); assert.equal(f[0].level, 'ok', f[0].text); assert.equal(f[0].kind, 'belt'); assert.ok(Math.abs(f[0].path - path) < .06 && Math.abs(f[0].apart - C) < .06, `path ${f[0].path} mm against ${path}`);
-    assert.equal(f[0].len, belt.len); assert.ok(Math.abs(f[0].stretch - 5) <= .2, `bought 5% under its path: ${f[0].stretch}%`); assert.ok(f[0].wrap >= 160 && f[0].wrap < 180); assert.deepEqual(f[0].with, ['hub', 'pulley']);
+    assert.equal(f[0].len, belt.len); assert.ok(f[0].under >= 5 && f[0].under <= 5.3 && belt.len === Math.floor(path * .95) && Math.abs(f[0].stretch - (path - belt.len) / belt.len * 100) < .06, `bought 5% under its path: ${f[0].under}% under, stretched ${f[0].stretch}%`); assert.ok(f[0].wrap >= 160 && f[0].wrap < 180); assert.deepEqual(f[0].with, ['hub', 'pulley']);
     // in the material: on the far side of the sub-platter, half way along a straight run, round the pulley; not inside the loop, not above or below
     const z = belt.at[2], ux = (pul.at[0] - hub.at[0]) / C, uy = (pul.at[1] - hub.at[1]) / C, n = [Math.cos(Math.atan2(uy, ux) + th), Math.sin(Math.atan2(uy, ux) + th)];
     assert.equal(inMaterial(belt, [hub.at[0] - ux * 30.4, hub.at[1] - uy * 30.4, z]), true); assert.equal(inMaterial(belt, [pul.at[0] + ux * 6.4, pul.at[1] + uy * 6.4, z]), true);
@@ -359,11 +359,14 @@ test('the turntable\'s belt: drawn round the sub-platter and the motor pulley, i
   // the STEP: the belt as exact faces, four arcs inside and four outside and the two straight runs each side
   const st = stepOf(archetype('turntable'), { only: 'belt' }), count = re => (st.match(re) || []).length; assert.equal(count(/MANIFOLD_SOLID_BREP\(/g), 1); assert.equal(count(/CYLINDRICAL_SURFACE\(/g), 8); assert.equal(count(/ADVANCED_FACE\(/g), 8 + 4 + 2);
   // it follows its wheels: move the motor and its pulley and the path is measured again
-  let c = bel(edit(P => { for (const id of ['pulley']) P(id).at[1] -= 8; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /bought at 456 mm it is stretched 2\.[0-9]%/); assert.ok(c[0].path < 478.5 - 10);
+  let c = bel(edit(P => { for (const id of ['pulley']) P(id).at[1] -= 8; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /bought at 454 mm it is 2\.[0-9]% under its path, stretched 2\.[0-9]% \(belt suppliers size a flat rubber belt 5 to 10% under: 443 mm is 5%\)/); assert.ok(c[0].path < 478.5 - 10);
+  // the suppliers' 5 to 10% is in whole percents: 456 mm (4.7% under) passes, 425 mm (11.2% under) is said
+  c = bel(edit(P => { P('belt').len = 456; })); assert.equal(c[0].level, 'ok', c[0].text); assert.equal(c[0].under, 4.7);
+  c = bel(edit(P => { P('belt').len = 425; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /bought at 425 mm it is 11\.2% under its path, stretched 12\.6%/);
   // broken on purpose
-  c = bel(edit(P => { P('belt').len = 480; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /it is 1\.5 mm too long and hangs slack\. Buy one 456 mm round the inside/);
+  c = bel(edit(P => { P('belt').len = 480; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /it is 1\.5 mm too long and hangs slack\. Buy one 454 mm round the inside \(5% under its path: belt suppliers size a flat rubber belt 5 to 10% under\)/);
   c = bel(edit(P => { P('belt').len = 400; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /it has to stretch 19\.6%/);
-  c = bel(edit(P => { delete P('belt').len; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /No length is given for the belt: buy one 456 mm round the inside/);
+  c = bel(edit(P => { delete P('belt').len; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /No length is given for the belt: buy one 454 mm round the inside/);
   c = bel(edit(P => { P('belt').at[2] += 1.5; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /it is not level on sub-platter \(the belt runs on it\) \(1 mm of its 3 mm width is off the edge\)/); assert.equal(c[0].off, 1);
   c = bel(edit(P => { P('belt').around = ['hub', 'headshell']; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /headshell is not a round part lying the belt's way/);
   c = bel(edit(P => { P('pulley').at[0] = P('hub').at[0] + 30; P('pulley').at[1] = 0; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /are 30 mm apart, centre to centre, and 36 mm across between them: they touch/);

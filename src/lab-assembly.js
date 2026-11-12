@@ -487,8 +487,9 @@ export const SNAP_LIMITS = {
   'PC': [4, BAYER], 'PC clear': [4, BAYER], 'PC/ABS': [2.5, BAYER], 'ABS': [1.8, BAYER],
   'POM (acetal)': [6, `${DUPONT}, Delrin 500 used once`], 'PA66 GF30': [1.2, `${DUPONT}, glass-reinforced Zytel, dry`],
   'Tritan': [4.2, RULE(6, 'Eastman Tritan TX1001')], 'PETG': [2.8, RULE(4, 'Eastman Eastar 6763')], 'PP': [7, RULE(10, 'LyondellBasell Moplen HP500N')], 'HIPS': [1, RULE(1.5, 'INEOS Styrolution PS 495F')],
-  // acrylic has no yield point and no published snap-fit figure: held well under half the 5.5% it breaks at, which is the guides' rule for a material with no yield point
-  'PMMA (acrylic)': [1.5, 'no published figure: held under half the 5.5% it breaks at, Plexiglas 8N datasheet'] };
+  // acrylic is in no resin maker's table and has no yield point. A design guide gives 2% for a snap-fit used a few times (and says it may be
+  // doubled for one used once: not done here, since 4% is most of the 5.5% Plexiglas 8N breaks at)
+  'PMMA (acrylic)': [2, 'Maier, PRW Design Guides, typical data for snap-fits: a snap-fit used a few times'] };
 export const SNAP_STRAIN = Object.fromEntries(Object.entries(SNAP_LIMITS).map(([resin, [pc]]) => [resin, pc]));
 const snapFrom = resin => SNAP_LIMITS[resin]?.[1] || '';
 const HEAD = 1.5, LEDGE = 1.5, FOOT = 2.5, wayOf = d => { const v = [0, 0, 0]; v['xyz'.indexOf(d[1])] = d[0] === '-' ? -1 : 1; return v; }, bare = p => featuresOf({ ...p, adds: undefined });
@@ -779,7 +780,7 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     // under the platter; the belt is bought 5% shorter than its path
     const pl = t + .3 + 4.5, cd = Math.hypot(mx - px, my), tb = Math.acos((30 - 6) / cd), bp = 2 * Math.sqrt(cd * cd - 24 * 24) + (2 * Math.PI - 2 * tb) * 30 + 2 * tb * 6;
     add({ id: 'pulley', name: 'Motor pulley on its shaft', shape: 'cyl', size: [12, 12, pl], at: [mx, my, ceil - .3 + pl / 2], flange: { body: 3, t: 4, end: '+' }, resin: 'aluminium 6061', process: 'CNC machined', cost: .8, finish: 'none', through: ['plinth'], fix: 'press', order: 4, lvl: 1.4 });
-    add({ id: 'belt', name: 'Drive belt, flat 3 × 0.8 mm', shape: 'ring', size: [20, 20, 3], wall: .8, at: [px, 0, zt + 2], around: ['hub', 'pulley'], len: Math.round(bp / 1.05), resin: 'bought in', process: 'bought in', cost: .9, fix: 'place', order: 4, lvl: 1.5 });
+    add({ id: 'belt', name: 'Drive belt, flat 3 × 0.8 mm', shape: 'ring', size: [20, 20, 3], wall: .8, at: [px, 0, zt + 2], around: ['hub', 'pulley'], len: Math.floor(bp * .95), resin: 'bought in', process: 'bought in', cost: .9, fix: 'place', order: 4, lvl: 1.5 });
     const so = [[bx - bw / 2 + 5, by - bd / 2 + 5], [bx + bw / 2 - 5, by - bd / 2 + 5], [bx + bw / 2 - 5, by + bd / 2 - 5], [bx - bw / 2 + 5, by - bd / 2 + 30]];
     add({ id: 'standoffs', name: 'Standoff, M3 × 6 brass, riveted to the plate', shape: 'cyl', size: [5.5, 5.5, 6], at: [...so[0], z0 + 3], resin: 'bought in', process: 'bought in', cost: .04, qty: 4, spots: so.slice(1).map(q => [q[0] - so[0][0], q[1] - so[0][1], 0]), fix: 'press', order: 2, lvl: .6 });
     screw('screws-board', 'Screw, M3 × 6 pan head (board)', 3, 6.5, 'z', so.map(q => [...q, z0 + 6 + 1.6 + 1 - 3.25]), { parent: 'pcb', through: ['pcb'], order: 3, lvl: 1 });
@@ -1273,14 +1274,17 @@ export function fitOf(s) {
   for (const p of parts) { if (!p.around) continue; const byId = Object.fromEntries(parts.map(q => [q.id, q])), G = beltOn(p, byId);
     if (G.why || !p.loop) { say('belt', p.id, 'bad', `${name(p)} cannot run: ${G.why || 'it is not drawn as a ring'}. A belt runs round two round parts that lie its way and stand apart.`, { with: p.around }); continue; }
     const ax = G.ax, b0 = p.at[ax] - p.size[ax] / 2, b1 = b0 + p.size[ax], offs = [G.P1, G.P2].map((P, i) => { const s = [G.s1, G.s2][i]; return [P, r2(Math.max(s.lo - b0, b1 - s.hi, 0))]; }).filter(x => x[1] > .2);
-    const path = r1(G.path), wrap = Math.round(G.wrap), stretch = p.len ? r1((G.path - p.len) / p.len * 100) : null, more = { with: [G.P1.id, G.P2.id], apart: r1(G.C), path, len: p.len ?? null, stretch, wrap };
+    const path = r1(G.path), wrap = Math.round(G.wrap), stretch = p.len ? r1((G.path - p.len) / p.len * 100) : null, under = p.len ? r1((G.path - p.len) / G.path * 100) : null, buy = Math.floor(G.path * .95), more = { with: [G.P1.id, G.P2.id], apart: r1(G.C), path, len: p.len ?? null, stretch, under, wrap };
+    // How short a flat rubber belt is bought: its suppliers size one 5 to 10% under (PRB Line's catalogue: "deduct 5%-10%"; V-M Audio
+    // Enthusiasts: "multiply by .95"), figures given in whole percents and read here against the belt's path. Over 15% stretched fails:
+    // that limit is this check's own.
     const what = `${name(p)} round ${low(G.P1)} (⌀${r1(2 * G.s1.r)} mm) and ${low(G.P2)} (⌀${r1(2 * G.s2.r)} mm), ${r1(G.C)} mm apart: a path of ${path} mm`;
     if (offs.length) say('belt', p.id, 'bad', `${what}, but it is not level on ${offs.map(([P, v]) => `${low(P)} (${v} mm of its ${p.size[ax]} mm width is off the edge)`).join(' or ')}: it will walk off. Set the belt and the two running surfaces at one height.`, { ...more, off: offs[0][1] });
-    else if (stretch == null) say('belt', p.id, 'warn', `${what}. No length is given for the belt: buy one ${r0(G.path / 1.05)} mm round the inside (5% under its path).`, more);
-    else if (stretch <= 0 || stretch > 15) say('belt', p.id, 'bad', `${what}, and the belt is bought at ${p.len} mm: ${stretch <= 0 ? `it is ${r1(p.len - G.path)} mm too long and hangs slack` : `it has to stretch ${stretch}%, which it will not take for long`}. Buy one ${r0(G.path / 1.05)} mm round the inside (5% under its path, the rule belt sellers size a flat rubber belt by; this check lets 3 to 10% pass).`, more);
-    else { const notes = [(stretch < 3 || stretch > 10) && `bought at ${p.len} mm it is stretched ${stretch}% (${r0(G.path / 1.05)} mm is 5%, the rule belt sellers size a flat rubber belt by; this check lets 3 to 10% pass, and the belt's maker has the last word)`, wrap < 120 && `it wraps only ${wrap}° of ${low(G.P2)} (120° or more grips)`, G.s2.r < 4 * p.wall && `${low(G.P2)} is ⌀${r1(2 * G.s2.r)} mm for a belt ${p.wall} mm thick (8 times the thickness or more lets it bend round)`].filter(Boolean);
+    else if (stretch == null) say('belt', p.id, 'warn', `${what}. No length is given for the belt: buy one ${buy} mm round the inside (5% under its path).`, more);
+    else if (stretch <= 0 || stretch > 15) say('belt', p.id, 'bad', `${what}, and the belt is bought at ${p.len} mm: ${stretch <= 0 ? `it is ${r1(p.len - G.path)} mm too long and hangs slack` : `it has to stretch ${stretch}%, which it will not take for long`}. Buy one ${buy} mm round the inside (5% under its path: belt suppliers size a flat rubber belt 5 to 10% under).`, more);
+    else { const notes = [(Math.round(under) < 5 || Math.round(under) > 10) && `bought at ${p.len} mm it is ${under}% under its path, stretched ${stretch}% (belt suppliers size a flat rubber belt 5 to 10% under: ${buy} mm is 5%)`, wrap < 120 && `it wraps only ${wrap}° of ${low(G.P2)} (120° or more grips)`, G.s2.r < 4 * p.wall && `${low(G.P2)} is ⌀${r1(2 * G.s2.r)} mm for a belt ${p.wall} mm thick (8 times the thickness or more lets it bend round)`].filter(Boolean);
       if (notes.length) say('belt', p.id, 'warn', `${what}: ${notes.join('; ')}.`, more);
-      else say('belt', p.id, 'ok', `${what}. Bought at ${p.len} mm round the inside, it is stretched ${stretch}%, wraps ${wrap}° of ${low(G.P2)} and lies level on both.`, more); } }
+      else say('belt', p.id, 'ok', `${what}. Bought at ${p.len} mm round the inside, ${under}% under its path (stretched ${stretch}%), it wraps ${wrap}° of ${low(G.P2)} and lies level on both.`, more); } }
   // ---- a part's own openings: each one really cut; and a cover that slides over one: it covers it shut, clears it open, stays on and meets nothing ----
   const holeAt = (h, Fh, o) => { const l = toLocal(h, o.at), ax = axisOf(h), k = AXN.indexOf(o.axis); if (k === ax) l[2] = Fh.shell && Fh.floor ? Fh.sgn * (Fh.u0 + Fh.uf) / 2 : 0; return toWorld(h, l).map((v, i) => v + h.at[i]); }; // its middle, in the floor or the wall it goes through
   const sizeOf = o => [0, 1, 2].filter(i => i !== AXN.indexOf(o.axis)).map(i => o.size[i]).join(' × ');
