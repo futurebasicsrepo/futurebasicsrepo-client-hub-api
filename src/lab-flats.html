@@ -417,11 +417,13 @@ $('#pGarment').addEventListener('click',e=>{const sw=e.target.closest('[data-bsw
 // the techniques this piece can be made with: the ones made on what it is (cloth for a garment; a mug's, a glass's or a poster's own for a
 // product type: techniqueFits), so a mug is not offered embroidery. One chosen before that no longer fits stays listed, and says so.
 const fitTechs=()=>D.techniques.filter(x=>techniqueFits(x,P.style));
-// the technique a new graphic starts with: on a product type, the usual one for what it is made of; on a garment a mark embroidered, a graphic screen printed
-function firstTech(mark=false){const fits=fitTechs(),goods=STYLES[P.style]?.kind==='goods';return (goods?fits.find(x=>x.id===D.firstTechnique?.[surfaceOf(P.style)]):null)||fits.find(x=>x.base===(mark&&!goods?'embroidery':'screen print'))||(goods?fits[0]:null)||null}
+// the technique a new graphic starts with: on a product type, the usual one for what it is made of; on a garment a mark embroidered in satin
+// stitch, a graphic screen printed in plastisol (the plain one of each: taken by its base alone, a graphic started as the first screen print by
+// name, a crackle print)
+function firstTech(mark=false){const fits=fitTechs(),goods=STYLES[P.style]?.kind==='goods';return fits.find(x=>x.id===D.firstTechnique?.[goods?surfaceOf(P.style):mark?'mark':'cloth'])||fits.find(x=>x.base===(mark&&!goods?'embroidery':'screen print'))||(goods?fits[0]:null)||null}
 // the piece became another kind of thing (a tee made a mug): a graphic whose technique is not made on it takes the new piece's usual one
 function refitTechs(){for(const q of PL){const t=D.techniques.find(x=>x.id===q.techniqueId);if(!t||!techniqueFits(t,P.style)){const n=firstTech(Boolean(q.mark));if(n){q.techniqueId=n.id;q.technique=n.base}}}}
-function techOpts(v){const goods=STYLES[P.style]?.kind==='goods',kinds=[['embroidery','Embroidery'],['print','Print'],['heat_transfer','Heat transfer'],['patch','Patches and appliqué'],...(goods?[['other','Engraving and other ways']]:[]),['distress','Distressing and wash']],fits=fitTechs(),cur=D.techniques.find(x=>x.id===v);
+function techOpts(v){const goods=STYLES[P.style]?.kind==='goods',kinds=[['embroidery','Embroidery'],['print','Print'],['heat_transfer','Heat transfer'],['patch','Patches and appliqué'],['other',goods?'Engraving and other ways':'Other ways'],['distress','Distressing and wash']],fits=fitTechs(),cur=D.techniques.find(x=>x.id===v);
   return (cur&&!fits.includes(cur)?`<option value="${cur.id}" selected>${esc(cur.name)} (not made on this)</option>`:'')+kinds.map(([k,l])=>{const t=fits.filter(x=>x.kind===k);return t.length?`<optgroup label="${l}">${t.map(x=>`<option value="${x.id}" ${x.id===v?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`:''}).join('')}
 // a cup's back is drawn beside its front: a graphic on it is measured from the back's own centre line, not the front's
 const xBase=q=>{if(!wrapStyle(P.style)||q.view!=='front')return 0;const sd=geometry(P,'front').sides||[];return sd.slice().sort((a,b)=>Math.abs(q.x-a.x)-Math.abs(q.x-b.x))[0]?.x||0};

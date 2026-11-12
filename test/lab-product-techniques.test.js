@@ -124,7 +124,7 @@ test('the routes: a mug\'s graphic is made as a mug is, a wrong technique is cau
   const { app } = await build({ style: 'mug', template: 'none', catalog: { id: 'x', name: 'Mug', brand: '' }, branding: { logo: { mark: 'none' } } }), { r, params } = await flatOf(app);
   // the page is given every technique with what it is made on, and what a new graphic starts as on each surface
   assert.equal(r.techniques.length, TECH.length); assert.deepEqual(r.techniques.find(t => t.id === idOf('uv-print')).surfaces, ['soft', 'ceramic', 'glass', 'metal', 'plastic', 'wood']); assert.deepEqual(r.techniques.find(t => t.id === idOf('satin-embroidery')).surfaces, ['cloth']);
-  assert.equal(r.firstTechnique.ceramic, idOf('sublimation-blank')); assert.equal(r.firstTechnique.paper, idOf('digital-print')); assert.equal(r.firstTechnique.cloth, undefined);
+  assert.equal(r.firstTechnique.ceramic, idOf('sublimation-blank')); assert.equal(r.firstTechnique.paper, idOf('digital-print')); assert.equal(r.firstTechnique.cloth, idOf('plastisol'), 'a graphic on cloth starts as the plain screen print, not the first by name'); assert.equal(r.firstTechnique.mark, idOf('satin-embroidery'), 'and a mark as the plain embroidery');
   assert.equal(r.techniques.filter(t => techniqueFits(t, 'mug')).length, 4);
   // a graphic that names no technique from the library (only the garment's old word) is made as a mug is: sublimation, with no estimate
   const q = { id: 'art', name: 'Crest', view: 'front', x: 0, y: 1.875, w: 2, h: 2, art: ART, technique: 'screen print', source: 'extra' };

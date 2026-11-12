@@ -18,7 +18,7 @@ const CANNOT = {
   'handheld smallest': /Li-ion cell, \d+ mAh: does not fit inside Bottom housing/, 'desk smallest': /OLED display, 1\.3 in: does not fit inside Front housing/, 'cassette smallest': /Battery holder, 2 × AA \(replaceable\) and Cassette transport .* take the same space/,
   'case largest': /needs a press over 500 t/, 'custom largest': /needs a press over 500 t/,
   'puck, a 5,000 mAh cell asked for': /Li-ion cell, 5000 mAh goes [\d.]+ mm into the wall of bottom housing/, 'handheld, a 3,000 mAh cell asked for': /Li-ion cell, 3000 mAh: does not fit inside Bottom housing/, 'lamp, a 5,000 mAh cell asked for': /Li-ion cell, 5000 mAh goes [\d.]+ mm into the wall of weighted base/ };
-const notOk = f => [...f.clash, ...f.contact, ...f.fasteners, ...f.size].filter(c => c.level !== 'ok');
+const notOk = f => Object.values(f).flat().filter(c => c.level !== 'ok'); // every kind of finding the fit checks make
 // a triangle list is a closed surface wound one way when every edge is used once in each direction
 function closed(tri) { const id = new Map(), v = (x, y, z) => { const k = `${Math.round(x * 1e3)},${Math.round(y * 1e3)},${Math.round(z * 1e3)}`; if (!id.has(k)) id.set(k, id.size); return id.get(k); }, E = new Map(); let vol = 0;
   for (let i = 0; i < tri.length; i += 9) { const q = [0, 3, 6].map(o => v(tri[i + o], tri[i + o + 1], tri[i + o + 2])); if (q[0] === q[1] || q[1] === q[2] || q[0] === q[2]) continue;
@@ -159,6 +159,14 @@ test('the Engineering page lets a person set what a part passes through, where i
   assert.match(keypad, /<option value="top" selected>/); assert.ok(!/data-k="spot/.test(keypad) && !/data-act="boss"/.test(keypad), 'no pieces or bosses for a single keypad');
   for (const k of ['thru[012]', 'spot\\d+_[012]', 'boss\\d+_[012]', 'bossd\\d+']) assert.ok(html.includes(`/^${k}$/.test(k)`), `the page sets ${k}`);
   assert.ok(html.includes('p.cuts,p.bosses,p.flange'), 'the 3D part is rebuilt when its openings or bosses change');
+  // every piece has its fields, however many there are (the list scrolls)
+  const many = editor(cleanPart({ id: 'pins', name: 'Pin', shape: 'cyl', size: [2, 2, 8], qty: 14, spots: Array.from({ length: 13 }, (_, i) => [i * 5 + 5, 0, 0]) }));
+  assert.equal(n(many, /data-k="spot\d+_[012]"/g), 39, 'thirteen other pieces, three fields each'); assert.match(many, /data-k="spot12_0" value="65"/); assert.match(many, /class="pieces"/); assert.ok(!/keep the places they have/.test(many)); assert.match(html, /\.edit \.pieces\{[^}]*overflow:auto/);
+  // a round part's flange: off, or at one end with the body's width behind it
+  const spk = archetype('speaker'), woofer = editor.call(null, spk.parts.find(q => q.elec?.kind === 'woofer')), knob = editor(spk.parts.find(q => q.id === 'knob'));
+  assert.match(woofer, /data-k="flend"[^]*<option value="-" selected>/); assert.match(woofer, /data-k="flbody" value="106.6"/); assert.match(woofer, /data-k="flt" value="4"/);
+  assert.ok(/data-k="flend"/.test(knob) && /<option value="" selected>No flange/.test(knob) && !/data-k="flbody"/.test(knob), 'a plain round part: the flange is off, with no sizes to set'); assert.ok(!/data-k="flend"/.test(housing), 'a housing has no flange');
+  assert.ok(html.includes("k==='flend'") && html.includes("k==='flbody'||k==='flt'"), 'the page sets the flange');
 });
 
 test('an assembly saved before parts said what they pass through: a part plainly through a wall gets its opening when it is opened, the saved parts are not rewritten, and a real misfit still shows', () => {
@@ -176,4 +184,203 @@ test('an assembly saved before parts said what they pass through: a part plainly
   const lid = strip(archetype('tumbler')); lid.parts.find(p => p.id === 'body').size[0] = lid.parts.find(p => p.id === 'body').size[1] = 88; lid.parts.find(p => p.id === 'lid').size = [91, 91, 18]; assert.ok(bads(lid).some(t => /0\.5 mm into the material/.test(t)), 'the lid 0.5 mm into the cup');
   for (const a of Object.keys(ARCHES)) assert.deepEqual(bads(strip(archetype(a))), [], `${a}: read under the old rules, today's assembly is still clean`);
   assert.equal(archetype('puck').v, 2); assert.equal(cleanAssembly({ ...archetype('puck'), v: 7 }).v, 2);
+});
+
+test('lip and groove: where two housing halves close, the lip of one stands in the groove of the other, in the solids and measured by the check', async () => {
+  const { stepOf } = await import('../src/lab-step.js'), { stlOf, featuresOf } = await import('../src/lab-assembly.js');
+  const tris = u8 => { const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), n = dv.getUint32(80, true), t = new Float32Array(n * 9); for (let i = 0, o = 84; i < n; i++, o += 50) for (let k = 0; k < 9; k++) t[i * 9 + k] = dv.getFloat32(o + 12 + k * 4, true); return t; };
+  const lipOf = s => fitOf(cleanAssembly(s)).lip, edit = (a, fn) => { const s = JSON.parse(JSON.stringify(archetype(a))); fn(id => s.parts.find(p => p.id === id), s); return s; };
+  // the six starting assemblies whose halves close rim to rim: the half put down first carries the lip, the other the groove
+  const pairs = { handheld: ['bottom', 'top'], desk: ['back', 'front'], cassette: ['back', 'front'], smartspeaker: ['body', 'grille'], powerbank: ['bottom', 'top'], case: ['base', 'lid'] };
+  for (const [a, [ia, ib]] of Object.entries(pairs)) { const s = archetype(a), A = s.parts.find(p => p.id === ia), B = s.parts.find(p => p.id === ib), f = fitOf(s).lip;
+    assert.equal(A.lip.into, ib); assert.equal(A.adds.filter(x => x.kind === 'lip').length, 1, `${a}: the lip is a body on ${ia}`); assert.equal(B.groove.for, ia, `${a}: ${ib} has the groove for it`);
+    assert.equal(f.length, 1); assert.equal(f[0].level, 'ok', `${a}: ${f[0].text}`); assert.equal(f[0].kind, 'lip'); assert.equal(f[0].with, ib);
+    assert.equal(f[0].engaged, 1.2, `${a}: the lip stands 1.2 mm into the groove`); assert.ok(f[0].clear[0] >= .08 && f[0].clear[1] <= .2, `${a}: 0.1 mm clear at the side, measured ${f[0].clear}`); assert.ok(Math.abs(f[0].top - .3) <= .03, `${a}: 0.3 mm at its top`);
+    assert.ok(f[0].skin >= .6 && Math.abs(f[0].skin + A.adds[0].wall + .1 - A.wall) < .011, `${a}: lip, clearance and the wall left outside it make the wall`);
+    assert.ok(dfm(s).some(c => c.kind === 'lip' && c.text === f[0].text), `${a}: dfm carries the finding`); }
+  assert.deepEqual(Object.keys(ARCHES).filter(a => archetype(a).parts.some(p => p.lip)).sort(), Object.keys(pairs).sort(), 'no other starting assembly has two halves that meet rim to rim');
+  // in the material: just above the bottom's rim the inner part of the wall is the bottom's lip and not the top's; the top keeps its skin outside
+  const hh = archetype('handheld'), bot = hh.parts.find(p => p.id === 'bottom'), top = hh.parts.find(p => p.id === 'top'), x = bot.size[0] / 2, z = bot.at[2] + bot.size[2] / 2 + .6;
+  assert.equal(inMaterial(bot, [x - 1.3, 20, z]), true, 'the lip, in the inner half of the wall'); assert.equal(inMaterial(top, [x - 1.3, 20, z]), false, 'the groove, where the lip is');
+  assert.equal(inMaterial(top, [x - .4, 20, z]), true, 'the skin outside the groove'); assert.equal(inMaterial(bot, [x - .4, 20, z]), false); assert.equal(inMaterial(top, [x - 1.3, 20, z + 1.5]), true, 'the whole wall again above the groove');
+  assert.equal(inMaterial(bot, [x - 1.3, 20, z + .8]), false, 'the lip is 1.2 mm tall');
+  // where the USB-C port's notch reaches the rim, the groove stops with the wall, and the opening runs on through the groove's depth
+  const usb = hh.parts.find(p => p.elec?.kind === 'usbc'), F = featuresOf(top), notch = F.sides.find(m => m.ub >= F.u1 - 1e-9); assert.ok(notch && notch.ua <= F.groove.g - .3 + 1e-9, 'a window that comes into the groove is opened through it');
+  assert.equal(inMaterial(top, [usb.at[0], top.at[1] - top.size[1] / 2 + .4, z]), false, 'no skin left across the port');
+  // the files: both halves are closed solids in the STL and the STEP, the groove as exact faces, the lip a body of its own on its half
+  for (const [a, [ia, ib]] of Object.entries(pairs)) { const s = cleanAssembly(archetype(a));
+    for (const id of [ia, ib]) assert.ok(closed(tris(stlOf(s, { only: id }))), `${a}: ${id}'s STL is closed`);
+    const plain = cleanAssembly({ ...s, parts: s.parts.map(p => ({ ...p, lip: undefined })) }), count = (t, re) => (t.match(re) || []).length, mine = stepOf(s, { only: ib }), bare = stepOf(plain, { only: ib });
+    assert.ok(count(mine, /ADVANCED_FACE\(/g) >= count(bare, /ADVANCED_FACE\(/g) + 2, `${a}: the groove adds its wall and its floor to ${ib}'s STEP`);
+    assert.equal(count(stepOf(s, { only: ia }), /MANIFOLD_SOLID_BREP\(/g), 1 + s.parts.find(p => p.id === ia).adds.length, `${a}: ${ia}, its lip, and any catch it carries for the other half's hooks`); assert.match(stepOf(s, { only: ia }), /MANIFOLD_SOLID_BREP\('[^']*: lip'/);
+    const vol = t => { let v = 0; for (let i = 0; i < t.length; i += 9) v += (t[i] * (t[i + 4] * t[i + 8] - t[i + 5] * t[i + 7]) - t[i + 1] * (t[i + 3] * t[i + 8] - t[i + 5] * t[i + 6]) + t[i + 2] * (t[i + 3] * t[i + 7] - t[i + 4] * t[i + 6])) / 6; return v; };
+    assert.ok(vol(tris(stlOf(s, { only: ib }))) < vol(tris(stlOf(plain, { only: ib }))) - 1, `${a}: the groove takes material out of ${ib}`); assert.ok(vol(tris(stlOf(s, { only: ia }))) > vol(tris(stlOf(plain, { only: ia }))) + 1, `${a}: the lip adds material to ${ia}`); }
+  // worked out each time, so it follows the parts, and reading an assembly twice changes nothing
+  const once = cleanAssembly(archetype('case')); assert.deepEqual(cleanAssembly(once), once);
+  const wide = cleanAssembly(edit('case', P => { P('base').size[0] = P('lid').size[0] = 260; })); assert.equal(wide.parts.find(p => p.id === 'base').adds[0].size[0], 260 - 2 * (2.5 - 1.1)); assert.equal(fitOf(wide).lip[0].level, 'ok');
+  // broken on purpose: each way a lip can fail to locate is said, with its number
+  let c = lipOf(edit('handheld', P => { P('top').at[2] += 2; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /their rims are 2 mm apart/);
+  c = lipOf(edit('handheld', P => { P('top').at[0] += .4; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /(0\.9|1) mm clear of the groove at its loosest/); assert.match(c[0].text, /step 0\.4 mm at the seam/); assert.ok(c[0].clear[1] >= .85);
+  c = lipOf(edit('handheld', P => { P('top').at[0] += .7; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /top housing has no wall to take it \(0\.1 mm would be left outside the lip\)/);
+  c = lipOf(edit('handheld', P => { P('top').r = 16; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /hard against the wall of its groove/, 'a mate with rounder corners: the lip\'s corners are in its wall');
+  c = lipOf(edit('handheld', P => { P('top').size[1] -= 30; P('top').at[1] += 15; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /has no wall to take it|of its way round/);
+  c = lipOf(edit('handheld', P => { P('bottom').lip = { into: 'top', h: .6 }; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /stands only 0\.6 mm into the groove/);
+  c = lipOf(edit('handheld', P => { P('bottom').lip = { into: 'top', t: 1 }; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /only 0\.5 mm of top housing's wall is left outside it/);
+  c = lipOf(edit('handheld', P => { P('bottom').lip = { into: 'pcb' }; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /main board is not a housing half/);
+  c = lipOf(edit('puck', P => { P('bottom').lip = { into: 'top' }; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /their rims are 2\.9 mm apart/, 'the light ring lies between the puck\'s halves');
+  assert.equal(cleanAssembly(edit('handheld', P => { P('bottom').lip = { into: 'gone' }; })).parts.find(p => p.id === 'bottom').lip, undefined, 'a lip for a part that is not there is dropped');
+  // a groove too narrow for its lip is measured by the same point test as everything else
+  const tight = cleanAssembly(archetype('handheld')); tight.parts.find(p => p.id === 'top').groove.t = .3; // (set by hand: cleanAssembly would work it out again)
+  assert.equal(inMaterial(tight.parts.find(p => p.id === 'top'), [x - 1.1, 20, z]), true, 'a groove 0.3 mm wide leaves the wall where the lip is');
+  c = fitOf(tight).lip; assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /hard against the wall of its groove/); assert.equal(c[0].clear[0], 0);
+});
+
+test('snap hooks: a cover that snaps on has its hooks and their catches as bodies, and the check measures the catch, the bend and the room to bend', async () => {
+  const { stepOf } = await import('../src/lab-step.js'), { SNAP_STRAIN } = await import('../src/lab-assembly.js');
+  const snapOf = s => fitOf(cleanAssembly(s)).snap, edit = (a, fn) => { const s = JSON.parse(JSON.stringify(archetype(a))); fn(id => s.parts.find(p => p.id === id), s); return s; };
+  // where there is room between the wall and what is inside, the starting assembly has them; where there is none, it has none and says nothing
+  const have = { desk: ['front', 'back', 4], cassette: ['front', 'back', 2], smartspeaker: ['grille', 'body', 4] };
+  for (const [a, [ia, ib, n]] of Object.entries(have)) { const s = archetype(a), A = s.parts.find(p => p.id === ia), B = s.parts.find(p => p.id === ib), f = fitOf(s).snap;
+    assert.equal(A.fix, 'snap'); assert.equal(A.snaps.into, ib); assert.equal(A.snaps.hooks.length, n, `${a}: ${n} hooks`);
+    assert.equal(A.adds.filter(x => x.kind === 'hook').length, n * 3, `${a}: each hook is a foot on the wall, a beam and a head`); assert.equal(B.adds.filter(x => x.kind === 'catch' && x.for === ia).length, n, `${a}: a catch for each on ${ib}`);
+    assert.equal(f.length, 1); assert.equal(f[0].level, 'ok', f[0].text); assert.equal(f[0].kind, 'snap'); assert.equal(f[0].hooks, n); assert.equal(f[0].engaged, .8);
+    const S = A.snaps, strain = 150 * S.t * .8 / (S.len - 1.5) ** 2; assert.ok(Math.abs(f[0].strain - strain) < .01 && strain < SNAP_STRAIN[A.resin], `${a}: bends ${f[0].strain}%, ${A.resin} takes ${SNAP_STRAIN[A.resin]}%`);
+    assert.ok(dfm(s).some(c => c.kind === 'snap' && c.text === f[0].text)); assert.equal(dfm(s).filter(c => c.level === 'bad').length, 0);
+    // in the material: the head is the cover's, the catch behind it is the other half's, and the two overlap by what the hook catches
+    const head = A.adds.filter(x => x.kind === 'hook')[1], ledge = B.adds.find(x => x.kind === 'catch'), hc = head.at.map((v, k) => v + A.at[k]), lc = ledge.at.map((v, k) => v + B.at[k]);
+    assert.equal(inMaterial(A, hc), true); assert.equal(inMaterial(B, hc), false); assert.equal(inMaterial(B, lc), true); assert.equal(inMaterial(A, lc), false);
+    const o = 'xyz'.indexOf(S.hooks[0].out[1]), al = 'xyz'.indexOf(S.hooks[0].along[1]), sg = S.hooks[0].out[0] === '-' ? -1 : 1;
+    const over = Math.min(sg * hc[o] + head.size[o] / 2, sg * lc[o] + ledge.size[o] / 2) - Math.max(sg * hc[o] - head.size[o] / 2, sg * lc[o] - ledge.size[o] / 2); assert.ok(Math.abs(over - .8) < .02, `${a}: head and catch overlap ${over} mm`);
+    assert.ok(Math.abs(Math.abs(hc[al] - lc[al]) - (head.size[al] + ledge.size[al]) / 2 - .1) < .02, `${a}: the catch is 0.1 mm behind the head`);
+    assert.match(stepOf(s, { only: ia }), /MANIFOLD_SOLID_BREP\('[^']*: hook'/); assert.match(stepOf(s, { only: ib }), /MANIFOLD_SOLID_BREP\('[^']*: catch'/); }
+  for (const a of ['puck', 'handheld', 'powerbank']) { const s = archetype(a); assert.equal(s.parts.some(p => p.snaps), false, `${a}: the board, the light ring or the cells are within 1.5 mm of the wall, so no hook is drawn`); assert.deepEqual(fitOf(s).snap, []); }
+  assert.ok(archetype('puck', { w: 300, h: 200 }).parts.find(p => p.id === 'top').snaps, 'a puck large enough has them'); assert.ok(archetype('powerbank', { w: 120, d: 220, h: 40 }).parts.find(p => p.id === 'top').snaps);
+  const once = cleanAssembly(archetype('desk')); assert.deepEqual(cleanAssembly(once), once, 'reading it twice changes nothing');
+  // broken on purpose
+  let c = snapOf(edit('desk', P => { P('front').snaps.y = 2; })); assert.equal(c.length, 4); assert.ok(c.every(x => x.level === 'bad' && /its head stands 2 mm out and the wall of back housing is 1\.2 mm away/.test(x.text)), c[0].text);
+  const shorter = (A, len) => { const by = A.snaps.len - len; A.snaps.len = len; A.snaps.hooks.forEach(h => { h.at['xyz'.indexOf(h.along[1])] += (h.along[0] === '-' ? -1 : 1) * by; }); }; // a shorter beam, its head where it was
+  c = snapOf(edit('desk', P => { shorter(P('front'), 5); P('front').snaps.hooks.forEach(h => { h.at['xyz'.indexOf(h.along[1])] -= (h.along[0] === '-' ? -1 : 1) * 5; }); })); assert.ok(c.every(x => x.level === 'bad' && /it bends 9\.8% as it is pushed home and PC\/ABS takes about 2\.5%/.test(x.text)), c[0].text); assert.match(c[0].text, /Lengthen it to 8\.4 mm/);
+  c = snapOf(edit('cassette', P => { shorter(P('front'), 9); })); assert.ok(c.every(x => x.level === 'warn' && /it bends 2\.13% as it is pushed home and ABS takes about 2%/.test(x.text)), c[0].text);
+  c = snapOf(edit('desk', P => { P('front').snaps.y = .5; })); assert.ok(c.every(x => x.level === 'warn' && /catches only 0\.3 mm/.test(x.text)), c[0].text);
+  c = snapOf(edit('desk', P => { P('front').snaps.hooks[0].at['xyz'.indexOf(P('front').snaps.hooks[0].out[1])] *= .8; })); assert.equal(c.filter(x => x.level === 'bad').length, 1); assert.match(c[0].text, /snap hook 1 of 4: it is not joined to front housing: there is no wall within 4 mm of its root/);
+  c = snapOf(edit('desk', (P, s) => { const A = P('front'), h = A.snaps.hooks[0], o = 'xyz'.indexOf(h.out[1]), al = 'xyz'.indexOf(h.along[1]), at = h.at.map((v, k) => v + A.at[k]); at[o] -= (h.out[0] === '-' ? -1 : 1) * 2.2; at[al] += (h.along[0] === '-' ? -1 : 1) * 11; s.parts.push({ id: 'rib', name: 'Rib', shape: 'box', size: [3, 3, 3], at, r: 0 }); }));
+  assert.equal(c.filter(x => x.level === 'bad').length, 1); assert.match(c[0].text, /it cannot bend: rib is 0\.[0-9]+ mm behind it and it has to move 0\.[0-9]+ mm there to pass its catch/); assert.equal(c[0].behind, 'rib');
+  c = snapOf(edit('desk', P => { P('front').resin = 'zinc (Zamak 3)'; P('front').process = 'die casting'; })); assert.ok(c.some(x => x.level === 'warn' && /zinc \(Zamak 3\) is not a resin a hook is moulded in/.test(x.text)));
+  c = snapOf(edit('desk', P => { P('front').snaps.hooks.length = 1; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /held on back housing by one snap hook/);
+  c = snapOf(edit('desk', P => { P('front').snaps.hooks.forEach(h => { h.at['xyz'.indexOf(h.along[1])] -= (h.along[0] === '-' ? -1 : 1) * -30; }); })); assert.ok(c.every(x => x.level === 'bad'), 'hooks moved off the joint find nothing');
+  assert.equal(cleanAssembly(edit('desk', P => { P('front').snaps.into = 'gone'; })).parts.find(p => p.id === 'front').snaps, undefined);
+});
+
+test('a thread: the tumbler lid screws onto the cup, the two diameters, the flanks and the turns measured off the two parts', async () => {
+  const { stepOf } = await import('../src/lab-step.js');
+  const thr = s => fitOf(cleanAssembly(s)).thread, edit = fn => { const s = JSON.parse(JSON.stringify(archetype('tumbler'))); fn(id => s.parts.find(p => p.id === id), s); return s; };
+  for (const dims of [{}, { w: 50, h: 80 }, { w: 160, h: 400 }, { w: 70, h: 120 }]) { const s = archetype('tumbler', dims), lid = s.parts.find(p => p.id === 'lid'), body = s.parts.find(p => p.id === 'body'), f = fitOf(s).thread, E = engineer(s);
+    assert.equal(lid.fix, 'thread'); assert.deepEqual(lid.thread, { onto: 'body', pitch: 4, turns: 1.5, depth: 1.2 }); assert.equal(f.length, 1); assert.equal(f[0].level, 'ok', f[0].text); assert.equal(f[0].kind, 'thread');
+    assert.equal(f[0].outside, 'body'); assert.equal(f[0].inside, 'lid'); assert.equal(f[0].neck, body.size[0]); assert.equal(f[0].bore, lid.size[0] - 2 * lid.wall);
+    assert.ok(Math.abs(f[0].major - (body.size[0] + 2.4)) < .011 && Math.abs(f[0].clear - .4) < .011 && Math.abs(f[0].grip - 1) < .011, `over the thread ⌀${f[0].major} in a ⌀${f[0].bore} bore: 0.4 mm clear, flanks catching 1 mm`);
+    assert.equal(f[0].need, 6); assert.equal(f[0].over, 14, 'the lid\'s skirt is over the cup for 14 mm');
+    assert.match(f[0].text, /the turns themselves are not drawn in them/); assert.ok(E.checks.some(c => c.kind === 'thread' && c.level === 'ok')); assert.ok(E.steps.some(t => /Screw on lid/.test(t)), 'the assembly steps screw the lid on');
+    assert.deepEqual(notOk(fitOf(s)).map(c => c.text), [], 'and the seal still sits between the rim and the lid, so nothing floats'); }
+  // the files carry the two walls at the thread's roots and no thread faces: the lid's STEP is the same with and without the thread
+  const s0 = cleanAssembly(archetype('tumbler')), bare = cleanAssembly({ ...s0, parts: s0.parts.map(p => ({ ...p, thread: undefined })) }), faces = t => (t.match(/ADVANCED_FACE\(/g) || []).length;
+  assert.equal(faces(stepOf(s0, { only: 'lid' })), faces(stepOf(bare, { only: 'lid' }))); assert.equal(faces(stepOf(s0, { only: 'body' })), faces(stepOf(bare, { only: 'body' })));
+  // broken on purpose
+  const grow = by => edit(P => { P('body').size[0] += by; P('body').size[1] += by; });
+  let c = thr(grow(.6)); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /the thread on cup body is 0\.2 mm larger than the bore it goes into/); assert.equal(c[0].clear, -.2);
+  c = thr(grow(-3)); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /the two threads do not reach each other; there is 1\.7 mm each side between them and the thread is 1\.2 mm deep/);
+  c = thr(grow(-1)); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /the flanks catch 0\.5 mm of their 1\.2 mm \(1\.4 mm clear on the diameter/);
+  c = thr(grow(.3)); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /only 0\.1 mm clear on the diameter/);
+  c = thr(edit(P => { P('lid').at[0] += .3; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /0\.3 mm off one axis/);
+  c = thr(edit(P => { P('lid').thread.turns = 4; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /4 turns need 16 mm and 1 mm to run out, and lid is over cup body for 14 mm/);
+  c = thr(edit(P => { P('lid').thread.turns = .5; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /less than one full turn/);
+  c = thr(edit(P => { P('lid').thread.pitch = 1.5; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /1\.2 mm deep at 1\.5 mm pitch is too steep to mould/);
+  c = thr(edit(P => { P('lid').thread.onto = 'slider'; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /a thread needs two round parts on one axis/);
+  c = thr(edit((P, s) => { s.parts.push({ id: 'plug', name: 'Plug', shape: 'cyl', size: [120, 120, 10], at: [0, 0, 150] }); P('lid').thread.onto = 'plug'; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /plug is solid, so there is nothing for lid to screw into/);
+  assert.equal(cleanAssembly(edit(P => { P('lid').thread.onto = 'gone'; })).parts.find(p => p.id === 'lid').thread, undefined); assert.equal(cleanPart({ shape: 'box', thread: { onto: 'body' } }).thread, undefined, 'only a round part carries a thread');
+});
+
+test('a hinge: knuckles on the case\'s base and lid, the pin through them, and the lid turned about the pin to measure how far it opens', async () => {
+  const { stepOf } = await import('../src/lab-step.js');
+  const hin = s => fitOf(cleanAssembly(s)).hinge, edit = fn => { const s = JSON.parse(JSON.stringify(archetype('case'))); fn(id => s.parts.find(p => p.id === id), s); return s; };
+  for (const dims of [{}, { w: 60, d: 40, h: 25 }, { w: 800, d: 600, h: 400 }, { w: 300, d: 200, h: 100 }]) { const s = archetype('case', dims), base = s.parts.find(p => p.id === 'base'), lid = s.parts.find(p => p.id === 'lid'), pin = s.parts.find(p => p.id === 'hinge'), f = fitOf(s).hinge;
+    assert.equal(base.knuckles.at.length, 3); assert.equal(lid.knuckles.at.length, 2); assert.equal(base.knuckles.pin, 'hinge');
+    assert.equal(base.adds.filter(x => x.kind === 'knuckle').length, 6, 'three knuckles on the base, each a ring round the pin and a lug to the back wall'); assert.equal(lid.adds.filter(x => x.kind === 'knuckle').length, 4);
+    assert.equal(f.length, 1); assert.equal(f[0].level, 'ok', f[0].text); assert.equal(f[0].kind, 'hinge'); assert.equal(f[0].id, 'hinge'); assert.equal(f[0].knuckles, 5); assert.equal(f[0].opens, 180); assert.equal(f[0].bore, 3.2); assert.ok(Math.abs(f[0].slack - .4) < .06);
+    // the pin lies in each ring's bore, 0.1 mm clear all round, and each ring's material is its housing's; the lug joins it to the wall
+    const ring = base.adds.find(x => x.kind === 'knuckle' && x.shape === 'ring'), rc = ring.at.map((v, k) => v + base.at[k]); assert.deepEqual([rc[1], rc[2]], [pin.at[1], pin.at[2]], 'the knuckle is on the pin\'s axis');
+    assert.equal(inMaterial(base, rc), false, 'the bore'); assert.equal(inMaterial(base, [rc[0], rc[1] + 2.5, rc[2]]), true, 'the ring'); assert.equal(inMaterial(base, [rc[0], rc[1] - 2.6, rc[2] - 1.5]), true, 'the lug, on the base\'s side of the pin'); assert.equal(inMaterial(base, [rc[0], rc[1] - 2.6, rc[2] + 1.5]), true, 'the ring above the lug');
+    assert.equal(inMaterial(lid, [rc[0], rc[1] + 2.5, rc[2]]), false);
+    const made = extentOf(s.parts).size; assert.ok(Math.abs(made[1] - s.dims.d) < .11, `knuckles and latch are inside the ${s.dims.d} mm asked for: ${made[1]}`);
+    assert.deepEqual(fitOf(s).clash.filter(c => c.level !== 'ok').map(c => c.text), []); assert.deepEqual(fitOf(s).contact.filter(c => c.level !== 'ok').map(c => c.text), [], 'the pin is held by the knuckles'); }
+  const s0 = archetype('case'); assert.match(stepOf(s0, { only: 'base' }), /MANIFOLD_SOLID_BREP\('Base: knuckle'/); assert.equal((stepOf(s0, { only: 'lid' }).match(/MANIFOLD_SOLID_BREP\('Lid: knuckle'/g) || []).length, 4);
+  assert.deepEqual(cleanAssembly(cleanAssembly(s0)), cleanAssembly(s0));
+  // broken on purpose
+  let c = hin(edit(P => { P('hinge').at[2] -= 1.5; })); assert.equal(c.length, 1); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /it opens only 0° before lid meets base/, 'a pin 1.5 mm below where the walls meet: the lid\'s lugs are in the base\'s wall, found by turning the lid about the pin'); assert.equal(c[0].opens, 0);
+  c = hin(edit(P => { P('hinge').at[1] -= .5; })); assert.equal(c.length, 5); assert.ok(c.every(x => x.level === 'bad')); assert.match(c[0].text, /the knuckle of base at -70\.4 mm \(7 mm across\) is 0\.3 mm into the wall behind it, which is 3\.2 mm from the pin/); assert.match(c[0].text, /Move the pin 0\.5 mm out/);
+  c = hin(edit(P => { P('hinge').at[1] += 5; })); assert.equal(c.length, 5); assert.match(c[0].text, /is not joined to it: no wall of base is within 6\.5 mm of the pin/);
+  c = hin(edit(P => { P('hinge').size[0] -= 30; })); assert.equal(c.length, 2); assert.match(c[0].text, /it stops 14\.8 mm short of the end of the knuckle of base at -70\.4 mm/); assert.equal(c[0].short, 14.8);
+  c = hin(edit(P => { P('lid').knuckles.at = P('lid').knuckles.at.map(v => v + 10); })); assert.equal(c.length, 2); assert.match(c[0].text, /the knuckles at -25\.2 mm \(lid\) and 0 mm \(base\) are 9\.6 mm into each other along it/);
+  c = hin(edit(P => { delete P('lid').knuckles; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /only base has knuckles on it; a hinge joins two parts/);
+  c = hin(edit(P => { P('lid').knuckles.len -= 10; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /lid can slide 5\.4 mm along the pin/);
+  c = hin(edit(P => { P('hinge').size[1] = P('hinge').size[2] = 6; })); assert.equal(c.length, 5); assert.match(c[0].text, /7 mm across on a 6 mm pin: under 0\.6 mm of wall round the bore/);
+  c = hin(edit(P => { P('hinge').shape = 'box'; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /a pin is a round bar/);
+  assert.equal(cleanAssembly(edit(P => { P('base').knuckles.pin = 'gone'; })).parts.find(p => p.id === 'base').knuckles, undefined);
+});
+
+test('the turntable\'s belt: drawn round the sub-platter and the motor pulley, its path measured off them against the length it is bought at', async () => {
+  const { stepOf } = await import('../src/lab-step.js');
+  const bel = s => fitOf(cleanAssembly(s)).belt, edit = fn => { const s = JSON.parse(JSON.stringify(archetype('turntable'))); fn(id => s.parts.find(p => p.id === id), s); return s; };
+  for (const dims of [{}, { w: 380, d: 320, h: 110 }, { w: 520, d: 420, h: 180 }]) { const s = archetype('turntable', dims), P = id => s.parts.find(p => p.id === id), belt = P('belt'), hub = P('hub'), pul = P('pulley'), f = fitOf(s).belt;
+    assert.deepEqual(belt.around, ['hub', 'pulley']); assert.ok(belt.loop, 'the belt is drawn round its two wheels'); assert.equal(pul.flange.end, '+'); assert.deepEqual(pul.through, ['plinth'], 'the motor\'s shaft comes up through the plinth');
+    // the path, worked out here from the two parts: two straight runs and the wrap on each wheel
+    const C = Math.hypot(pul.at[0] - hub.at[0], pul.at[1] - hub.at[1]), th = Math.acos((30 - 6) / C), path = 2 * Math.sqrt(C * C - 24 * 24) + (2 * Math.PI - 2 * th) * 30 + 2 * th * 6;
+    assert.equal(f.length, 1); assert.equal(f[0].level, 'ok', f[0].text); assert.equal(f[0].kind, 'belt'); assert.ok(Math.abs(f[0].path - path) < .06 && Math.abs(f[0].apart - C) < .06, `path ${f[0].path} mm against ${path}`);
+    assert.equal(f[0].len, belt.len); assert.ok(Math.abs(f[0].stretch - 5) <= .2, `bought 5% under its path: ${f[0].stretch}%`); assert.ok(f[0].wrap >= 160 && f[0].wrap < 180); assert.deepEqual(f[0].with, ['hub', 'pulley']);
+    // in the material: on the far side of the sub-platter, half way along a straight run, round the pulley; not inside the loop, not above or below
+    const z = belt.at[2], ux = (pul.at[0] - hub.at[0]) / C, uy = (pul.at[1] - hub.at[1]) / C, n = [Math.cos(Math.atan2(uy, ux) + th), Math.sin(Math.atan2(uy, ux) + th)];
+    assert.equal(inMaterial(belt, [hub.at[0] - ux * 30.4, hub.at[1] - uy * 30.4, z]), true); assert.equal(inMaterial(belt, [pul.at[0] + ux * 6.4, pul.at[1] + uy * 6.4, z]), true);
+    assert.equal(inMaterial(belt, [hub.at[0] + ux * C / 2 + n[0] * (18 + .4), hub.at[1] + uy * C / 2 + n[1] * (18 + .4), z]), true, 'the straight run, 18 mm out from the line of centres half way along');
+    assert.equal(inMaterial(belt, [hub.at[0] + ux * C / 2, hub.at[1] + uy * C / 2, z]), false); assert.equal(inMaterial(belt, [hub.at[0] - ux * 30.4, hub.at[1] - uy * 30.4, z + 2]), false); assert.equal(inMaterial(belt, [hub.at[0] - ux * 31.2, hub.at[1] - uy * 31.2, z]), false);
+    assert.ok(closed(meshOf(belt)), 'the belt\'s solid is closed'); const made = extentOf(s.parts).size; assert.ok(made.every((v, k) => Math.abs(v - [s.dims.w, s.dims.d, s.dims.h][k]) < .11));
+    assert.deepEqual(notOk(fitOf(s)).map(c => c.text), [], 'nothing in the belt\'s way, and it touches both wheels'); assert.ok(engineer(s).steps.findIndex(t => /drive belt/.test(t)) < engineer(s).steps.findIndex(t => /place platter$/i.test(t) || /Place platter\b/.test(t)), 'the belt goes on before the platter covers it'); }
+  // the STEP: the belt as exact faces, four arcs inside and four outside and the two straight runs each side
+  const st = stepOf(archetype('turntable'), { only: 'belt' }), count = re => (st.match(re) || []).length; assert.equal(count(/MANIFOLD_SOLID_BREP\(/g), 1); assert.equal(count(/CYLINDRICAL_SURFACE\(/g), 8); assert.equal(count(/ADVANCED_FACE\(/g), 8 + 4 + 2);
+  // it follows its wheels: move the motor and its pulley and the path is measured again
+  let c = bel(edit(P => { for (const id of ['pulley']) P(id).at[1] -= 8; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /bought at 456 mm it is stretched 2\.[0-9]%/); assert.ok(c[0].path < 478.5 - 10);
+  // broken on purpose
+  c = bel(edit(P => { P('belt').len = 480; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /it is 1\.5 mm too long and hangs slack\. Buy one 456 mm round the inside/);
+  c = bel(edit(P => { P('belt').len = 400; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /it has to stretch 19\.6%/);
+  c = bel(edit(P => { delete P('belt').len; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /No length is given for the belt: buy one 456 mm round the inside/);
+  c = bel(edit(P => { P('belt').at[2] += 1.5; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /it is not level on sub-platter \(the belt runs on it\) \(1 mm of its 3 mm width is off the edge\)/); assert.equal(c[0].off, 1);
+  c = bel(edit(P => { P('belt').around = ['hub', 'headshell']; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /headshell is not a round part lying the belt's way/);
+  c = bel(edit(P => { P('pulley').at[0] = P('hub').at[0] + 30; P('pulley').at[1] = 0; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /are 30 mm apart, centre to centre, and 36 mm across between them: they touch/);
+  c = bel(edit(P => { P('pulley').size[0] = P('pulley').size[1] = 5; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /is ⌀5 mm for a belt 0\.8 mm thick/);
+  assert.equal(cleanAssembly(edit(P => { P('belt').around = ['hub', 'gone']; })).parts.find(p => p.id === 'belt').around, undefined); assert.deepEqual(cleanAssembly(cleanAssembly(archetype('turntable'))), cleanAssembly(archetype('turntable')));
+});
+
+test('the tumbler\'s sip opening: cut through the lid under the slider, which covers it shut and clears it open without meeting the straw', async () => {
+  const { stepOf } = await import('../src/lab-step.js'), { stlOf } = await import('../src/lab-assembly.js');
+  const tris = u8 => { const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), n = dv.getUint32(80, true), t = new Float32Array(n * 9); for (let i = 0, o = 84; i < n; i++, o += 50) for (let k = 0; k < 9; k++) t[i * 9 + k] = dv.getFloat32(o + 12 + k * 4, true); return t; };
+  const ope = s => fitOf(cleanAssembly(s)).opening, edit = fn => { const s = JSON.parse(JSON.stringify(archetype('tumbler'))); fn(id => s.parts.find(p => p.id === id), s); return s; };
+  for (const [dims, size, travel] of [[{}, [12, 8], 10], [{ w: 50, h: 80 }, [12, 4.5], 6.5], [{ w: 160, h: 400 }, [12, 8], 10], [{ w: 70, h: 120 }, [12, 8], 10]]) { const s = archetype('tumbler', dims), lid = s.parts.find(p => p.id === 'lid'), sl = s.parts.find(p => p.id === 'slider'), straw = s.parts.find(p => p.id === 'straw'), f = fitOf(s).opening;
+    assert.equal(lid.holes.length, 1); assert.deepEqual(lid.holes[0].size.slice(0, 2), size); assert.equal(lid.cuts.length, 2, 'the sip opening and the straw\'s'); assert.equal(lid.cuts.filter(c => !c.for).length, 1); assert.equal(sl.slides.over, 'lid');
+    const c = lid.holes[0].at.map((v, k) => v + lid.at[k]); assert.equal(inMaterial(lid, c), false, 'open through the lid\'s top'); assert.equal(inMaterial(lid, [c[0] + 9, c[1], c[2]]), true); assert.equal(inMaterial(sl, [c[0], c[1], sl.at[2]]), true, 'the slider lies over it');
+    assert.equal(f.length, 1); assert.equal(f[0].level, 'ok', f[0].text); assert.equal(f[0].kind, 'opening'); assert.equal(f[0].id, 'slider'); assert.deepEqual(f[0].opening, size); assert.equal(f[0].travel, travel); assert.ok(f[0].cover >= 1);
+    // slid open, the slider stops short of the straw
+    assert.ok((sl.at[1] - sl.size[1] / 2 - travel) - (straw.at[1] + straw.size[1] / 2) >= .45, 'half a millimetre or more between the open slider and the straw');
+    assert.ok(closed(tris(stlOf(s, { only: 'lid' }))), 'the lid\'s STL is closed with both openings'); }
+  const s0 = cleanAssembly(archetype('tumbler')), noSip = cleanAssembly({ ...s0, parts: s0.parts.map(p => ({ ...p, holes: undefined, slides: undefined })) }), bounds = t => (t.match(/FACE_BOUND\(/g) || []).length;
+  assert.equal(bounds(stepOf(s0, { only: 'lid' })) - bounds(stepOf(noSip, { only: 'lid' })), 2, 'the opening is a hole in each face of the lid\'s top, in the STEP');
+  // broken on purpose
+  let c = ope(edit(P => { P('lid').holes[0].at[1] = 40; })); assert.ok(c.some(x => x.level === 'bad' && x.id === 'lid' && /the 12 × 8 mm opening asked for 4[0-9.]+ mm from its middle cannot be cut there/.test(x.text)), 'an opening off the lid\'s top is said, not dropped in silence'); assert.ok(c.some(x => x.id === 'slider' && /there is no opening in lid under it/.test(x.text)));
+  c = ope(edit(P => { const o = P('lid').holes[0]; P('lid').holes.push({ at: [8, o.at[1], o.at[2]], size: [6, 6, 2], axis: 'z', round: true }); })); assert.ok(c.some(x => x.level === 'bad' && x.id === 'lid' && /the 6 × 6 mm opening asked for [0-9.]+ mm from its middle cannot be cut there/.test(x.text)), 'nor a second one that runs into the first');
+  c = ope(edit(P => { P('slider').slides.by = [0, -4, 0]; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /slid 4 mm it still covers part of the opening/);
+  c = ope(edit(P => { P('slider').slides.by = [0, -24, 0]; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /slid 24 mm to open, it runs into straw/); assert.equal(c[0].into, 'straw');
+  c = ope(edit(P => { P('slider').slides.by = [30, 0, 0]; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /it hangs over the edge of lid/);
+  c = ope(edit(P => { P('lid').holes[0].size = [20, 8, 2]; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /shut, it does not cover the opening with 0\.5 mm to spare all round, so it leaks/);
+  c = ope(edit(P => { delete P('lid').holes; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /Sip slider slides on lid, and there is no opening in lid under it/);
+  // an opening with no cover over it: cut, and said to be
+  const vent = cleanAssembly({ arch: 'custom', v: 2, parts: [{ id: 'body', name: 'Body', shape: 'shell', size: [100, 60, 40], at: [0, 0, 20], wall: 2, holes: [{ at: [20, 0, -19], size: [6, 6, 2], axis: 'z', round: true }, { at: [-20, 10, -19], size: [10, 4, 2], axis: 'z' }] }] });
+  c = fitOf(vent).opening; assert.equal(c.length, 1); assert.equal(c[0].level, 'ok'); assert.match(c[0].text, /its 2 openings are cut through it/); assert.equal(inMaterial(vent.parts[0], [20, 0, 1]), false); assert.equal(inMaterial(vent.parts[0], [-20, 10, 1]), false); assert.ok(closed(meshOf(vent.parts[0])));
+  assert.equal(cleanAssembly(edit(P => { P('slider').slides.over = 'gone'; })).parts.find(p => p.id === 'slider').slides, undefined); assert.deepEqual(cleanAssembly(s0), s0);
 });

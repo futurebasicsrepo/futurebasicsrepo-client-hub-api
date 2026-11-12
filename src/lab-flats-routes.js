@@ -26,7 +26,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { maskFor } from './lab-flat-mask.js';
 import { logoSvg } from './brand-kit.js';
-import { cleanRules, cleanSurfaces, SURFACE_FIRST } from './lab-library.js';
+import { cleanRules, cleanSurfaces, SURFACE_FIRST, MARK_FIRST } from './lab-library.js';
 import { jobFile } from './lab-jobfile.js';
 import { traceVector } from './lab-vector.js';
 import { shoeSvg, withArt, SHOE_VIEWS, BAG_VIEWS } from './lab-shoe-draw.js';
@@ -142,7 +142,7 @@ export function registerLabFlatsRoutes(app, d) {
     const fit = style && STYLES[style] ? list.filter(t => techniqueFits(t, style)) : list;
     return fit.find(t => t.key === PREFERRED[q.technique]) || fit.find(t => t.base === q.technique) || (style ? fit.find(t => t.key === SURFACE_FIRST[surfaceOf(style)]) : null) || fit.find(t => t.key === 'plastisol') || (style && surfaceOf(style) !== 'cloth' ? fit[0] : null) || { name: q.technique || 'screen print', base: q.technique || 'screen print', rules: cleanRules({}, q.technique) }; };
   // the technique a new graphic starts with on each surface, for the page (it places graphics before anything is saved)
-  const firstTechniques = list => Object.fromEntries(Object.entries(SURFACE_FIRST).map(([s, key]) => [s, list.find(t => t.key === key)?.id]).filter(x => x[1]));
+  const firstTechniques = list => Object.fromEntries([...Object.entries(SURFACE_FIRST), ['mark', MARK_FIRST]].map(([s, key]) => [s, list.find(t => t.key === key)?.id]).filter(x => x[1])); // by surface, and `mark`: a brand mark on cloth
   const marks = new Map();
   // a brand mark as a picture, in the colours its placement chose (the lines and lettering, and the cue dot), or in the brand's own
   const markPng = async (mark, colour = '', dot = '') => { const k = `${mark}|${colour}|${dot}`; if (!marks.has(k)) marks.set(k, await sharp(Buffer.from(logoSvg(mark, { ...(colour ? { fill: colour } : {}), ...(dot ? { dot } : {}) }))).resize({ width: 1200 }).png().toBuffer()); return marks.get(k); };
