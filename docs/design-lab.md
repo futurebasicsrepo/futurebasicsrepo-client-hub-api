@@ -2079,6 +2079,20 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   Openings and bosses are in the part's solid: its STL, and its STEP as exact faces (holes through a floor or a solid part, bosses, and
   windows in a housing's side walls with their sides, sill and head, a notch where one reaches the rim). The 3D view shows them too: a
   housing with a window in a side wall is drawn from its solid.
+- **How the halves and the moving parts join.** These are drawn at their real size, in the part's solid where the solids can carry them, and
+  each has its own finding in `fitOf` and `dfm`, with the numbers it was measured at. They are set on the part in the saved assembly; the
+  page shows their findings but has no fields for them yet.
+  - **Lip and groove** (`lip`, kind `lip`). A housing half says its lip goes into the other half (`lip: { into, h, t }`: 1.2 mm tall and
+    45% of the wall thick unless given). The lip stands on the inner side of its rim; the other half gets the groove that takes it, cut
+    back from the inside of its wall, 0.1 mm clear of the lip at the side and 0.3 mm at its top, worked out each time so it follows the two
+    parts. The check measures round the lip, off the two parts: how far it stands into the groove (0.8 mm or more locates), the
+    clearance at its tightest and loosest (none left, or the halves not closing rim to rim, is fix before tooling; over 0.35 mm is watch),
+    the wall left outside it (0.6 mm or more), how much of its way round it finds the groove, and the step between the two outsides at
+    the seam. Six starting assemblies close this way: handheld, desk device, cassette player, smart speaker (base and grille), power
+    bank and case. Where an opening comes up through the rim (the handheld's USB-C port) the lip and the groove stop with the wall.
+    In the files: the groove is in the half's solid, in its STL and as exact faces in its STEP (its wall, its floor, the thinner rim).
+    The lip is a closed body of its own in the same STL and a second solid in the STEP, named for its part, starting 0.3 mm inside
+    the rim it stands on; it is not fused into the half's skin, so a toolmaker joins the two with one union.
 - **An assembly saved before these rules** (it carries no `v`; a starting point or a design from a concept made now carries `v: 2`) is read as
   it was meant when it is opened: a part that plainly goes through a wall (in on one side and out on the other or flush with the far
   face, much narrower than the wall, and not a part that sits inside that housing) gets its opening, worked out each time and never written

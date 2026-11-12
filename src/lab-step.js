@@ -3,7 +3,8 @@
 // flat faces as planes, the rounded corners of a box and the walls of a round part as cylinders with their radius, the floor, ceiling and
 // rim of a housing as planes with the opening cut through. Elliptical sections are written as many flat facets, a ball as a faceted
 // ellipsoid; both are still closed solids. (The detailed parts the 3D view draws, src/lab-parts3d.js, are pictures; these are the bodies.)
-//   stepOf(spec, { t, only, title }) → text: one solid per part (qty drawn once), pulled apart by t (0 = assembled), or one part only
+//   stepOf(spec, { t, only, title }) → text: one solid per part (qty drawn once) and one for each body moulded on it (a lip), pulled apart by
+//   t (0 = assembled), or one part only
 import { cleanAssembly, explodeOffsets, featuresOf } from './lab-assembly.js';
 
 const fmt = v => { const r = Math.round(v * 1e6) / 1e6; return Number.isInteger(r) ? `${r}.` : String(r); }; // STEP reals carry a point
@@ -60,6 +61,8 @@ export function stepOf(s0, { t = 0, only = null, title = '' } = {}) {
       return A.map((a, i) => { const b = i + 1 < A.length ? A[i + 1] : A[0] + TAU; return tag(circle ? { arc: true, c: [0, 0], r: Wd / 2, a: at(a), b: at(b), mid: (a + b) / 2 } : { line: true, a: at(a), b: at(b), mid: (a + b) / 2 }); }); };
     const prof = (Wd, Dd, r) => (!sides.length ? (ROUND.has(p.shape) ? round(Wd, Dd) : roundedRect(Wd, Dd, r)) : ROUND.has(p.shape) ? cutRound(Wd, Dd) : cutRect(roundedRect(Wd, Dd, r), Wd, Dd));
     const outP = prof(w, d, p.r ?? 0), innP = tk ? prof(w - 2 * tk, d - 2 * tk, Math.max((p.r ?? 0) - tk, 0)) : null;
+    // a groove round the rim for the other half's lip (featuresOf): from its floor to the rim the wall is only the skin outside it, out to `midP`
+    const G = innP && F.groove ? F.groove : null, midP = G ? prof(w - 2 * G.sk, d - 2 * G.sk, Math.max((p.r ?? 0) - G.sk, 0)) : null, zg = G ? F.sgn * G.g : null;
     const levels = new Map(); let keys = 0;
     const level = (P, z) => { const k = `${P.key ??= ++keys}:${z}`; if (levels.has(k)) return levels.get(k); const V = P.map(sg => put(`VERTEX_POINT('',${pt(W([sg.a[0], sg.a[1], z]))})`));
       const E = P.map((sg, i) => { const curve = sg.line ? put(`LINE('',${pt(W([sg.a[0], sg.a[1], z]))},${put(`VECTOR('',${dir(R([sg.b[0] - sg.a[0], sg.b[1] - sg.a[1], 0]))},${fmt(Math.hypot(sg.b[0] - sg.a[0], sg.b[1] - sg.a[1]))})`)})`) : put(`CIRCLE('',${place(W([sg.c[0], sg.c[1], z]), R([0, 0, 1]), R([1, 0, 0]))},${fmt(sg.r)})`); return put(`EDGE_CURVE('',${V[i]},${V[(i + 1) % P.length]},${curve},.T.)`); });
@@ -83,35 +86,40 @@ export function stepOf(s0, { t = 0, only = null, title = '' } = {}) {
     const holeP = h => { if (h.round && Math.abs(h.hw - h.hd) < 1e-6) return circ(h.cx, h.cy, h.hw); const P = h.round ? Array.from({ length: ELL_SEG }, (_, i) => { const a = i / ELL_SEG * Math.PI * 2; return [h.cx + h.hw * Math.cos(a), h.cy + h.hd * Math.sin(a)]; }) : [[h.cx + h.hw, h.cy - h.hd], [h.cx + h.hw, h.cy + h.hd], [h.cx - h.hw, h.cy + h.hd], [h.cx - h.hw, h.cy - h.hd]]; return P.map((a, i) => ({ line: true, a, b: P[(i + 1) % P.length] })); };
     const bossP = F.bosses.map(b => ({ b, ring: circ(b.cx, b.cy, b.R), bore: circ(b.cx, b.cy, b.rp) })), own = F.holes.filter(h => !h.boss).map(holeP), through = [...own, ...bossP.filter(q => q.b.bore).map(q => q.bore)];
     const wins = sides.map(m => ({ m, za: Math.min(F.sgn * m.ua, F.sgn * m.ub), zb: Math.max(F.sgn * m.ua, F.sgn * m.ub) })), near = (a, b) => Math.abs(a - b) < 1e-9;
-    const steps = (lo, hi) => { const z = [...new Set([lo, hi, ...wins.flatMap(x => [x.za, x.zb])])].filter(v => v > lo - 1e-9 && v < hi + 1e-9).sort((a, b) => a - b).filter((v, i, l) => i === 0 || v - l[i - 1] > 1e-9); return z.slice(0, -1).map((v, i) => [v, z[i + 1]]); };
+    const steps = (lo, hi) => { const z = [...new Set([lo, hi, ...wins.flatMap(x => [x.za, x.zb]), ...(G ? [zg] : [])])].filter(v => v > lo - 1e-9 && v < hi + 1e-9).sort((a, b) => a - b).filter((v, i, l) => i === 0 || v - l[i - 1] > 1e-9); return z.slice(0, -1).map((v, i) => [v, z[i + 1]]); };
     const lost = (sg, za, zb) => Boolean(sg.wins) && wins.some(x => sg.wins.includes(x.m) && x.za < za + 1e-9 && x.zb > zb - 1e-9), layered = (P, lo, hi, inward) => { for (const [a, b] of steps(lo, hi)) wall(P, a, b, inward, sg => lost(sg, a, b)); };
     if (!innP && F.flange) { const { k, za, zb } = F.flange, bodP = round(w * k, d * k), low = za <= z0 + 1e-9; // a flanged round part: flange, step, body
       wall(outP, za, zb, false); wall(bodP, low ? zb : z0, low ? z1 : za, false); cap(outP, low ? z0 : z1, !low); cap(outP, low ? zb : za, low, bodP); cap(bodP, low ? z1 : z0, low); }
     else if (!innP) { wall(outP, z0, z1, false); cap(outP, z0, false, own); cap(outP, z1, true, own); for (const h of own) wall(h, z0, z1, true); }
-    else { const o = p.shape === 'ring' ? 'both' : p.open === '-' ? '-' : '+', up = o === '+', zo = up ? z0 : z1, zi = o === 'both' ? null : up ? z0 + tk : z1 - tk, ilo = o === '+' ? zi : z0, ihi = o === '-' ? zi : z1, lo = (a, b) => Math.min(a, b), hi = (a, b) => Math.max(a, b);
-      layered(outP, z0, z1, false); layered(innP, ilo, ihi, true);
+    else { const o = p.shape === 'ring' || p.open === 'both' ? 'both' : p.open === '-' ? '-' : '+', up = o === '+', zo = up ? z0 : z1, zi = o === 'both' ? null : up ? z0 + tk : z1 - tk, ilo = o === '+' ? zi : z0, ihi = o === '-' ? zi : z1, lo = (a, b) => Math.min(a, b), hi = (a, b) => Math.max(a, b);
+      const zr = up ? z1 : z0, gz = G ? [lo(zg, zr), hi(zg, zr)] : null, inG = (a, b) => Boolean(gz) && a > gz[0] - 1e-9 && b < gz[1] + 1e-9, innOf = (a, b) => (inG(a, b) ? midP : innP);
+      layered(outP, z0, z1, false); if (!G) layered(innP, ilo, ihi, true); else { layered(innP, up ? ilo : zg, up ? zg : ihi, true); layered(midP, gz[0], gz[1], true); }
       // a line across the wall's thickness at an outline point, at a height: shared by a window's side and its sill or head, or the rim
-      const n = outP.length, ni = innP.length, cols = new Map(); outP.forEach((sg, i) => { if (sg.col) cols.set(sg.col, { io: i }); }); innP.forEach((sg, i) => { if (sg.col && cols.has(sg.col)) cols.get(sg.col).ii = i; });
-      const across = new Map(), spoke = (vo, vi, z) => { const k = `${vo}:${z}`; if (!across.has(k)) { const a = outP[vo].a, b = innP[vi].a; across.set(k, put(`EDGE_CURVE('',${level(outP, z).V[vo]},${level(innP, z).V[vi]},${put(`LINE('',${pt(W([a[0], a[1], z]))},${put(`VECTOR('',${dir(R([b[0] - a[0], b[1] - a[1], 0]))},${fmt(Math.hypot(b[0] - a[0], b[1] - a[1]))})`)})`)},.T.)`)); } return across.get(k); };
+      const n = outP.length, ni = innP.length, cols = new Map(); outP.forEach((sg, i) => { if (sg.col) cols.set(sg.col, { io: i }); }); innP.forEach((sg, i) => { if (sg.col && cols.has(sg.col)) cols.get(sg.col).ii = i; }); (midP || []).forEach((sg, i) => { if (sg.col && cols.has(sg.col)) cols.get(sg.col).im = i; });
+      const across = new Map(), spoke = (Pa, va, Pb, vb, z) => { const k = `${Pa.key ??= ++keys}:${va}:${Pb.key ??= ++keys}:${z}`; if (!across.has(k)) { const a = Pa[va].a, b = Pb[vb].a; across.set(k, put(`EDGE_CURVE('',${level(Pa, z).V[va]},${level(Pb, z).V[vb]},${put(`LINE('',${pt(W([a[0], a[1], z]))},${put(`VECTOR('',${dir(R([b[0] - a[0], b[1] - a[1], 0]))},${fmt(Math.hypot(b[0] - a[0], b[1] - a[1]))})`)})`)},.T.)`)); } return across.get(k); };
+      // the same line as a face's edge(s), from the outside in (or back): at the groove's floor it is in two pieces, out to the groove's wall and on in
+      const sp = (v, z, P2, fwd) => { const v2 = P2 === midP ? v.m : v.i, parts = G && P2 === innP && near(z, zg) ? [spoke(outP, v.o, midP, v.m, z), spoke(midP, v.m, innP, v.i, z)] : [spoke(outP, v.o, P2, v2, z)]; return fwd ? parts.map(e => oe(e, true)) : parts.reverse().map(e => oe(e, false)); };
       const flatFace = (loop, origin, normal, ref) => faces.push(put(`ADVANCED_FACE('',(${put(`FACE_OUTER_BOUND('',${put(`EDGE_LOOP('',(${loop.join(',')}))`)},.T.)`)}),${put(`PLANE('',${place(W(origin), R(normal), R(ref))})`)},.T.)`));
       // a flat piece of the wall's thickness at height z, from outline point vo0 round to vo1 (inner vi0 to vi1), looking up or down
-      const ledge = (z, vo0, vo1, vi0, vi1, upward) => { const A = level(outP, z), B = level(innP, z), eo = [], ei = []; for (let i = vo0; i !== vo1; i = (i + 1) % n) eo.push(A.E[i]); for (let i = vi0; i !== vi1; i = (i + 1) % ni) ei.push(B.E[i]);
-        const fwd = [...eo.map(e => oe(e, true)), oe(spoke(vo1, vi1, z), true), ...ei.reverse().map(e => oe(e, false)), oe(spoke(vo0, vi0, z), false)], back = [oe(spoke(vo0, vi0, z), true), ...ei.reverse().map(e => oe(e, true)), oe(spoke(vo1, vi1, z), false), ...eo.reverse().map(e => oe(e, false))];
+      const ledge = (z, Pa, Pb, vo0, vo1, vi0, vi1, upward) => { const A = level(Pa, z), B = level(Pb, z), eo = [], ei = []; for (let i = vo0; i !== vo1; i = (i + 1) % Pa.length) eo.push(A.E[i]); for (let i = vi0; i !== vi1; i = (i + 1) % Pb.length) ei.push(B.E[i]);
+        const fwd = [...eo.map(e => oe(e, true)), oe(spoke(Pa, vo1, Pb, vi1, z), true), ...ei.reverse().map(e => oe(e, false)), oe(spoke(Pa, vo0, Pb, vi0, z), false)], back = [oe(spoke(Pa, vo0, Pb, vi0, z), true), ...ei.reverse().map(e => oe(e, true)), oe(spoke(Pa, vo1, Pb, vi1, z), false), ...eo.reverse().map(e => oe(e, false))];
         flatFace(upward ? fwd : back, [0, 0, z], [0, 0, upward ? 1 : -1], [1, 0, 0]); };
-      for (const { io, ii } of cols.values()) { if (ii == null) continue; const so = outP[io], vo1 = (io + 1) % n, vi1 = (ii + 1) % ni, prev = outP[(io + n - 1) % n], next = outP[vo1], layers = steps(ilo, ihi);
-        layers.forEach(([a, b], k) => { if (!lost(so, a, b)) return;
+      for (const { io, ii, im } of cols.values()) { if (ii == null) continue; const so = outP[io], vo1 = (io + 1) % n, vi1 = (ii + 1) % ni, vm1 = midP ? (im + 1) % midP.length : null, prev = outP[(io + n - 1) % n], next = outP[vo1], layers = steps(ilo, ihi);
+        layers.forEach(([a, b], k) => { if (!lost(so, a, b)) return; const P2 = innOf(a, b);
           // its two sides, where the wall next to it is still there
-          for (const [vo, vi, nb, sgn] of [[io, ii, prev, 1], [vo1, vi1, next, -1]]) { if (lost(nb, a, b)) continue; const q = outP[vo].a, r = innP[vi].a, nrm = [sgn * (r[1] - q[1]), -sgn * (r[0] - q[0]), 0];
-            const lp = sgn > 0 ? [oe(spoke(vo, vi, a), true), oe(upOf(innP, vi, a, b), true), oe(spoke(vo, vi, b), false), oe(upOf(outP, vo, a, b), false)] : [oe(upOf(outP, vo, a, b), true), oe(spoke(vo, vi, b), true), oe(upOf(innP, vi, a, b), false), oe(spoke(vo, vi, a), false)];
+          for (const [v, nb, sgn] of [[{ o: io, i: ii, m: im }, prev, 1], [{ o: vo1, i: vi1, m: vm1 }, next, -1]]) { if (lost(nb, a, b)) continue; const v2 = P2 === midP ? v.m : v.i, q = outP[v.o].a, r = P2[v2].a, nrm = [sgn * (r[1] - q[1]), -sgn * (r[0] - q[0]), 0];
+            const lp = sgn > 0 ? [...sp(v, a, P2, true), oe(upOf(P2, v2, a, b), true), ...sp(v, b, P2, false), oe(upOf(outP, v.o, a, b), false)] : [oe(upOf(outP, v.o, a, b), true), ...sp(v, b, P2, true), oe(upOf(P2, v2, a, b), false), ...sp(v, a, P2, false)];
             flatFace(lp, [q[0], q[1], a], nrm, [0, 0, 1]); }
           // its sill and its head, where there is wall (or the floor) below or above it
-          const below = k > 0 ? !lost(so, ...layers[k - 1]) : o === '+', above = k < layers.length - 1 ? !lost(so, ...layers[k + 1]) : o === '-';
-          if (below) ledge(a, io, vo1, ii, vi1, true); if (above) ledge(b, io, vo1, ii, vi1, false); }); }
+          const below = k > 0 ? !lost(so, ...layers[k - 1]) : o === '+', above = k < layers.length - 1 ? !lost(so, ...layers[k + 1]) : o === '-', i2 = P2 === midP ? im : ii, i21 = P2 === midP ? vm1 : vi1;
+          if (below) ledge(a, outP, P2, io, vo1, i2, i21, true); if (above) ledge(b, outP, P2, io, vo1, i2, i21, false); }); }
       // the rim: whole, or in pieces between the notches that reach it
-      const rim = (z, upward) => { const [a, b] = steps(ilo, ihi)[near(z, ilo) ? 0 : steps(ilo, ihi).length - 1], gone = outP.map(sg => lost(sg, a, b)); if (!gone.some(Boolean)) return cap(outP, z, upward, innP);
-        for (let i = 0; i < n; i++) { if (!gone[i] || gone[(i + 1) % n]) continue; let j = (i + 1) % n; while (!gone[j]) j = (j + 1) % n; ledge(z, (i + 1) % n, j, (cols.get(outP[i].col).ii + 1) % ni, cols.get(outP[j].col).ii, upward); } };
+      // a flat ring between two outlines at a height (the rim, the groove's floor): whole, or in pieces between the notches that reach it
+      const band = (z, Pa, Pb, ka, kb, upward, [a, b]) => { const gone = outP.map(sg => lost(sg, a, b)); if (!gone.some(Boolean)) return cap(Pa, z, upward, Pb);
+        for (let i = 0; i < n; i++) { if (!gone[i] || gone[(i + 1) % n]) continue; let j = (i + 1) % n; while (!gone[j]) j = (j + 1) % n; const c0 = cols.get(outP[i].col), c1 = cols.get(outP[j].col); ledge(z, Pa, Pb, (c0[ka] + 1) % Pa.length, c1[ka], (c0[kb] + 1) % Pb.length, c1[kb], upward); } };
+      const rim = (z, upward) => band(z, outP, innP, 'io', 'ii', upward, steps(ilo, ihi)[near(z, ilo) ? 0 : steps(ilo, ihi).length - 1]);
       if (o === 'both') { rim(z0, false); rim(z1, true); }
-      else { rim(up ? z1 : z0, up);
+      else { if (G) { band(zr, outP, midP, 'io', 'im', up, gz); band(zg, midP, innP, 'im', 'ii', up, gz); } else rim(zr, up);
         cap(outP, zo, !up, through); cap(innP, zi, up, [...own, ...bossP.map(q => q.ring)]); for (const h of own) wall(h, lo(zo, zi), hi(zo, zi), true);
         for (const { b, ring, bore } of bossP) { const ze = F.sgn * b.ue, zb = b.bore ? zo : zi; wall(ring, lo(zi, ze), hi(zi, ze), false); cap(ring, ze, up, [bore]); wall(bore, lo(zb, ze), hi(zb, ze), true); if (!b.bore) cap(bore, zi, up); } } }
     return put(`MANIFOLD_SOLID_BREP('${esc(p.name)}',${put(`CLOSED_SHELL('',(${faces.join(',')}))`)})`);
@@ -127,7 +135,8 @@ export function stepOf(s0, { t = 0, only = null, title = '' } = {}) {
     return put(`MANIFOLD_SOLID_BREP('${esc(p.name)}',${put(`CLOSED_SHELL('',(${faces.join(',')}))`)})`);
   }
 
-  const parts = s.parts.filter(p => !only || p.id === only), solids = parts.map(solidOf), name = esc(title || s.name || 'Assembly');
+  // what is moulded on a part (a lip) follows it as a body of its own, in the part's colour, moving with it
+  const parts = s.parts.filter(p => !only || p.id === only).flatMap(p => [p, ...(p.adds || []).map(b => ({ ...b, id: p.id, name: `${p.name}: ${b.kind}`, colour: p.colour, at: b.at.map((v, k) => v + p.at[k]) }))]), solids = parts.map(solidOf), name = esc(title || s.name || 'Assembly');
   const origin = place([0, 0, 0], [0, 0, 1], [1, 0, 0]);
   const rep = put(`ADVANCED_BREP_SHAPE_REPRESENTATION('${name}',(${[origin, ...solids].join(',')}),${ctx})`);
   // the product the shape belongs to

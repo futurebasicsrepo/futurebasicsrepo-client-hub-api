@@ -144,7 +144,7 @@ function profilesOf(p) {
   const r = p.r ?? 0; return { out: roundRect(w, d, r), inn: t ? roundRect(w - 2 * t, d - 2 * t, Math.max(r - t, 0)) : null, t };
 }
 const shellLike = p => p.shape === 'shell' || p.shape === 'cup' || p.shape === 'ring';
-const openOf = p => p.shape === 'ring' ? 'both' : p.open === '-' ? '-' : '+';
+const openOf = p => p.shape === 'ring' || p.open === 'both' ? 'both' : p.open === '-' ? '-' : '+';
 const axisOf = p => p.axis === 'y' ? 1 : p.axis === 'x' ? 0 : 2;
 
 // ---- what a part carries besides its plain shape: openings cut through it and screw bosses standing on a housing's floor ------------------------
@@ -152,12 +152,14 @@ const axisOf = p => p.axis === 'y' ? 1 : p.axis === 'x' ? 0 : 2;
 // one open at −z. An opening along the part's axis goes through the floor of a housing or right through a solid part; one across it is a
 // window in a housing's side wall (a notch when it reaches the rim). An opening that cannot be cut (outside the floor, on a solid's edge,
 // through a ball) is left out, so the clash it was meant to clear is still found.
-//   → { w, d, L, r, t, round, sgn, floor, u0, uf, u1, holes: [{ cx, cy, hw, hd, round }], sides: [{ wall | phi, a, b, ua, ub }], bosses: [{ cx, cy, R, rp, ue }] }
+//   → { w, d, L, r, t, round, sgn, floor, u0, uf, u1, holes: [{ cx, cy, hw, hd, round }], sides: [{ wall | phi, a, b, ua, ub }], bosses: [{ cx, cy, R, rp, ue }],
+//       groove: { g, sk }, adds: [{ p, F }] }
 const HOLE_N = 24;
 export function featuresOf(p) {
   const [w, d, L] = localDims(p), round = ROUND.has(p.shape), r = round ? 0 : Math.max(0, Math.min(p.r ?? 0, w / 2 - .01, d / 2 - .01)), t = shellLike(p) ? Math.min(p.wall, Math.min(w, d) / 2 - .2) : 0, o = openOf(p);
-  const sgn = shellLike(p) && o === '-' ? -1 : 1, floor = shellLike(p) && o !== 'both', F = { w, d, L, r, t, round, sgn, floor, shell: shellLike(p), u0: -L / 2, uf: floor ? -L / 2 + t : -L / 2, u1: L / 2, holes: [], sides: [], bosses: [] };
+  const sgn = shellLike(p) && o === '-' ? -1 : 1, floor = shellLike(p) && o !== 'both', F = { w, d, L, r, t, round, sgn, floor, shell: shellLike(p), u0: -L / 2, uf: floor ? -L / 2 + t : -L / 2, u1: L / 2, holes: [], sides: [], bosses: [], adds: [] };
   if (p.shape === 'ball') return F;
+  F.adds = (p.adds || []).map(b => ({ p: b, F: featuresOf(b) })); // what is moulded on it (a lip): each a body of its own, placed from the part's centre
   if (p.shape === 'cyl' && p.flange) { F.flange = { k: p.flange.body / Math.min(w, d), za: p.flange.end === '+' ? L / 2 - p.flange.t : -L / 2, zb: p.flange.end === '+' ? L / 2 : -L / 2 + p.flange.t }; return F; } // a flanged part carries no openings
   const iw = w - 2 * t, id = d - 2 * t, ir = Math.max(r - t, 0), ax = axisOf(p);
   // is a box (centre, half sizes) inside the floor's inner outline with a margin?
@@ -176,6 +178,9 @@ export function featuresOf(p) {
       const ang = v => { const q = Math.asin(v / (half - t)); return ki === 0 ? (side > 0 ? q : Math.PI - q) : (side > 0 ? Math.PI / 2 - q : -Math.PI / 2 + q); }, x = [ang(a), ang(b)].sort((m, n) => m - n); F.sides.push({ phi: true, a: x[0], b: x[1], ua, ub }); }
     else { const lim = half - Math.max(r, t) - .05, a = Math.max(-lim, at[mi] - sz[mi] / 2), b = Math.min(lim, at[mi] + sz[mi] / 2); if (b - a < .1) continue; F.sides.push({ wall: ki, side, a, b, ua, ub }); }
   }
+  // a groove round the rim for the other half's lip: the inside of the wall is taken away for `h` down from the rim, leaving a skin `sk` thick
+  // outside it. A window that comes into that stretch is opened on through it to the rim, so the skin there is whole or gone, never a sliver.
+  if (floor && p.groove && t - p.groove.t >= .25 && p.groove.h < L - t - .4) { const g = L / 2 - p.groove.h; F.groove = { g, sk: t - p.groove.t }; for (const m of F.sides) if (m.ub > g - .3) { m.ub = F.u1; m.ua = Math.max(F.uf, Math.min(m.ua, g - .3)); } }
   if (floor) for (const b of p.bosses || []) { const at = toLocal(p, b.at), R = Math.max(b.d * 1.2, b.d / 2 + 1.2), ue = sgn * at[2], q = { cx: at[0], cy: at[1], hw: R, hd: R, R, rp: b.d * .4, ue };
     // a screw that comes up through the floor into its boss: the hole in the floor and the boss's pilot are one bore
     const bore = F.holes.find(h => h.round && !h.boss && Math.hypot(h.cx - q.cx, h.cy - q.cy) < .05 && Math.abs(h.hw - h.hd) < 1e-6 && h.hw < R - .4); if (bore) q.rp = bore.hw;
@@ -186,7 +191,7 @@ export function featuresOf(p) {
 function outlinesOf(F) {
   const { w, d, r, t, round } = F, marks = F.sides;
   if (round) { const angs = new Set(Array.from({ length: CIRC }, (_, i) => i / CIRC * Math.PI * 2)), norm = a => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); for (const m of marks) { angs.add(norm(m.a)); angs.add(norm(m.b)); }
-    const A = [...angs].sort((a, b) => a - b).filter((a, i, l) => i === 0 || a - l[i - 1] > 1e-6), at = (W, D) => A.map(a => [W / 2 * Math.cos(a), D / 2 * Math.sin(a)]); return { out: at(w, d), inn: t ? at(w - 2 * t, d - 2 * t) : null, ang: A }; }
+    const A = [...angs].sort((a, b) => a - b).filter((a, i, l) => i === 0 || a - l[i - 1] > 1e-6), at = (W, D) => A.map(a => [W / 2 * Math.cos(a), D / 2 * Math.sin(a)]); return { out: at(w, d), inn: t ? at(w - 2 * t, d - 2 * t) : null, mid: F.groove ? at(w - 2 * F.groove.sk, d - 2 * F.groove.sk) : null, ang: A }; }
   const build = (W, D, R) => { R = Math.max(0, Math.min(R, W / 2 - .01, D / 2 - .01)); const out = [], cs = [[W / 2 - R, D / 2 - R], [-W / 2 + R, D / 2 - R], [-W / 2 + R, -D / 2 + R], [W / 2 - R, -D / 2 + R]];
     // after each corner the flat run to the next: +y going −x, −x going −y, −y going +x, +x going +y
     const runs = [[1, 1, -1], [0, -1, -1], [1, -1, 1], [0, 1, 1]];
@@ -194,7 +199,7 @@ function outlinesOf(F) {
       const [ki, side, dir] = runs[q], vs = [...new Set(marks.filter(m => m.wall === ki && m.side === side).flatMap(m => [m.a, m.b]))].sort((a, b) => dir * (a - b));
       for (const v of vs) out.push(ki === 1 ? [v, side * D / 2] : [side * W / 2, v]); });
     return out; };
-  return { out: build(w, d, r), inn: t ? build(w - 2 * t, d - 2 * t, Math.max(r - t, 0)) : null, ang: null };
+  return { out: build(w, d, r), inn: t ? build(w - 2 * t, d - 2 * t, Math.max(r - t, 0)) : null, mid: F.groove ? build(w - 2 * F.groove.sk, d - 2 * F.groove.sk, Math.max(r - F.groove.sk, 0)) : null, ang: null };
 }
 // triangles of a flat outline with holes in it: each hole is joined to the outside by a bridge, then ears are clipped
 function triPoly(outer, holes) {
@@ -243,9 +248,9 @@ function solidOf(p) {
   const T = [], tri = (a, b, c) => T.push(a, b, c);
   if (p.shape === 'ball') { const [a, b, c] = p.size.map(v => v / 2), n = 18, m = 12, P = (i, j) => { const th = i / m * Math.PI, ph = (j % n) / n * 2 * Math.PI; return i === 0 ? [0, 0, c] : i === m ? [0, 0, -c] : [a * Math.sin(th) * Math.cos(ph), b * Math.sin(th) * Math.sin(ph), c * Math.cos(th)]; };
     for (let i = 0; i < m; i++) for (let j = 0; j < n; j++) { const A = P(i, j), B = P(i + 1, j), C = P(i + 1, j + 1), D = P(i, j + 1); if (i < m - 1) tri(A, B, C); if (i > 0) tri(A, C, D); } return { T, sgn: 1, ball: true }; }
-  const F = featuresOf(p), O = outlinesOf(F), { out, inn } = O, n = out.length, { u0, uf, u1 } = F, lost = lostOf(F, O), at = (q, u) => [q[0], q[1], u];
+  const F = featuresOf(p), O = outlinesOf(F), { out, inn } = O, n = out.length, { u0, uf, u1 } = F, lost = lostOf(F, O), at = (q, u) => [q[0], q[1], u], mid = O.mid, g = mid ? F.groove.g : null; // g: where the groove's floor is
   // the heights on the upright edge at an outline point: the ends, and where a window in the column on either side starts and stops
-  const lvl = i => [...new Set([...lost[(i + n - 1) % n], ...lost[i]].flat())].sort((a, b) => a - b), between = (l, a, b) => [a, ...l.filter(v => v > a + 1e-9 && v < b - 1e-9), b];
+  const lvl = i => [...new Set([...lost[(i + n - 1) % n], ...lost[i], ...(g == null ? [] : [[g]])].flat())].sort((a, b) => a - b), between = (l, a, b) => [a, ...l.filter(v => v > a + 1e-9 && v < b - 1e-9), b];
   // a strip of wall between two upright edges (P to Q going round anticlockwise) from a to b, facing out of the outline, or into it
   const strip = (P, Q, lp, lq, a, b, outward) => { const L1 = between(lp, a, b), L2 = between(lq, a, b); let i = 0, j = 0; while (i < L1.length - 1 || j < L2.length - 1) { const A = at(P, L1[i]), B = at(Q, L2[j]), C = j === L2.length - 1 || (i < L1.length - 1 && L1[i + 1] <= L2[j + 1]) ? at(P, L1[++i]) : at(Q, L2[++j]); outward ? tri(A, B, C) : tri(A, C, B); } };
   const kept = (i, a, b) => { const ks = []; let lo = a; for (const [x, y] of lost[i]) { if (x > lo + 1e-9) ks.push([lo, Math.min(x, b)]); lo = Math.max(lo, y); } if (lo < b - 1e-9) ks.push([lo, b]); return ks; };
@@ -268,13 +273,18 @@ function solidOf(p) {
   for (let i = 0; i < n; i++) { const j = (i + 1) % n, li = lvl(i), lj = lvl(j);
     // outside and inside faces of the wall, less the windows; the floor's edge below them
     if (F.floor && uf > u0) strip(out[i], out[j], [], [], u0, uf, true);
-    for (const [a, b] of kept(i, uf, u1)) { strip(out[i], out[j], li, lj, a, b, true); strip(inn[i], inn[j], li, lj, a, b, false); }
+    for (const [a, b] of kept(i, uf, u1)) { strip(out[i], out[j], li, lj, a, b, true);
+      if (g == null || b <= g + 1e-9) strip(inn[i], inn[j], li, lj, a, b, false); else if (a >= g - 1e-9) strip(mid[i], mid[j], li, lj, a, b, false);
+      else { strip(inn[i], inn[j], li, lj, a, g, false); strip(mid[i], mid[j], li, lj, g, b, false); quad(at(mid[i], g), at(mid[j], g), at(inn[j], g), at(inn[i], g)); } } // the wall, the skin outside the groove, the groove's floor
     // round a window: the sill and the head, and the upright sides where the next column is still there
     for (const [a, b] of lost[i]) { if (F.floor || a > u0 + 1e-9) quad(at(out[i], a), at(out[j], a), at(inn[j], a), at(inn[i], a)); if (b < u1 - 1e-9) quad(at(out[i], b), at(inn[i], b), at(inn[j], b), at(out[j], b)); }
-    const prev = lost[(i + n - 1) % n], cur = lost[i], cuts = [...new Set([...prev, ...cur].flat())].sort((a, b) => a - b), has = (l, v) => l.some(([x, y]) => v > x && v < y);
-    for (let k = 0; k < cuts.length - 1; k++) { const a = cuts[k], b = cuts[k + 1], m = (a + b) / 2, hp = has(prev, m), hc = has(cur, m); if (hp === hc) continue; hc ? quad(at(out[i], a), at(inn[i], a), at(inn[i], b), at(out[i], b)) : quad(at(out[i], a), at(out[i], b), at(inn[i], b), at(inn[i], a)); }
+    const prev = lost[(i + n - 1) % n], cur = lost[i], c0 = [...prev, ...cur].flat(), cuts = [...new Set(g != null && c0.some(v => v < g - 1e-9) && c0.some(v => v > g + 1e-9) ? [...c0, g] : c0)].sort((a, b) => a - b), has = (l, v) => l.some(([x, y]) => v > x && v < y);
+    for (let k = 0; k < cuts.length - 1; k++) { const a = cuts[k], b = cuts[k + 1], m = (a + b) / 2, hp = has(prev, m), hc = has(cur, m); if (hp === hc) continue;
+      const I = g != null && a >= g - 1e-9 ? mid : inn, A = at(out[i], a), B = at(I[i], a), C = at(I[i], b), D = at(out[i], b);
+      if (g != null && Math.abs(b - g) < 1e-9) { const M = at(mid[i], g); if (hc) { tri(M, D, A); tri(M, A, B); tri(M, B, C); } else { tri(M, C, B); tri(M, B, A); tri(M, A, D); } } // its top edge is in two pieces where the groove's floor meets it
+      else if (hc) quad(A, B, C, D); else quad(A, D, C, B); }
     // the rim at the open end (and at the other end of a ring)
-    if (!has(cur, u1 - 1e-6) && !cur.some(([, y]) => y >= u1 - 1e-9)) quad(at(out[i], u1), at(out[j], u1), at(inn[j], u1), at(inn[i], u1));
+    if (!has(cur, u1 - 1e-6) && !cur.some(([, y]) => y >= u1 - 1e-9)) quad(at(out[i], u1), at(out[j], u1), at((mid || inn)[j], u1), at((mid || inn)[i], u1));
     if (!F.floor && !cur.some(([x]) => x <= u0 + 1e-9)) quad(at(out[i], u0), at(inn[i], u0), at(inn[j], u0), at(out[j], u0));
   }
   if (F.floor) { // the floor: its outside face, its inside face round the bosses, the openings through it, and each boss with its pilot hole
@@ -288,7 +298,10 @@ function solidOf(p) {
 export function meshOf(p, off = [0, 0, 0]) {
   const { T, sgn, ball } = solidOf(p), o = new Float32Array(T.length * 3), put = (q, i) => { const w = ball ? q : toWorld(p, [q[0], q[1], sgn * q[2]]); o[i] = w[0] + p.at[0] + off[0]; o[i + 1] = w[1] + p.at[1] + off[1]; o[i + 2] = w[2] + p.at[2] + off[2]; };
   for (let i = 0; i < T.length; i += 3) { put(T[i], i * 3); put(T[sgn < 0 ? i + 2 : i + 1], i * 3 + 3); put(T[sgn < 0 ? i + 1 : i + 2], i * 3 + 6); }
-  return o;
+  if (!p.adds?.length) return o;
+  // what is moulded on it follows, each a closed body of its own standing on the part (not fused into one skin)
+  const more = p.adds.map(b => meshOf({ ...b, at: b.at.map((v, k) => v + p.at[k]) }, off)), all = new Float32Array(o.length + more.reduce((t, m) => t + m.length, 0)); all.set(o); let k = o.length; for (const m of more) { all.set(m, k); k += m.length; }
+  return all;
 }
 // volume (mm³), the area the mould sees along its draw (cm²), and the outside area (mm²)
 export function volumeOf(p) {
@@ -337,6 +350,9 @@ export function cleanPart(q = {}, i = 0) {
   const v3 = (a, lo, hi, d) => [0, 1, 2].map(k => r2(num(a?.[k], lo, hi, d)));
   // a flange on a round solid part (a speaker driver's): its full width holds for `t` at one end of its axis, the body behind it is `body` across
   if (shape === 'cyl' && q.flange && Number(q.flange.body) > 0) { const [fw, fd, fl] = localDims(p), ac = Math.min(fw, fd); if (ac > 1 && fl > .6) p.flange = { body: r1(num(q.flange.body, .3, ac - .4, ac * .8)), t: r1(num(q.flange.t, .2, fl - .2, Math.min(3, fl / 2))), end: q.flange.end === '+' ? '+' : '-' }; }
+  // what is moulded on it: a `lip` round its rim that stands in the other half's wall (the groove that takes it is worked out on that half)
+  if ((shape === 'shell' || shape === 'cup') && q.lip && ID.test(String(q.lip.into || ''))) p.lip = { into: q.lip.into, h: r1(num(q.lip.h, .5, 5, 1.2)), t: r2(num(q.lip.t, .3, Math.max(.3, p.wall - .4), Math.max(.4, r1(p.wall * .45)))) };
+  if ((shape === 'shell' || shape === 'cup') && q.groove && Number(q.groove.t) > 0) p.groove = { h: r2(num(q.groove.h, .3, 8, 1.5)), t: r2(num(q.groove.t, .1, p.wall, p.wall / 2)), ...(ID.test(String(q.groove.for || '')) ? { for: q.groove.for } : {}) };
   if (Array.isArray(q.through)) { const t = [...new Set(q.through.map(String).filter(x => ID.test(x)))].slice(0, 4); if (t.length) p.through = t; }
   if (Array.isArray(q.spots) && p.qty > 1) { const sp = q.spots.slice(0, p.qty - 1).map(a => v3(a, -3000, 3000, 0)); if (sp.length) p.spots = sp; }
   if (Array.isArray(q.cuts)) { const cs = q.cuts.slice(0, 40).map(c => ({ at: v3(c?.at, -3000, 3000, 0), size: v3(c?.size, .2, 3000, 1), axis: AXN.includes(c?.axis) ? c.axis : 'z', ...(c?.round ? { round: true } : {}), ...(ID.test(String(c?.for || '')) ? { for: c.for } : {}) })); if (cs.length) p.cuts = cs; }
@@ -353,6 +369,8 @@ export function cleanAssembly(s = {}) {
   const seen = new Set(); for (const p of parts) { while (seen.has(p.id)) p.id = `${p.id}x`.slice(-32); seen.add(p.id); }
   for (const p of parts) if (p.parent && (!seen.has(p.parent) || p.parent === p.id)) p.parent = null;
   for (const p of parts) if (p.through) { p.through = p.through.filter(id => seen.has(id) && id !== p.id); if (!p.through.length) delete p.through; }
+  for (const p of parts) if (p.lip && (!seen.has(p.lip.into) || p.lip.into === p.id)) delete p.lip;
+  moulded(parts);
   const v = Number(s.v) >= 2 ? 2 : 1; // 2: made since parts say what they pass through; 1 (nothing saved): made before
   openings(parts, v < 2);
   const dm = s.dims && ['w', 'd', 'h'].every(k => Number(s.dims[k]) > 0) ? { w: r1(num(s.dims.w, .3, 5000, 1)), d: r1(num(s.dims.d, .3, 5000, 1)), h: r1(num(s.dims.h, .3, 5000, 1)) } : null; // the size asked for, when it was
@@ -398,7 +416,38 @@ function openings(parts, before = false) {
     const socket = q.elec && (ELEC[q.elec.kind].port || q.elec.kind === 'usbc'), pane = RESINS[q.resin].clear && !shellLike(q);
     if (socket || pane) for (const h of parts) if (h !== q && shellLike(h) && !h.elec && (socket || !RESINS[h.resin].clear) && !(q.through || []).includes(h.id)) add(h, q);
     if (before && !socket && !pane && !q.through) for (const h of parts) if (h !== q && [[0, 0, 0], ...(q.spots || [])].some(o => plainlyThrough(h, q, o))) add(h, q); }
+  // a lip stands on a rim an opening may come up through: what passes through the wall there passes through the lip too
+  for (const h of parts) for (const b of h.adds || []) { delete b.cuts; if (b.kind !== 'lip') continue; const B = { ...b, at: b.at.map((v, k) => v + h.at[k]) };
+    for (const id of new Set((h.cuts || []).map(c => c.for).filter(Boolean))) { const q = byId[id]; if (q) for (const o of [[0, 0, 0], ...(q.spots || [])]) for (const c of cutFor(B, q, o)) if ((b.cuts ||= []).length < 12) b.cuts.push(c); } }
 }
+// ---- what is moulded on a part beyond its plain shape, and what that takes out of the part it meets ------------------------------------------------
+// Worked out afresh by cleanAssembly, like the openings, so it follows the parts. A housing half that says its `lip` goes into another half
+// gets the lip as a body standing on its rim (`adds`), on the inner side of its wall, and the other half gets the `groove` that takes it: the
+// inside of its wall cut back from the rim, 0.1 mm clear of the lip at the side and 0.3 mm at its top. A body that is moulded on starts
+// 0.3 mm inside the part it stands on (SINK), so the two overlap and a union in CAD joins them cleanly.
+const LIP_SIDE = .1, LIP_TOP = .3, SINK = .3, floored = p => p.shape === 'shell' || p.shape === 'cup';
+// two halves that close rim to rim and the lip of `a` in the wall of `b`: the numbers, or { why } when there can be none
+function lipPair(a, b) {
+  if (!b) return { why: 'that part is not there' };
+  if (!floored(a) || !floored(b)) return { why: `${b.name.toLowerCase()} is not a housing half` };
+  const ax = axisOf(a), sa = a.open === '-' ? -1 : 1, sb = b.open === '-' ? -1 : 1, cr = [0, 1, 2].filter(k => k !== ax);
+  if (axisOf(b) !== ax || sa === sb) return { why: 'the two do not open toward each other' };
+  const gap = sa * ((b.at[ax] + sb * b.size[ax] / 2) - (a.at[ax] + sa * a.size[ax] / 2)); // from this rim on to the other's: 0 when they meet
+  if (Math.abs(gap) > 1) return { why: `their rims are ${r1(Math.abs(gap))} mm apart` };
+  const ta = Math.min(a.wall, Math.min(...cr.map(k => a.size[k])) / 2 - .2), tb = Math.min(b.wall, Math.min(...cr.map(k => b.size[k])) / 2 - .2), tl = Math.min(a.lip.t, ta - .3), k = ta - tl;
+  if (tl < .3) return { why: 'its own wall is too thin to carry one' };
+  // the wall the other half keeps outside the lip, where it is thinnest, and the step between the two outsides at the seam
+  const faces = cr.flatMap(i => [[b.at[i] + b.size[i] / 2, a.at[i] + a.size[i] / 2], [-(b.at[i] - b.size[i] / 2), -(a.at[i] - a.size[i] / 2)]]), sk = Math.min(...faces.map(([fb, fa]) => fb - (fa - k))) - LIP_SIDE, step = Math.max(...faces.map(([fb, fa]) => Math.abs(fb - fa)));
+  if (sk < .3 || tb - sk < .2) return { why: `${b.name.toLowerCase()} has no wall to take it (${r1(Math.max(sk, 0))} mm would be left outside the lip)` };
+  return { ax, sa, gap, tl: r2(tl), k: r2(k), sk: r2(sk), gw: r2(tb - sk), step: r2(step) };
+}
+function moulded(parts) {
+  const byId = Object.fromEntries(parts.map(p => [p.id, p])); for (const p of parts) { delete p.adds; delete p.groove; }
+  for (const a of parts) { if (!a.lip) continue; const b = byId[a.lip.into], L = lipPair(a, b); if (L.why || b.groove) continue;
+    (a.adds ||= []).push({ kind: 'lip', shape: a.shape === 'cup' ? 'ring' : 'shell', open: 'both', axis: a.axis, size: a.size.map((v, i) => (i === L.ax ? r2(a.lip.h + SINK) : r2(v - 2 * L.k))), at: [0, 1, 2].map(i => (i === L.ax ? r2(L.sa * (a.size[i] + a.lip.h - SINK) / 2) : 0)), wall: L.tl, ...(a.shape === 'shell' ? { r: r2(Math.max((a.r ?? 0) - L.k, 0)) } : {}) });
+    b.groove = { h: r2(a.lip.h - L.gap + LIP_TOP), t: L.gw, for: a.id }; }
+}
+
 
 // ---- archetypes: a starting assembly drawn to the product's size ---------------------------------------------------------------------------------
 const P = (o, i) => cleanPart(o, i);
@@ -441,7 +490,7 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     // under the board, the keypad and the status window through the top, the USB-C port at the bottom end
     const W = num(dims.w, 25, 200, 46), Lg = num(dims.d, 50, 300, 128), H = num(dims.h, 8, 80, 18), w = 1.6, rad = radio === 'none' ? 'mcu' : radio === 'wifi' ? 'wifi' : 'ble', hb = e2(H / 2), room = [W - 2 * w - 2, Lg - 2 * w - 13, hb - w - .5], mA = fitCell(mah || 1200, room, Boolean(mah)), cell = cellOf(mA);
     made = [W, Lg, H];
-    add({ id: 'bottom', name: 'Bottom housing', shape: 'shell', size: [W, Lg, hb], at: [0, 0, hb / 2], r: 8, wall: w, open: '+', resin: 'PC/ABS', finish: 'soft-touch paint', draft: 1.5, undercuts: 1, order: 1, lvl: 0, main: true });
+    add({ id: 'bottom', name: 'Bottom housing', shape: 'shell', size: [W, Lg, hb], at: [0, 0, hb / 2], r: 8, wall: w, open: '+', lip: { into: 'top' }, resin: 'PC/ABS', finish: 'soft-touch paint', draft: 1.5, undercuts: 1, order: 1, lvl: 0, main: true });
     const pz = hb + .2, bxs = W / 2 - w - 4, bys = Lg / 2 - w - 5, sl = e2(Math.min(hb + 4.2, 20)), sp4 = [[-bxs, -bys], [bxs, -bys], [bxs, bys], [-bxs, bys]];
     screw('screws', `Screw, M2 × ${Math.round(sl)} self-tapping`, 2, sl, 'z', sp4.map(q => [...q, pz + 1 + 3 - sl / 2]), { parent: 'pcb', through: ['bottom', 'pcb'], dir: [0, 0, -1], lvl: 2 });
     const bs = cell.size[1] > room[1] || cell.size[0] > room[0] ? [cell.size[1], cell.size[0], cell.size[2]] : cell.size; // turned to lie along the handheld when that fits better
@@ -473,7 +522,7 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     elec('usbc', { size: [9, 7.5, 3.2], at: [-W * .3, bk + 3.75, zb + w + 3.6], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 });
     elec('reg', { size: [3, 1, 3], axis: 'y', at: [-W * .2, bk + .5, zc], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 }); elec('env', { size: [2.5, .9, 2.5], axis: 'y', at: [-W * .32, bk + .45, zb + Hs * .7], parent: 'pcb', order: 3, dir: [0, 1, 0], lvl: 1.3 });
     elec('button', { size: [6, 6, 3.5], at: [W * .3, Math.min(D * .05, py - 4.3), H - w - .3 - 1.75], parent: 'back', order: 4, dir: [0, 0, 1], lvl: 1.6 });
-    add({ id: 'back', name: 'Back housing', shape: 'shell', axis: 'y', size: [W, db, Hs], at: [0, D / 2 - db / 2, zc], r: 6, wall: w, open: '-', resin: 'PC/ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 1, fix: 'place', order: 1, dir: [0, 1, 0], lvl: 0, main: true });
+    add({ id: 'back', name: 'Back housing', shape: 'shell', axis: 'y', size: [W, db, Hs], at: [0, D / 2 - db / 2, zc], r: 6, wall: w, open: '-', lip: { into: 'front' }, resin: 'PC/ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 1, fix: 'place', order: 1, dir: [0, 1, 0], lvl: 0, main: true });
     const cx = W / 2 - w - 5, cz = Hs / 2 - w - 5, c4 = [[cx, zc + cz], [-cx, zc + cz], [-cx, zc - cz], [cx, zc - cz]], sl = e2(Math.min(D / 2 - py + 5, 30));
     screw('screws', `Screw, M2 × ${Math.round(sl)} self-tapping`, 2, sl, 'y', c4.map(q => [q[0], D / 2 - sl / 2, q[1]]), { parent: 'pcb', through: ['back', 'pcb'], dir: [0, 1, 0], lvl: 2.5 });
     boss('back', c4.map(q => [q[0], py + .8, q[1]]), 2); boss('front', c4.map(q => [q[0], py - .8, q[1]]), 2);
@@ -520,7 +569,7 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     const W = num(dims.w, 120, 220, 136), D = num(dims.d, 26, 70, 34), H = num(dims.h, 75, 180, 90), w = 1.6, Dh = e2(D - 2.5), df = e2(Dh / 2), Hs = H - 4, y0 = -D / 2, ym = y0 + df, yb = y0 + Dh, ms = ELEC.tapemech.size;
     const mx = -W / 2 + w + 2.5 + ms[0] / 2, my = y0 + w + .3 + ms[1] / 2, mz = Math.max(w + 2.5 + ms[2] / 2, Hs / 2 + 1);
     made = [W, D, H];
-    add({ id: 'back', name: 'Back housing', shape: 'shell', axis: 'y', size: [W, Dh - df, Hs], r: 6, at: [0, (ym + yb) / 2, Hs / 2], wall: w, open: '-', resin: 'ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 1, fix: 'place', order: 1, dir: [0, 1, 0], lvl: 1.6, main: true });
+    add({ id: 'back', name: 'Back housing', shape: 'shell', axis: 'y', size: [W, Dh - df, Hs], r: 6, at: [0, (ym + yb) / 2, Hs / 2], wall: w, open: '-', lip: { into: 'front' }, resin: 'ABS', finish: 'SPI B-1 (semi-gloss)', draft: 1, undercuts: 1, fix: 'place', order: 1, dir: [0, 1, 0], lvl: 1.6, main: true });
     elec('aa', { at: [W / 2 - w - 2.5 - 14.5, y0 + w + .3 + 7.25, w + 2.5 + 25], parent: 'front', fix: 'place', order: 2, dir: [0, -1, 0], lvl: 1.4, elec: { kind: 'aa', mah: mah || 2500 } });
     elec('tapemech', { at: [mx, my, mz], parent: 'front', fix: 'screws', fixQty: 3, order: 3, dir: [0, -1, 0], lvl: 1.6 });
     const by = my + ms[1] / 2 + 1.5, bh = Hs - 2 * w - 22, pz = w + 2 + bh / 2, bk = by + .5, bw = W - 2 * w - 4;
@@ -657,7 +706,7 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     // of four microphones, the ring's LEDs and the buttons, whose caps come through the top
     const D = num(dims.w, 80, 200, 100), H = num(dims.h, 100, 260, 152), w = 2, zb = 1.5, hb = Math.round((H - zb) * .3), ht = 22, hg = e2(H - zb - hb - ht - 3), sd = Math.min(76, D - 16), z1 = zb + hb, z2 = z1 + hg;
     made = [D, D, H];
-    add({ id: 'body', name: 'Base housing', shape: 'cup', size: [D, D, hb], at: [0, 0, zb + hb / 2], wall: w, open: '+', resin: 'PC/ABS', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
+    add({ id: 'body', name: 'Base housing', shape: 'cup', size: [D, D, hb], at: [0, 0, zb + hb / 2], wall: w, open: '+', lip: { into: 'grille' }, resin: 'PC/ABS', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
     add({ id: 'foot', name: 'Non-slip foot', shape: 'cyl', size: [D - 14, D - 14, 1.5], at: [0, 0, .75], resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'adhesive', order: 9, dir: [0, 0, -1], lvl: 1.2 });
     const pz = zb + w + 6, on = pz + .8, pr = (D - 2 * w - 4) / 2 - 4, pb = [90, 210, 330].map(a => [pr * Math.cos(a * Math.PI / 180), pr * Math.sin(a * Math.PI / 180)]);
     add({ id: 'pcb', name: 'Main board', shape: 'pcb', size: [D - 2 * w - 4, D - 2 * w - 4, 1.6], r: D, at: [0, 0, pz], fix: 'screws', fixQty: 3, order: 2, parent: 'body', lvl: .8, layers: 4 });
@@ -682,7 +731,7 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     // and out through the end, a four-LED fuel gauge behind its window and a button under its cap, in two PC/ABS shells
     const n = Math.round(num(mah ? mah / 3000 : undefined, 2, 4, 3)), L = num(dims.d, 110, 200, 146), w = 1.8, W = e2(Math.max(num(dims.w, 40, 100, 0), n * 18.6 + 2 * w + 3)), H = num(dims.h, 22, 40, 25), hb = e2(H / 2);
     made = [Number(dims.w) > 0 ? num(dims.w, 40, 100, W) : W, L, H]; // a width asked for that the cells do not fit in is kept, so the size check says how much wider it came out
-    add({ id: 'bottom', name: 'Bottom shell', shape: 'shell', size: [W, L, hb], r: 6, at: [0, 0, hb / 2], wall: w, open: '+', resin: 'PC/ABS', finish: 'MT-11010 (fine texture)', draft: 3, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
+    add({ id: 'bottom', name: 'Bottom shell', shape: 'shell', size: [W, L, hb], r: 6, at: [0, 0, hb / 2], wall: w, open: '+', lip: { into: 'top' }, resin: 'PC/ABS', finish: 'MT-11010 (fine texture)', draft: 3, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
     const cy = -L / 2 + w + 2 + 32.5;
     add({ id: 'cells', name: `Li-ion cells, ${n} × 18650, ${n * 3000} mAh (1S${n}P)`, shape: 'box', size: [n * 18.4, 65, 18], at: [0, cy, w + .2 + 9], resin: 'bought in', process: 'bought in', cost: r2(n * 1.7), fix: 'adhesive', order: 2, parent: 'bottom', elec: { kind: 'li18650', mah: n * 3000 }, lvl: .8 });
     const by0 = cy + 32.5 + 4, by1 = L / 2 - w - 1, pl = by1 - by0, py = (by0 + by1) / 2, pz = w + 4, on = pz + .6, sxs = W / 2 - w - 4.5, sy = L / 2 - w - 12, sl = e2(Math.min(H - 5, 20));
@@ -739,7 +788,7 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     // a case: base and lid on four moulded-in feet, the hinge pin along the back and the latch on the front, inside the depth asked
     const W = num(dims.w, 60, 800, 220), D = num(dims.d, 40, 600, 160), H = num(dims.h, 25, 400, 72), w = 2.5, zb = 2, Ds = e2(D - 6.4), hb = e2((H - zb) * .7), fx = W * .38, fy = Ds * .35;
     made = [W, D, H];
-    add({ id: 'base', name: 'Base', shape: 'shell', size: [W, Ds, hb], at: [0, 0, zb + hb / 2], r: 10, wall: w, open: '+', resin: 'PP', finish: 'SPI D-2 (textured)', draft: 3, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
+    add({ id: 'base', name: 'Base', shape: 'shell', size: [W, Ds, hb], at: [0, 0, zb + hb / 2], r: 10, wall: w, open: '+', lip: { into: 'lid' }, resin: 'PP', finish: 'SPI D-2 (textured)', draft: 3, undercuts: 1, fix: 'place', order: 1, lvl: 0, main: true });
     add({ id: 'foam', name: 'Foam insert', shape: 'box', size: [W - 2 * w - 1, Ds - 2 * w - 1, hb * .7], r: 6, at: [0, 0, zb + w + .2 + hb * .35], resin: 'EVA foam', process: 'die cut', fix: 'place', order: 2, parent: 'base', lvl: 1.6 });
     add({ id: 'lid', name: 'Lid', shape: 'shell', size: [W, Ds, H - zb - hb], at: [0, 0, zb + hb + (H - zb - hb) / 2], r: 10, wall: w, open: '-', resin: 'PP', finish: 'SPI D-2 (textured)', draft: 3, undercuts: 1, fix: 'place', order: 3, lvl: 3, main: true });
     add({ id: 'hinge', name: 'Hinge pin', shape: 'cyl', axis: 'x', size: [W * .8, 3, 3], at: [0, D / 2 - 1.5, zb + hb], resin: 'stainless 304', process: 'bought in', cost: .12, qty: 1, fix: 'press', order: 4, dir: [0, 1, 0], lvl: 1.5 });
@@ -778,7 +827,7 @@ export function guessArch(c = {}) {
 export const radioOf = c => { const t = [c.name, c.spec?.description, c.spec?.silhouette].join(' ').toLowerCase(); return /\bwi-?fi\b|\bsmart (home|hub|display)\b/.test(t) ? 'wifi' : /\b(bluetooth|wireless|ble|app)\b/.test(t) ? 'ble' : c.category === 'electronics' ? 'ble' : 'none'; };
 
 // ---- the exploded view --------------------------------------------------------------------------------------------------------------------------
-export function extentOf(parts) { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; for (const p of parts) { const b = bboxOf(p); for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], b.lo[k]); hi[k] = Math.max(hi[k], b.hi[k]); } } return { lo, hi, size: lo.map((v, k) => hi[k] - v) }; }
+export function extentOf(parts) { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; for (const p of parts) for (const b of [bboxOf(p), ...(p.adds || []).map(a => bboxOf(a, p.at))]) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], b.lo[k]); hi[k] = Math.max(hi[k], b.hi[k]); } return { lo, hi, size: lo.map((v, k) => hi[k] - v) }; }
 // where each part sits when the view is pulled apart: along its direction by its level, a level being a share of the product's size; t 0..1
 export function explodeOffsets(s, t = 1) {
   const e = extentOf(s.parts), gap = Math.max(...e.size) * .32 * t, out = {};
@@ -907,6 +956,7 @@ const inHole = (h, x, y) => h.round ? ((x - h.cx) / h.hw) ** 2 + ((y - h.cy) / h
 function inPart(p, F, w, plain = false) { if (!p.spots) return inPiece(p, F, w, plain); return inPiece(p, F, w, plain) || p.spots.some(o => inPiece(p, F, [w[0] - o[0], w[1] - o[1], w[2] - o[2]], plain)); }
 function inPiece(p, F, w, plain) {
   const d = [w[0] - p.at[0], w[1] - p.at[1], w[2] - p.at[2]];
+  for (const a of F.adds) if (inPiece(a.p, a.F, d, plain)) return true; // in what is moulded on it
   if (p.shape === 'ball') return (d[0] / (p.size[0] / 2)) ** 2 + (d[1] / (p.size[1] / 2)) ** 2 + (d[2] / (p.size[2] / 2)) ** 2 <= 1 + EPS;
   const l = toLocal(p, d), x = l[0], y = l[1], u = F.sgn * l[2];
   for (const b of F.bosses) if (u >= F.uf - EPS && u <= b.ue + EPS) { const q = Math.hypot(x - b.cx, y - b.cy); if (q <= b.R + EPS && (plain || q >= b.rp - EPS)) return true; }
@@ -915,6 +965,7 @@ function inPiece(p, F, w, plain) {
   if (!F.shell) return plain || !F.holes.some(h => inHole(h, x, y));
   if ((!F.floor || u > F.uf + EPS) && inOutline(F, F.w - 2 * F.t - 2 * EPS, F.d - 2 * F.t - 2 * EPS, Math.max(F.r - F.t, 0), x, y)) return false;
   if (plain) return true;
+  if (F.groove && u > F.groove.g + EPS && inOutline(F, F.w - 2 * F.groove.sk - 2 * EPS, F.d - 2 * F.groove.sk - 2 * EPS, Math.max(F.r - F.groove.sk, 0), x, y)) return false; // in the groove round its rim
   if (F.floor && u <= F.uf + EPS) return !F.holes.some(h => inHole(h, x, y));
   for (const m of F.sides) { if (u < m.ua || u > m.ub) continue;
     if (m.phi) { const a = Math.atan2(y / (F.d / 2), x / (F.w / 2)); if ([0, 2 * Math.PI, -2 * Math.PI].some(k => a + k >= m.a && a + k <= m.b)) return false; }
@@ -928,6 +979,7 @@ function samplesOf(p, F) {
   const O = outlinesOf(F), oo = denser(O.out, 140, 1), ii = O.inn ? denser(O.inn, 140, 1) : null, nl = Math.max(2, Math.min(7, Math.ceil(F.L / 1.5) + 1)), lv = Array.from({ length: nl }, (_, i) => F.u0 + (F.u1 - F.u0) * i / (nl - 1));
   for (const u of lv) for (const q of oo) pts.push([q[0], q[1], u]);
   if (ii) for (const u of [...new Set([F.uf, ...lv.filter(v => v > F.uf)])]) for (const q of ii) pts.push([q[0], q[1], u]);
+  if (O.mid) for (const u of [F.groove.g, (F.groove.g + F.u1) / 2, F.u1]) for (const q of denser(O.mid, 140, 1)) pts.push([q[0], q[1], u]); // round the groove
   if (F.flange) { const bo = denser(O.out.map(q => [q[0] * F.flange.k, q[1] * F.flange.k]), 100, 1); for (const u of [...lv, F.flange.za, F.flange.zb]) { for (const q of bo) pts.push([q[0], q[1], u]); for (const q of oo) pts.push([q[0], q[1], u]); } }
   const grid = (W, D, R, u) => { const n = 7; for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const x = -W / 2 + W * (i + .5) / n, y = -D / 2 + D * (j + .5) / n; if (inOutline(F, W, D, R, x, y)) pts.push([x, y, u]); } };
   if (!F.shell) { grid(F.w, F.d, F.r, F.u0); grid(F.w, F.d, F.r, F.u1); } else if (F.floor) { grid(F.w, F.d, F.r, F.u0); grid(F.w - 2 * F.t, F.d - 2 * F.t, Math.max(F.r - F.t, 0), F.uf); }
@@ -936,7 +988,8 @@ function samplesOf(p, F) {
   // round each window in a side wall, just outside its edge, on both faces of the wall
   for (const m of F.sides) for (const v of [m.a - .02, (m.a + m.b) / 2, m.b + .02]) for (const u of [m.ua - .02, (m.ua + m.ub) / 2, m.ub + .02]) for (const k of [0, F.t]) {
     if (m.phi) pts.push([(F.w / 2 - k) * Math.cos(v), (F.d / 2 - k) * Math.sin(v), u]); else { const c = m.side * ((m.wall === 1 ? F.d : F.w) / 2 - k); pts.push(m.wall === 1 ? [v, c, u] : [c, v, u]); } }
-  return pts.map(Wd).filter(w => inPart(p, F, w));
+  const all = pts.map(Wd); for (const a of F.adds) all.push(...samplesOf({ ...a.p, at: a.p.at.map((v, k) => v + p.at[k]) }, a.F));
+  return all.filter(w => inPart(p, F, w));
 }
 // an outline with points added along it, no further apart than its length over n (and no closer than lo)
 function denser(P, n, lo) { const per = P.reduce((s, q, i) => s + Math.hypot(q[0] - P[(i + 1) % P.length][0], q[1] - P[(i + 1) % P.length][1]), 0), step = Math.max(lo, per / n), out = []; P.forEach((q, i) => { const m = P[(i + 1) % P.length], L = Math.hypot(m[0] - q[0], m[1] - q[1]); if (L < 1e-9) return; const k = Math.max(1, Math.ceil(L / step)); for (let j = 0; j < k; j++) out.push([q[0] + (m[0] - q[0]) * j / k, q[1] + (m[1] - q[1]) * j / k]); }); return out; }
@@ -960,12 +1013,12 @@ function depthIn(p, F, w) {
 }
 // for tests and tools: is this point of the world in the part's material (its openings open, its bosses standing)?
 export const inMaterial = (p, w) => inPart(p, featuresOf(p), w);
-// the box a part's material lies in: every piece of it, and its bosses where they stand past its rim
-const boxOf = p => { const os = [[0, 0, 0], ...(p.spots || [])], bs = (p.bosses || []).map(b => ({ c: b.at, r: Math.max(b.d * 1.2, b.d / 2 + 1.2) })); return { lo: p.size.map((v, k) => p.at[k] + Math.min(-v / 2, ...bs.map(b => b.c[k] - b.r)) + Math.min(...os.map(o => o[k]))), hi: p.size.map((v, k) => p.at[k] + Math.max(v / 2, ...bs.map(b => b.c[k] + b.r)) + Math.max(...os.map(o => o[k]))) }; };
+// the box a part's material lies in: every piece of it, its bosses where they stand past its rim, and what is moulded on it
+const boxOf = p => { const os = [[0, 0, 0], ...(p.spots || [])], bs = [...(p.bosses || []).map(b => ({ c: b.at, r: [0, 1, 2].map(() => Math.max(b.d * 1.2, b.d / 2 + 1.2)) })), ...(p.adds || []).map(b => ({ c: b.at, r: b.size.map(v => v / 2) }))]; return { lo: p.size.map((v, k) => p.at[k] + Math.min(-v / 2, ...bs.map(b => b.c[k] - b.r[k])) + Math.min(...os.map(o => o[k]))), hi: p.size.map((v, k) => p.at[k] + Math.max(v / 2, ...bs.map(b => b.c[k] + b.r[k])) + Math.max(...os.map(o => o[k]))) }; };
 // everything the fit checks measure, by kind: { contact, clash, fasteners, size }, each a list of { id, level, kind, text, ... }
 export function fitOf(s) {
   const parts = s.parts, n = parts.length, F = parts.map(featuresOf), B = parts.map(boxOf), S = new Array(n), smp = i => S[i] || (S[i] = samplesOf(parts[i], F[i])), name = p => p.name, low = p => p.name.toLowerCase();
-  const out = { contact: [], clash: [], fasteners: [], size: [] }, say = (kind, id, level, text, more = {}) => out[kind].push({ id, level, kind, text, ...more });
+  const out = { contact: [], clash: [], fasteners: [], size: [], lip: [] }, say = (kind, id, level, text, more = {}) => out[kind].push({ id, level, kind, text, ...more });
   const gap = (i, j) => Math.max(...[0, 1, 2].map(k => Math.max(B[j].lo[k] - B[i].hi[k], B[i].lo[k] - B[j].hi[k])));
   // ---- clash: one part's material in another's, deeper than a rounding ----
   const hard = [];
@@ -1010,6 +1063,26 @@ export function fitOf(s) {
   if (s.dims) { const e = extentOf(parts).size, want = [s.dims.w, s.dims.d, s.dims.h], off = [0, 1, 2].filter(k => Math.abs(e[k] - want[k]) > .5);
     if (off.length) say('size', parts[0].id, 'warn', `Size: the parts make ${e.map(r1).join(' × ')} mm against the ${want.join(' × ')} mm asked for: ${off.map(k => `${r1(Math.abs(e[k] - want[k]))} mm ${e[k] > want[k] ? 'more' : 'less'} ${['wide', 'deep', 'tall'][k]}`).join(', ')}. Bring the parts inside the size, or start again at the size you want.`, { made: e.map(r1), asked: want });
     else say('size', parts[0].id, 'ok', `Size: ${e.map(r1).join(' × ')} mm, as asked.`, { made: e.map(r1), asked: want }); }
+  // ---- lip and groove: where two halves close, the lip of one stands in the groove of the other; measured round the lip, off the two parts ----
+  for (const a of parts) { if (!a.lip) continue; const b = parts.find(p => p.id === a.lip.into), ib = parts.indexOf(b), L = lipPair(a, b), lip = (a.adds || []).find(x => x.kind === 'lip');
+    if (L.why || !lip || b.groove?.for !== a.id) { say('lip', a.id, 'bad', `${name(a)} has a lip for ${b ? low(b) : 'another half'}, but ${L.why || `${low(b)} already takes another part's lip`}, so nothing locates the two. Close them rim to rim, or take the lip off.`, { with: a.lip.into }); continue; }
+    const B = { ...lip, at: lip.at.map((v, k) => v + a.at[k]) }, FB = featuresOf(B), O = outlinesOf(FB), n = O.out.length, Wd = l => toWorld(B, l).map((v, k) => v + B.at[k]), up = toLocal(B, [0, 1, 2].map(k => (k === L.ax ? L.sa : 0)));
+    // from the lip's outer face out to the groove's wall, and from its top on to the groove's floor: how far before the other half's material
+    const march = (w, d) => { if (inPart(b, F[ib], w)) return 0; for (let t = .02; t <= 1.21; t += .02) if (inPart(b, F[ib], [w[0] + d[0] * t, w[1] + d[1] * t, w[2] + d[2] * t])) return t; return null; };
+    const side = [], top = []; let all = 0;
+    const round = FB.round ? Array.from({ length: 120 }, (_, i) => { const q = i / 120 * 2 * Math.PI, c = Math.cos(q), s2 = Math.sin(q), l = Math.hypot(c / FB.w, s2 / FB.d) || 1; return [FB.w / 2 * c, FB.d / 2 * s2, c / FB.w / l, s2 / FB.d / l]; }) : null, flat = [];
+    if (!round) { const per = O.out.reduce((t, q, i) => t + Math.hypot(O.out[(i + 1) % n][0] - q[0], O.out[(i + 1) % n][1] - q[1]), 0); // evenly round the outline, so a corner counts for its length
+      for (let i = 0; i < n; i++) { const p0 = O.out[i], p1 = O.out[(i + 1) % n], len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]); if (len < 1e-6) continue; const k = Math.max(1, Math.round(len / (per / 200))); for (let j = 0; j < k; j++) { const f = (j + .5) / k; flat.push([p0[0] + (p1[0] - p0[0]) * f, p0[1] + (p1[1] - p0[1]) * f, (p1[1] - p0[1]) / len, -(p1[0] - p0[0]) / len]); } } }
+    for (const [x, y, nx, ny] of round || flat) { if (!inPart(B, FB, Wd([x - nx * .05, y - ny * .05, 0]))) continue; all++; // not where the lip is cut away for an opening
+      const s1 = march(Wd([x, y, 0]), toWorld(B, [nx, ny, 0])); if (s1 == null) continue; side.push(s1); const t1 = march(Wd([x - nx * L.tl / 2, y - ny * L.tl / 2, up[2] * (a.lip.h + SINK) / 2]), toWorld(B, up)); if (t1 != null) top.push(t1); }
+    const eng = r2(a.lip.h - L.gap), share = all ? side.length / all : 0, c0 = side.length ? Math.min(...side) : 0, c1 = side.length ? Math.max(...side) : 0, t0 = top.length ? Math.min(...top) : null, more = { with: b.id, engaged: eng, clear: [r2(c0), r2(c1)], top: t0 == null ? null : r2(t0), skin: L.sk, round: r2(share) };
+    const what = `The lip of ${low(a)} (${L.tl} mm thick, ${a.lip.h} mm tall)`;
+    if (share < .5) say('lip', a.id, 'bad', `${what} finds the groove of ${low(b)} for only ${Math.round(share * 100)}% of its way round: the two halves are not the same outline where they meet. Make them the same size there.`, more);
+    else if (eng < .3) say('lip', a.id, 'bad', `${what} stands only ${r1(Math.max(eng, 0))} mm into ${low(b)}: it locates nothing. Close the halves rim to rim, or make the lip taller.`, more);
+    else if (c0 < .02) say('lip', a.id, 'bad', `${what} is hard against the wall of its groove in ${low(b)}: no clearance is left, so the halves will not close. Thin the lip or line the two halves up.`, more);
+    else { const notes = [share < .9 && `it finds the groove for only ${Math.round(share * 100)}% of its way round (the two outlines differ where they meet)`, c1 > .35 && `it is ${r1(c1)} mm clear of the groove at its loosest, so the halves can shift`, eng < .8 && `it stands only ${r1(eng)} mm into the groove (0.8 mm or more locates well)`, L.sk < .6 && `only ${r1(L.sk)} mm of ${low(b)}'s wall is left outside it (0.6 mm or more fills)`, L.tl < .5 && `it is ${L.tl} mm thick (0.5 mm or more fills)`, t0 != null && t0 < .05 && 'its top is on the groove\'s floor before the rims meet', L.step > .3 && `the two outsides step ${r1(L.step)} mm at the seam`].filter(Boolean);
+      if (notes.length) say('lip', a.id, 'warn', `${what} in the groove of ${low(b)}: ${notes.join('; ')}.`, more);
+      else say('lip', a.id, 'ok', `Lip and groove: ${low(a)} locates ${low(b)}. ${what} stands ${r1(eng)} mm into its groove, ${r1(c0)} mm clear at the side and ${t0 == null ? LIP_TOP : r1(t0)} mm at its top, with ${r1(L.sk)} mm of wall left outside it.`, more); } }
   return out;
 }
 // the moulding and fit checks: [{ id, level: 'bad'|'warn'|'ok', text }]
@@ -1054,7 +1127,7 @@ export function dfm(s) {
     if (d[0] <= SMALL.d && d[1] <= SMALL.d && d[2] <= SMALL.h) say(p.id, s.age === '0+' ? 'bad' : 'warn', s.age === '0+' ? `${p.name}: fits the small-parts cylinder (${SMALL.d} × ${SMALL.h} mm): not allowed for under-3s if it can come off (16 CFR 1501, EN 71-1). Make it larger or fix it so it passes the torque and tension tests.` : `${p.name}: a small part; label "Choking hazard: small parts. Not for children under 3 years" (16 CFR 1500.19).`);
   }
   // do the parts go together: clash by outline, contact, fasteners and size, measured off the parts as built (fitOf)
-  const fit = fitOf(s); out.push(...fit.clash, ...fit.contact, ...fit.fasteners, ...fit.size);
+  const fit = fitOf(s); out.push(...fit.clash, ...fit.contact, ...fit.fasteners, ...fit.size, ...fit.lip);
   if (s.kind === 'electronics') out.push(...elecChecks(s));
   return out;
 }
