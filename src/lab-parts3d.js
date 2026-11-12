@@ -374,7 +374,7 @@ export function makeKit(THREE, { maxAniso = 8 } = {}) {
     const g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setAttribute('normal', new T.BufferAttribute(nor, 3)); g.setAttribute('uv', new T.BufferAttribute(new Float32Array(n * 2), 2)); return g;
   }
   function housing(p, [w, d, h], m) {
-    if (p.groove || p.adds?.length || (p.cuts || []).some(c => c.axis !== (p.axis || 'z'))) return group(mesh(solidGeo(p), m)); // and one with a lip or the groove for one
+    if (p.groove || p.loop || p.adds?.length || (p.cuts || []).some(c => c.axis !== (p.axis || 'z'))) return group(mesh(solidGeo(p), m)); // and one with a lip or the groove for one
     const round = ['cup', 'ring'].includes(p.shape), t = Math.min(p.wall || 2, Math.min(w, d) / 2 - .3), r = p.r ?? 2, out = round ? ell(w, d) : rr(w, d, r), inn = round ? ell(w - 2 * t, d - 2 * t) : rr(w - 2 * t, d - 2 * t, Math.max(r - t, .2));
     const ring = round ? ell(w, d) : rr(w, d, r); ring.holes.push(hole(inn)); const bev = Math.min(.8, t * .35), g = group(mesh(extrude(ring, h, bev), m));
     if (p.shape === 'ring') { if (/port/i.test(p.name)) g.add(mesh(lathe([[w / 2 - t, h / 2], [w / 2 + 4, h / 2 + .01], [w / 2 + 4, h / 2 - 1.5], [w / 2, h / 2 - 3]], 64), m)); return g; }

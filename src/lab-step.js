@@ -5,7 +5,7 @@
 // ellipsoid; both are still closed solids. (The detailed parts the 3D view draws, src/lab-parts3d.js, are pictures; these are the bodies.)
 //   stepOf(spec, { t, only, title }) → text: one solid per part (qty drawn once) and one for each body moulded on it (a lip), pulled apart by
 //   t (0 = assembled), or one part only
-import { cleanAssembly, explodeOffsets, featuresOf } from './lab-assembly.js';
+import { cleanAssembly, explodeOffsets, featuresOf, loopSegs } from './lab-assembly.js';
 
 const fmt = v => { const r = Math.round(v * 1e6) / 1e6; return Number.isInteger(r) ? `${r}.` : String(r); }; // STEP reals carry a point
 const esc = s => String(s ?? '').replace(/[\\']/g, c => (c === "'" ? "''" : '\\\\')).replace(/[^\x20-\x7e]/g, '?').slice(0, 120);
@@ -60,7 +60,8 @@ export function stepOf(s0, { t = 0, only = null, title = '' } = {}) {
       const A = [...base, ...sides.filter(m => m.phi).flatMap(m => [norm(m.a), norm(m.b)])].sort((x, y) => x - y).filter((a, i, l) => i === 0 || a - l[i - 1] > 1e-7), at = a => [Wd / 2 * Math.cos(a), Dd / 2 * Math.sin(a)];
       return A.map((a, i) => { const b = i + 1 < A.length ? A[i + 1] : A[0] + TAU; return tag(circle ? { arc: true, c: [0, 0], r: Wd / 2, a: at(a), b: at(b), mid: (a + b) / 2 } : { line: true, a: at(a), b: at(b), mid: (a + b) / 2 }); }); };
     const prof = (Wd, Dd, r) => (!sides.length ? (ROUND.has(p.shape) ? round(Wd, Dd) : roundedRect(Wd, Dd, r)) : ROUND.has(p.shape) ? cutRound(Wd, Dd) : cutRect(roundedRect(Wd, Dd, r), Wd, Dd));
-    const outP = prof(w, d, p.r ?? 0), innP = tk ? prof(w - 2 * tk, d - 2 * tk, Math.max((p.r ?? 0) - tk, 0)) : null;
+    // a belt's outline is the way round its two wheels: three arcs on the large one, one on the small one, and the two straight runs between
+    const belt = p.shape === 'ring' && p.loop && tk ? p.loop : null, outP = belt ? loopSegs(belt, tk) : prof(w, d, p.r ?? 0), innP = belt ? loopSegs(belt, 0) : tk ? prof(w - 2 * tk, d - 2 * tk, Math.max((p.r ?? 0) - tk, 0)) : null;
     // a groove round the rim for the other half's lip (featuresOf): from its floor to the rim the wall is only the skin outside it, out to `midP`
     const G = innP && F.groove ? F.groove : null, midP = G ? prof(w - 2 * G.sk, d - 2 * G.sk, Math.max((p.r ?? 0) - G.sk, 0)) : null, zg = G ? F.sgn * G.g : null;
     const levels = new Map(); let keys = 0;

@@ -326,3 +326,34 @@ test('a hinge: knuckles on the case\'s base and lid, the pin through them, and t
   c = hin(edit(P => { P('hinge').shape = 'box'; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /a pin is a round bar/);
   assert.equal(cleanAssembly(edit(P => { P('base').knuckles.pin = 'gone'; })).parts.find(p => p.id === 'base').knuckles, undefined);
 });
+
+test('the turntable\'s belt: drawn round the sub-platter and the motor pulley, its path measured off them against the length it is bought at', async () => {
+  const { stepOf } = await import('../src/lab-step.js');
+  const bel = s => fitOf(cleanAssembly(s)).belt, edit = fn => { const s = JSON.parse(JSON.stringify(archetype('turntable'))); fn(id => s.parts.find(p => p.id === id), s); return s; };
+  for (const dims of [{}, { w: 380, d: 320, h: 110 }, { w: 520, d: 420, h: 180 }]) { const s = archetype('turntable', dims), P = id => s.parts.find(p => p.id === id), belt = P('belt'), hub = P('hub'), pul = P('pulley'), f = fitOf(s).belt;
+    assert.deepEqual(belt.around, ['hub', 'pulley']); assert.ok(belt.loop, 'the belt is drawn round its two wheels'); assert.equal(pul.flange.end, '+'); assert.deepEqual(pul.through, ['plinth'], 'the motor\'s shaft comes up through the plinth');
+    // the path, worked out here from the two parts: two straight runs and the wrap on each wheel
+    const C = Math.hypot(pul.at[0] - hub.at[0], pul.at[1] - hub.at[1]), th = Math.acos((30 - 6) / C), path = 2 * Math.sqrt(C * C - 24 * 24) + (2 * Math.PI - 2 * th) * 30 + 2 * th * 6;
+    assert.equal(f.length, 1); assert.equal(f[0].level, 'ok', f[0].text); assert.equal(f[0].kind, 'belt'); assert.ok(Math.abs(f[0].path - path) < .06 && Math.abs(f[0].apart - C) < .06, `path ${f[0].path} mm against ${path}`);
+    assert.equal(f[0].len, belt.len); assert.ok(Math.abs(f[0].stretch - 5) <= .2, `bought 5% under its path: ${f[0].stretch}%`); assert.ok(f[0].wrap >= 160 && f[0].wrap < 180); assert.deepEqual(f[0].with, ['hub', 'pulley']);
+    // in the material: on the far side of the sub-platter, half way along a straight run, round the pulley; not inside the loop, not above or below
+    const z = belt.at[2], ux = (pul.at[0] - hub.at[0]) / C, uy = (pul.at[1] - hub.at[1]) / C, n = [Math.cos(Math.atan2(uy, ux) + th), Math.sin(Math.atan2(uy, ux) + th)];
+    assert.equal(inMaterial(belt, [hub.at[0] - ux * 30.4, hub.at[1] - uy * 30.4, z]), true); assert.equal(inMaterial(belt, [pul.at[0] + ux * 6.4, pul.at[1] + uy * 6.4, z]), true);
+    assert.equal(inMaterial(belt, [hub.at[0] + ux * C / 2 + n[0] * (18 + .4), hub.at[1] + uy * C / 2 + n[1] * (18 + .4), z]), true, 'the straight run, 18 mm out from the line of centres half way along');
+    assert.equal(inMaterial(belt, [hub.at[0] + ux * C / 2, hub.at[1] + uy * C / 2, z]), false); assert.equal(inMaterial(belt, [hub.at[0] - ux * 30.4, hub.at[1] - uy * 30.4, z + 2]), false); assert.equal(inMaterial(belt, [hub.at[0] - ux * 31.2, hub.at[1] - uy * 31.2, z]), false);
+    assert.ok(closed(meshOf(belt)), 'the belt\'s solid is closed'); const made = extentOf(s.parts).size; assert.ok(made.every((v, k) => Math.abs(v - [s.dims.w, s.dims.d, s.dims.h][k]) < .11));
+    assert.deepEqual(notOk(fitOf(s)).map(c => c.text), [], 'nothing in the belt\'s way, and it touches both wheels'); assert.ok(engineer(s).steps.findIndex(t => /drive belt/.test(t)) < engineer(s).steps.findIndex(t => /place platter$/i.test(t) || /Place platter\b/.test(t)), 'the belt goes on before the platter covers it'); }
+  // the STEP: the belt as exact faces, four arcs inside and four outside and the two straight runs each side
+  const st = stepOf(archetype('turntable'), { only: 'belt' }), count = re => (st.match(re) || []).length; assert.equal(count(/MANIFOLD_SOLID_BREP\(/g), 1); assert.equal(count(/CYLINDRICAL_SURFACE\(/g), 8); assert.equal(count(/ADVANCED_FACE\(/g), 8 + 4 + 2);
+  // it follows its wheels: move the motor and its pulley and the path is measured again
+  let c = bel(edit(P => { for (const id of ['pulley']) P(id).at[1] -= 8; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /bought at 456 mm it is stretched 2\.[0-9]%/); assert.ok(c[0].path < 478.5 - 10);
+  // broken on purpose
+  c = bel(edit(P => { P('belt').len = 480; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /it is 1\.5 mm too long and hangs slack\. Buy one 456 mm round the inside/);
+  c = bel(edit(P => { P('belt').len = 400; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /it has to stretch 19\.6%/);
+  c = bel(edit(P => { delete P('belt').len; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /No length is given for the belt: buy one 456 mm round the inside/);
+  c = bel(edit(P => { P('belt').at[2] += 1.5; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /it is not level on sub-platter \(the belt runs on it\) \(1 mm of its 3 mm width is off the edge\)/); assert.equal(c[0].off, 1);
+  c = bel(edit(P => { P('belt').around = ['hub', 'headshell']; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /headshell is not a round part lying the belt's way/);
+  c = bel(edit(P => { P('pulley').at[0] = P('hub').at[0] + 30; P('pulley').at[1] = 0; })); assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /are 30 mm apart, centre to centre, and 36 mm across between them: they touch/);
+  c = bel(edit(P => { P('pulley').size[0] = P('pulley').size[1] = 5; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /is ⌀5 mm for a belt 0\.8 mm thick/);
+  assert.equal(cleanAssembly(edit(P => { P('belt').around = ['hub', 'gone']; })).parts.find(p => p.id === 'belt').around, undefined); assert.deepEqual(cleanAssembly(cleanAssembly(archetype('turntable'))), cleanAssembly(archetype('turntable')));
+});

@@ -2128,6 +2128,17 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
     4 mm shallower than before to keep the knuckles inside the depth asked.
     In the files: rings and lugs are closed bodies in their housing's STL and solids in its STEP, starting 0.3 mm inside the wall; not
     fused into the housing's skin. The pin is a part, as it was.
+  - **A belt** (`around`, `len`, kind `belt`). A ring that says which two round parts it runs round (`around: [a, b]`) is drawn round
+    them, at the height it is set at: its outline, place and size across are worked out each time from the two, so it follows them. A
+    part with a flange carries the belt on the flange. `len` is the length the belt is bought at, round its inside, lying slack. The
+    check measures off the two parts: the path (two straight runs and the wrap on each), the stretch of the bought length over it (3 to
+    10% drives without slipping or loading the bearings; slack, or over 15%, is fix before tooling), the wrap on the smaller part (120°
+    or more), the belt level on both running surfaces (off the edge of one is fix before tooling), and the smaller part at least 8 times
+    the belt's thickness across. The turntable now has the motor's pulley on its shaft, up through the plinth (⌀12 mm, on the parts
+    list), and a flat 3 × 0.8 mm belt round it and the ⌀60 mm sub-platter under the platter: a 478.5 mm path at the default size,
+    bought at 456 mm (stretched 4.9%), wrapping 165° of the pulley. In the files: the belt is a part with its own closed solid in the
+    assembly STL and exact faces in the STEP (arcs on the two parts, flat runs between). It is drawn in place, stretched; the bought
+    length is on the finding, not in the solid.
 - **An assembly saved before these rules** (it carries no `v`; a starting point or a design from a concept made now carries `v: 2`) is read as
   it was meant when it is opened: a part that plainly goes through a wall (in on one side and out on the other or flush with the far
   face, much narrower than the wall, and not a part that sits inside that housing) gets its opening, worked out each time and never written

@@ -175,7 +175,7 @@ const housings=()=>housingsOf(SPEC),faceOf=p=>faceOfPart(SPEC,p),compsOn=b=>comp
 const disposeNode=n=>n.traverse(o=>{if(o.isMesh||o.isInstancedMesh){o.geometry?.dispose?.();for(const m of[].concat(o.material||[]))m.dispose?.()}});
 function syncScene(){
   const byId=Object.fromEntries(SPEC.parts.map(p=>[p.id,p]));
-  for(const p of SPEC.parts){const face=faceOf(p),comps=p.shape==='pcb'?compsOn(p):null,front=frontOf(SPEC),key=JSON.stringify([p.shape,p.axis,p.size,p.wall,p.open,p.r,p.resin,p.finish,p.colour,p.name,p.elec,p.layers,p.cuts,p.bosses,p.flange,p.groove,p.adds,face,comps,front]);
+  for(const p of SPEC.parts){const face=faceOf(p),comps=p.shape==='pcb'?compsOn(p):null,front=frontOf(SPEC),key=JSON.stringify([p.shape,p.axis,p.size,p.wall,p.open,p.r,p.resin,p.finish,p.colour,p.name,p.elec,p.layers,p.cuts,p.bosses,p.flange,p.groove,p.adds,p.loop,face,comps,front]);
     if(V.keys.get(p.id)===key)continue;const old=V.nodes.get(p.id);if(old){V.root.remove(old);disposeNode(old)}
     const n=V.kit.buildPart(p,{face,comps,front,name:SPEC.name||D?.concept?.name});n.traverse(o=>{if(o.isMesh)for(const m of[].concat(o.material))m.userData.base={t:m.transparent,o:m.opacity,dw:m.depthWrite}});V.root.add(n);V.nodes.set(p.id,n);V.keys.set(p.id,key)}
   for(const id of[...V.nodes.keys()])if(!byId[id]){const n=V.nodes.get(id);V.root.remove(n);disposeNode(n);V.nodes.delete(id);V.keys.delete(id)}

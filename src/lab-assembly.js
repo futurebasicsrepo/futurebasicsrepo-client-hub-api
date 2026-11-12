@@ -138,8 +138,20 @@ function localDims(p) { const [x, y, z] = p.size; return p.axis === 'y' ? [x, z,
 // local → world turns (proper rotations, so nothing is mirrored): z-axis as is, y-axis Rx(−90°), x-axis Ry(+90°); and back
 const toWorld = (p, [x, y, z]) => p.axis === 'y' ? [x, z, -y] : p.axis === 'x' ? [z, y, -x] : [x, y, z];
 const toLocal = (p, [x, y, z]) => p.axis === 'y' ? [x, -z, y] : p.axis === 'x' ? [-z, y, x] : [x, y, z];
+// A belt round two round parts (`loop`: their centres across the belt, in its own frame, and the radii it runs on, the larger first): its
+// outline at `k` out from the running surfaces, as arcs and the two straight runs between them (for exact files), and as points going round
+// anticlockwise, the same number whatever k is, so the inside and the outside of the belt are in step
+export function loopSegs(L, k) {
+  const [c1, c2] = L.c, [r1, r2] = L.r, ph = Math.atan2(c2[1] - c1[1], c2[0] - c1[0]), th = Math.acos(Math.max(-1, Math.min(1, (r1 - r2) / Math.hypot(c2[0] - c1[0], c2[1] - c1[1])))), on = (c, r, a) => [c[0] + (r + k) * Math.cos(a), c[1] + (r + k) * Math.sin(a)], segs = [];
+  for (let i = 0; i < 3; i++) { const a = ph + th + (2 * Math.PI - 2 * th) * i / 3, b = ph + th + (2 * Math.PI - 2 * th) * (i + 1) / 3; segs.push({ arc: true, c: c1, r: r1 + k, a: on(c1, r1, a), b: on(c1, r1, b), from: a, to: b }); }
+  segs.push({ line: true, a: on(c1, r1, ph - th), b: on(c2, r2, ph - th) }, { arc: true, c: c2, r: r2 + k, a: on(c2, r2, ph - th), b: on(c2, r2, ph + th), from: ph - th, to: ph + th }, { line: true, a: on(c2, r2, ph + th), b: on(c1, r1, ph + th) });
+  return segs;
+}
+function loopOutline(L, k) { const pts = []; for (const s of loopSegs(L, k)) { if (!s.arc) continue; const n = s.c === L.c[0] ? 16 : 20; for (let i = 0; i <= n; i++) { const a = s.from + (s.to - s.from) * i / n; if (i || !pts.length || Math.hypot(pts.at(-1)[0] - s.a[0], pts.at(-1)[1] - s.a[1]) > 1e-9) pts.push([s.c[0] + s.r * Math.cos(a), s.c[1] + s.r * Math.sin(a)]); } } return pts; }
+const inPoly = (P, x, y) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) if ((P[i][1] > y) !== (P[j][1] > y) && x < (P[j][0] - P[i][0]) * (y - P[i][1]) / (P[j][1] - P[i][1]) + P[i][0]) c = !c; return c; };
 function profilesOf(p) {
   const [w, d] = localDims(p), t = shellLike(p) ? Math.min(p.wall, Math.min(w, d) / 2 - .2) : 0;
+  if (p.shape === 'ring' && p.loop) return { out: loopOutline(p.loop, t), inn: loopOutline(p.loop, 0), t };
   if (ROUND.has(p.shape)) return { out: ellipse(w, d), inn: t ? ellipse(w - 2 * t, d - 2 * t) : null, t };
   const r = p.r ?? 0; return { out: roundRect(w, d, r), inn: t ? roundRect(w - 2 * t, d - 2 * t, Math.max(r - t, 0)) : null, t };
 }
@@ -159,6 +171,7 @@ export function featuresOf(p) {
   const [w, d, L] = localDims(p), round = ROUND.has(p.shape), r = round ? 0 : Math.max(0, Math.min(p.r ?? 0, w / 2 - .01, d / 2 - .01)), t = shellLike(p) ? Math.min(p.wall, Math.min(w, d) / 2 - .2) : 0, o = openOf(p);
   const sgn = shellLike(p) && o === '-' ? -1 : 1, floor = shellLike(p) && o !== 'both', F = { w, d, L, r, t, round, sgn, floor, shell: shellLike(p), u0: -L / 2, uf: floor ? -L / 2 + t : -L / 2, u1: L / 2, holes: [], sides: [], bosses: [], adds: [] };
   if (p.shape === 'ball') return F;
+  if (p.shape === 'ring' && p.loop) { F.loop = { out: loopOutline(p.loop, t), inn: loopOutline(p.loop, 0) }; return F; } // a belt: its outline is the way round its two wheels
   F.adds = (p.adds || []).map(b => ({ p: b, F: featuresOf(b) })); // what is moulded on it (a lip): each a body of its own, placed from the part's centre
   if (p.shape === 'cyl' && p.flange) { F.flange = { k: p.flange.body / Math.min(w, d), za: p.flange.end === '+' ? L / 2 - p.flange.t : -L / 2, zb: p.flange.end === '+' ? L / 2 : -L / 2 + p.flange.t }; return F; } // a flanged part carries no openings
   const iw = w - 2 * t, id = d - 2 * t, ir = Math.max(r - t, 0), ax = axisOf(p);
@@ -190,6 +203,7 @@ export function featuresOf(p) {
 // the outline across the part with the windows' edges added to it, outer and inner in step (the same number of points, one over the other)
 function outlinesOf(F) {
   const { w, d, r, t, round } = F, marks = F.sides;
+  if (F.loop) return { out: F.loop.out, inn: F.loop.inn, mid: null, ang: null };
   if (round) { const angs = new Set(Array.from({ length: CIRC }, (_, i) => i / CIRC * Math.PI * 2)), norm = a => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); for (const m of marks) { angs.add(norm(m.a)); angs.add(norm(m.b)); }
     const A = [...angs].sort((a, b) => a - b).filter((a, i, l) => i === 0 || a - l[i - 1] > 1e-6), at = (W, D) => A.map(a => [W / 2 * Math.cos(a), D / 2 * Math.sin(a)]); return { out: at(w, d), inn: t ? at(w - 2 * t, d - 2 * t) : null, mid: F.groove ? at(w - 2 * F.groove.sk, d - 2 * F.groove.sk) : null, ang: A }; }
   const build = (W, D, R) => { R = Math.max(0, Math.min(R, W / 2 - .01, D / 2 - .01)); const out = [], cs = [[W / 2 - R, D / 2 - R], [-W / 2 + R, D / 2 - R], [-W / 2 + R, -D / 2 + R], [W / 2 - R, -D / 2 + R]];
@@ -362,6 +376,8 @@ export function cleanPart(q = {}, i = 0) {
   if (ROUND.has(shape) && q.thread && ID.test(String(q.thread.onto || ''))) p.thread = { onto: q.thread.onto, pitch: r2(num(q.thread.pitch, .5, 12, 4)), turns: r2(num(q.thread.turns, .25, 12, 1.5)), depth: r2(num(q.thread.depth, .3, 4, 1.2)) };
   // hinge knuckles: the pin they turn on, where each is along the pin (from the pin's middle), how long each is and how wide across
   if ((shape === 'shell' || shape === 'cup') && q.knuckles && ID.test(String(q.knuckles.pin || '')) && Array.isArray(q.knuckles.at) && q.knuckles.at.length) p.knuckles = { pin: q.knuckles.pin, len: r1(num(q.knuckles.len, 1, 400, 8)), d: r1(num(q.knuckles.d, 2, 40, 7)), at: q.knuckles.at.slice(0, 12).map(v => r2(num(v, -2000, 2000, 0))) };
+  // a belt: the two round parts it runs round, and the length it is bought at (its inside, lying slack); its outline is worked out from the two
+  if (shape === 'ring' && Array.isArray(q.around) && q.around.length === 2 && q.around.every(x => ID.test(String(x))) && q.around[0] !== q.around[1]) { p.around = q.around.map(String); if (Number(q.len) > 0) p.len = r1(num(q.len, 5, 5000, 100)); }
   if (Array.isArray(q.through)) { const t = [...new Set(q.through.map(String).filter(x => ID.test(x)))].slice(0, 4); if (t.length) p.through = t; }
   if (Array.isArray(q.spots) && p.qty > 1) { const sp = q.spots.slice(0, p.qty - 1).map(a => v3(a, -3000, 3000, 0)); if (sp.length) p.spots = sp; }
   if (Array.isArray(q.cuts)) { const cs = q.cuts.slice(0, 40).map(c => ({ at: v3(c?.at, -3000, 3000, 0), size: v3(c?.size, .2, 3000, 1), axis: AXN.includes(c?.axis) ? c.axis : 'z', ...(c?.round ? { round: true } : {}), ...(ID.test(String(c?.for || '')) ? { for: c.for } : {}) })); if (cs.length) p.cuts = cs; }
@@ -382,7 +398,8 @@ export function cleanAssembly(s = {}) {
   for (const p of parts) if (p.snaps && (!seen.has(p.snaps.into) || p.snaps.into === p.id)) delete p.snaps;
   for (const p of parts) if (p.thread && (!seen.has(p.thread.onto) || p.thread.onto === p.id)) delete p.thread;
   for (const p of parts) if (p.knuckles && (!seen.has(p.knuckles.pin) || p.knuckles.pin === p.id)) delete p.knuckles;
-  moulded(parts);
+  for (const p of parts) if (p.around && p.around.some(id => !seen.has(id) || id === p.id)) { delete p.around; delete p.len; }
+  moulded(parts); belted(parts);
   const v = Number(s.v) >= 2 ? 2 : 1; // 2: made since parts say what they pass through; 1 (nothing saved): made before
   openings(parts, v < 2);
   const dm = s.dims && ['w', 'd', 'h'].every(k => Number(s.dims[k]) > 0) ? { w: r1(num(s.dims.w, .3, 5000, 1)), d: r1(num(s.dims.d, .3, 5000, 1)), h: r1(num(s.dims.h, .3, 5000, 1)) } : null; // the size asked for, when it was
@@ -484,6 +501,26 @@ function knuckleBodies(h, pin, Fh, off) {
   const c = dir.findIndex(Boolean), sd = cr.find(k => k !== c), ss = h.at[sd] < C[sd] ? -1 : 1, a0 = pd / 2 + .7, a1 = g + SINK;
   const lug = a1 - a0 > .2 ? { kind: 'knuckle', shape: 'box', axis: 'z', r: 0, size: [0, 1, 2].map(k => r2(k === pa ? K.len : k === c ? a1 - a0 : K.d / 2 - .3)), at: C.map((v, k) => r2(v + (k === c ? dir[c] * (a0 + a1) / 2 : k === sd ? ss * (K.d / 2 + .3) / 2 : 0) - h.at[k])) } : null;
   return { C, pd, pa, ring, lug, g };
+}
+// A belt (`around` two round parts lying its way) is drawn round them: its outline (`loop`), its place and its size across are worked out
+// from the two, at the height it is set at, so it follows them; where it cannot be (a part not round, one inside the other) it stays a plain ring
+// and the check says why.
+function runAt(p, ax, lv) { // the radius a round part carries a belt on at a height along its axis, and from where to where that surface runs
+  const cr = [0, 1, 2].filter(k => k !== ax); if (!p || !ROUND.has(p.shape) || axisOf(p) !== ax || Math.abs(p.size[cr[0]] - p.size[cr[1]]) > .05) return null;
+  const lo = p.at[ax] - p.size[ax] / 2, hi = lo + p.size[ax]; if (!(p.shape === 'cyl' && p.flange)) return { r: p.size[cr[0]] / 2, lo, hi };
+  const f0 = p.flange.end === '+' ? hi - p.flange.t : lo, f1 = f0 + p.flange.t; return lv >= f0 - 1e-6 && lv <= f1 + 1e-6 ? { r: p.size[cr[0]] / 2, lo: f0, hi: f1 } : { r: p.flange.body / 2, lo: p.flange.end === '+' ? lo : f1, hi: p.flange.end === '+' ? f0 : hi };
+}
+function beltOn(p, byId) { // the two wheels (the larger first), the radii, how far apart, the path round them (on their surfaces) and the wrap on the small one
+  const ax = axisOf(p), cr = [0, 1, 2].filter(k => k !== ax), a = runAt(byId[p.around[0]], ax, p.at[ax]), b = runAt(byId[p.around[1]], ax, p.at[ax]); if (!a || !b) return { why: `${[byId[p.around[0]], byId[p.around[1]]].filter((q, i) => ![a, b][i]).map(q => (q ? q.name.toLowerCase() : 'a part that is not there')).join(' and ')} is not a round part lying the belt's way` };
+  const [P1, s1, P2, s2] = a.r >= b.r ? [byId[p.around[0]], a, byId[p.around[1]], b] : [byId[p.around[1]], b, byId[p.around[0]], a], C = Math.hypot(...cr.map(k => P2.at[k] - P1.at[k]));
+  if (C < s1.r + s2.r + .5) return { why: `${P1.name.toLowerCase()} and ${P2.name.toLowerCase()} are ${r1(C)} mm apart, centre to centre, and ${r1(s1.r + s2.r)} mm across between them: they touch` };
+  const th = Math.acos((s1.r - s2.r) / C); return { ax, cr, P1, P2, s1, s2, C, th, path: 2 * Math.sqrt(C * C - (s1.r - s2.r) ** 2) + (2 * Math.PI - 2 * th) * s1.r + 2 * th * s2.r, wrap: 2 * th * 180 / Math.PI };
+}
+function belted(parts) {
+  const byId = Object.fromEntries(parts.map(p => [p.id, p]));
+  for (const p of parts) { delete p.loop; if (!p.around || p.shape !== 'ring') continue; const G = beltOn(p, byId); if (G.why) continue; const t = p.wall;
+    for (const k of G.cr) { const lo = Math.min(G.P1.at[k] - G.s1.r - t, G.P2.at[k] - G.s2.r - t), hi = Math.max(G.P1.at[k] + G.s1.r + t, G.P2.at[k] + G.s2.r + t); p.at[k] = r2((lo + hi) / 2); p.size[k] = r2(hi - lo); }
+    const rel = P => toLocal(p, P.at.map((v, k) => (k === G.ax ? 0 : v - p.at[k]))).slice(0, 2).map(v => Math.round(v * 1e3) / 1e3); p.loop = { c: [rel(G.P1), rel(G.P2)], r: [G.s1.r, G.s2.r] }; }
 }
 function moulded(parts) {
   const byId = Object.fromEntries(parts.map(p => [p.id, p])); for (const p of parts) { delete p.adds; delete p.groove; }
@@ -722,6 +759,11 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     // what joins them: the spindle up from the bearing through the plinth, carrying the sub-platter the belt runs on, the platter and the mat
     add({ id: 'spindle', name: 'Spindle', shape: 'cyl', size: [7, 7, top + 6 - (ceil - .3)], at: [px, 0, (top + 6 + ceil - .3) / 2], resin: 'stainless 304', process: 'bought in', cost: .6, through: ['plinth'], fix: 'press', order: 2, lvl: 1.2 });
     add({ id: 'hub', name: 'Sub-platter (the belt runs on it)', shape: 'ring', size: [60, 60, 4], wall: (60 - 7.4) / 2, at: [px, 0, zt + 2], resin: 'POM (acetal)', finish: 'SPI C-1 (matte)', draft: 1, fix: 'press', order: 4, lvl: 1.4 });
+    // the drive: the motor's shaft comes up through the plinth with the pulley on it, level with the sub-platter, and the belt runs round the two
+    // under the platter; the belt is bought 5% shorter than its path
+    const pl = t + .3 + 4.5, cd = Math.hypot(mx - px, my), tb = Math.acos((30 - 6) / cd), bp = 2 * Math.sqrt(cd * cd - 24 * 24) + (2 * Math.PI - 2 * tb) * 30 + 2 * tb * 6;
+    add({ id: 'pulley', name: 'Motor pulley on its shaft', shape: 'cyl', size: [12, 12, pl], at: [mx, my, ceil - .3 + pl / 2], flange: { body: 3, t: 4, end: '+' }, resin: 'aluminium 6061', process: 'CNC machined', cost: .8, finish: 'none', through: ['plinth'], fix: 'press', order: 4, lvl: 1.4 });
+    add({ id: 'belt', name: 'Drive belt, flat 3 × 0.8 mm', shape: 'ring', size: [20, 20, 3], wall: .8, at: [px, 0, zt + 2], around: ['hub', 'pulley'], len: Math.round(bp / 1.05), resin: 'bought in', process: 'bought in', cost: .9, fix: 'place', order: 4, lvl: 1.5 });
     const so = [[bx - bw / 2 + 5, by - bd / 2 + 5], [bx + bw / 2 - 5, by - bd / 2 + 5], [bx + bw / 2 - 5, by + bd / 2 - 5], [bx - bw / 2 + 5, by - bd / 2 + 30]];
     add({ id: 'standoffs', name: 'Standoff, M3 × 6 brass, riveted to the plate', shape: 'cyl', size: [5.5, 5.5, 6], at: [...so[0], z0 + 3], resin: 'bought in', process: 'bought in', cost: .04, qty: 4, spots: so.slice(1).map(q => [q[0] - so[0][0], q[1] - so[0][1], 0]), fix: 'press', order: 2, lvl: .6 });
     screw('screws-board', 'Screw, M3 × 6 pan head (board)', 3, 6.5, 'z', so.map(q => [...q, z0 + 6 + 1.6 + 1 - 3.25]), { parent: 'pcb', through: ['pcb'], order: 3, lvl: 1 });
@@ -1014,6 +1056,7 @@ const SOFT = /silicone|TPE|TPU|EVA|soft PVC/, EPS = 1e-6;
 export const isScrew = p => /\b(screw|bolt|rivet)s?\b/i.test(p.name) && !p.elec && p.shape === 'cyl';
 function inOutline(F, W, D, R, x, y) {
   if (W <= 0 || D <= 0) return false;
+  if (F.loop) return inPoly(W > F.w - 1e-3 ? F.loop.out : F.loop.inn, x, y); // a belt: inside its outer outline, or inside its inner one
   if (F.round) return (x * x) / (W * W / 4) + (y * y) / (D * D / 4) <= 1 + EPS;
   const ax = Math.abs(x), ay = Math.abs(y); if (ax > W / 2 + EPS || ay > D / 2 + EPS) return false;
   R = Math.max(0, Math.min(R, W / 2 - .01, D / 2 - .01)); const cx = W / 2 - R, cy = D / 2 - R; return !(ax > cx && ay > cy && (ax - cx) ** 2 + (ay - cy) ** 2 > R * R + EPS);
@@ -1085,7 +1128,7 @@ const boxOf = p => { const os = [[0, 0, 0], ...(p.spots || [])], bs = [...(p.bos
 // everything the fit checks measure, by kind: { contact, clash, fasteners, size }, each a list of { id, level, kind, text, ... }
 export function fitOf(s) {
   const parts = s.parts, n = parts.length, F = parts.map(featuresOf), B = parts.map(boxOf), S = new Array(n), smp = i => S[i] || (S[i] = samplesOf(parts[i], F[i])), name = p => p.name, low = p => p.name.toLowerCase();
-  const out = { contact: [], clash: [], fasteners: [], size: [], lip: [], snap: [], thread: [], hinge: [] }, say = (kind, id, level, text, more = {}) => out[kind].push({ id, level, kind, text, ...more });
+  const out = { contact: [], clash: [], fasteners: [], size: [], lip: [], snap: [], thread: [], hinge: [], belt: [] }, say = (kind, id, level, text, more = {}) => out[kind].push({ id, level, kind, text, ...more });
   const gap = (i, j) => Math.max(...[0, 1, 2].map(k => Math.max(B[j].lo[k] - B[i].hi[k], B[i].lo[k] - B[j].hi[k])));
   // ---- clash: one part's material in another's, deeper than a rounding ----
   const hard = [];
@@ -1209,6 +1252,18 @@ export function fitOf(s) {
     if (opens < 45) say('hinge', pin.id, 'bad', `${what}, but it opens only ${opens}° before ${low(mv)} meets ${low(fx)}. Move the pin out to the back of the two walls, at the height where they meet.`, more);
     else if (opens < 90 || slack > 1) say('hinge', pin.id, 'warn', `${what}: ${[opens < 90 && `it opens ${opens}° before ${low(mv)} meets ${low(fx)} (90° or more lets a hand in)`, slack > 1 && `${low(mv)} can slide ${slack} mm along the pin between the other half's knuckles (keep it under 1 mm)`].filter(Boolean).join('; ')}.`, more);
     else say('hinge', pin.id, 'ok', `${what}, each joined to its half by a lug, ${slack} mm apart along the pin. ${name(mv)} opens ${opens === 180 ? 'right over (180°)' : `${opens}°`} before it meets ${low(fx)}.`, more); }
+  // ---- a belt: round its two wheels, level on both, and the length it is bought at against the path measured off them ----
+  for (const p of parts) { if (!p.around) continue; const byId = Object.fromEntries(parts.map(q => [q.id, q])), G = beltOn(p, byId);
+    if (G.why || !p.loop) { say('belt', p.id, 'bad', `${name(p)} cannot run: ${G.why || 'it is not drawn as a ring'}. A belt runs round two round parts that lie its way and stand apart.`, { with: p.around }); continue; }
+    const ax = G.ax, b0 = p.at[ax] - p.size[ax] / 2, b1 = b0 + p.size[ax], offs = [G.P1, G.P2].map((P, i) => { const s = [G.s1, G.s2][i]; return [P, r2(Math.max(s.lo - b0, b1 - s.hi, 0))]; }).filter(x => x[1] > .2);
+    const path = r1(G.path), wrap = Math.round(G.wrap), stretch = p.len ? r1((G.path - p.len) / p.len * 100) : null, more = { with: [G.P1.id, G.P2.id], apart: r1(G.C), path, len: p.len ?? null, stretch, wrap };
+    const what = `${name(p)} round ${low(G.P1)} (⌀${r1(2 * G.s1.r)} mm) and ${low(G.P2)} (⌀${r1(2 * G.s2.r)} mm), ${r1(G.C)} mm apart: a path of ${path} mm`;
+    if (offs.length) say('belt', p.id, 'bad', `${what}, but it is not level on ${offs.map(([P, v]) => `${low(P)} (${v} mm of its ${p.size[ax]} mm width is off the edge)`).join(' or ')}: it will walk off. Set the belt and the two running surfaces at one height.`, { ...more, off: offs[0][1] });
+    else if (stretch == null) say('belt', p.id, 'warn', `${what}. No length is given for the belt: buy one ${r0(G.path / 1.05)} mm round the inside (5% under its path).`, more);
+    else if (stretch <= 0 || stretch > 15) say('belt', p.id, 'bad', `${what}, and the belt is bought at ${p.len} mm: ${stretch <= 0 ? `it is ${r1(p.len - G.path)} mm too long and hangs slack` : `it has to stretch ${stretch}%, which it will not take for long`}. Buy one ${r0(G.path / 1.05)} mm round the inside (5% under its path; 3 to 10% drives without slipping or loading the bearings).`, more);
+    else { const notes = [(stretch < 3 || stretch > 10) && `bought at ${p.len} mm it is stretched ${stretch}% (3 to 10% drives without slipping or loading the bearings; ${r0(G.path / 1.05)} mm is 5%)`, wrap < 120 && `it wraps only ${wrap}° of ${low(G.P2)} (120° or more grips)`, G.s2.r < 4 * p.wall && `${low(G.P2)} is ⌀${r1(2 * G.s2.r)} mm for a belt ${p.wall} mm thick (8 times the thickness or more lets it bend round)`].filter(Boolean);
+      if (notes.length) say('belt', p.id, 'warn', `${what}: ${notes.join('; ')}.`, more);
+      else say('belt', p.id, 'ok', `${what}. Bought at ${p.len} mm round the inside, it is stretched ${stretch}%, wraps ${wrap}° of ${low(G.P2)} and lies level on both.`, more); } }
   return out;
 }
 // the moulding and fit checks: [{ id, level: 'bad'|'warn'|'ok', text }]
@@ -1253,7 +1308,7 @@ export function dfm(s) {
     if (d[0] <= SMALL.d && d[1] <= SMALL.d && d[2] <= SMALL.h) say(p.id, s.age === '0+' ? 'bad' : 'warn', s.age === '0+' ? `${p.name}: fits the small-parts cylinder (${SMALL.d} × ${SMALL.h} mm): not allowed for under-3s if it can come off (16 CFR 1501, EN 71-1). Make it larger or fix it so it passes the torque and tension tests.` : `${p.name}: a small part; label "Choking hazard: small parts. Not for children under 3 years" (16 CFR 1500.19).`);
   }
   // do the parts go together: clash by outline, contact, fasteners and size, measured off the parts as built (fitOf)
-  const fit = fitOf(s); out.push(...fit.clash, ...fit.contact, ...fit.fasteners, ...fit.size, ...fit.lip, ...fit.snap, ...fit.thread, ...fit.hinge);
+  const fit = fitOf(s); out.push(...fit.clash, ...fit.contact, ...fit.fasteners, ...fit.size, ...fit.lip, ...fit.snap, ...fit.thread, ...fit.hinge, ...fit.belt);
   if (s.kind === 'electronics') out.push(...elecChecks(s));
   return out;
 }
