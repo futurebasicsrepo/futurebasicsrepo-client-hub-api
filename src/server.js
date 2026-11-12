@@ -2502,8 +2502,10 @@ app.post('/v1/projects/:id/messages',{preHandler:authenticate},async(req,reply)=
   if(role==='client'&&!req.auth.preview){
     const recent=(await pool.query(`select 1 from notifications where entity_type='project' and entity_id=$1 and type='client-project-message' and created_at > now() - interval '30 minutes'`,[project.id]).catch(()=>({rowCount:0}))).rowCount;
     const who=(await pool.query(`select c.name client_name, coalesce(nullif(u.name,''), u.email) author from clients c left join users u on u.id=$2 where c.id=$1`,[project.client_id,req.auth.sub])).rows[0]||{};
-    if(recent)await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'client-project-message',$2,'project',$3)`,[project.client_id,`Client replied in ${project.name}`,project.id]);
-    else notifyRoomStaff(project.client_id,{subject:`${who.client_name||'A client'} wrote in ${project.name}`,type:'client-project-message',title:`Client replied in ${project.name}`,entityType:'project',entityId:project.id,
+    // the console's notice is written before the answer goes back: left to the email (which is not waited for), it could land after staff
+    // had opened the conversation, and stay unread on a thread they had read
+    await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'client-project-message',$2,'project',$3)`,[project.client_id,`Client replied in ${project.name}`,project.id]).catch(e=>app.log.warn({err:e.message,projectId:project.id},'client message notice not written'));
+    if(!recent)notifyRoomStaff(project.client_id,{subject:`${who.client_name||'A client'} wrote in ${project.name}`,
       body:`<p><strong>${emailEscape(who.author||'Someone')}</strong> at <strong>${emailEscape(who.client_name||'')}</strong> wrote in <strong>${emailEscape(project.name)}</strong>:</p><p style="white-space:pre-wrap">${emailEscape(body.slice(0,3000))}</p><p style="font-size:12px;color:#717177">More messages in this project in the next 30 minutes are in the console, not emailed again.</p>`,
       link:`${workHubUrl}/clients/${project.client_id}#project=${project.id}`});
   }
