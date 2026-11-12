@@ -212,7 +212,7 @@ test('lip and groove: where two housing halves close, the lip of one stands in t
     for (const id of [ia, ib]) assert.ok(closed(tris(stlOf(s, { only: id }))), `${a}: ${id}'s STL is closed`);
     const plain = cleanAssembly({ ...s, parts: s.parts.map(p => ({ ...p, lip: undefined })) }), count = (t, re) => (t.match(re) || []).length, mine = stepOf(s, { only: ib }), bare = stepOf(plain, { only: ib });
     assert.ok(count(mine, /ADVANCED_FACE\(/g) >= count(bare, /ADVANCED_FACE\(/g) + 2, `${a}: the groove adds its wall and its floor to ${ib}'s STEP`);
-    assert.equal(count(stepOf(s, { only: ia }), /MANIFOLD_SOLID_BREP\(/g), 2, `${a}: ${ia} and its lip`); assert.match(stepOf(s, { only: ia }), /MANIFOLD_SOLID_BREP\('[^']*: lip'/);
+    assert.equal(count(stepOf(s, { only: ia }), /MANIFOLD_SOLID_BREP\(/g), 1 + s.parts.find(p => p.id === ia).adds.length, `${a}: ${ia}, its lip, and any catch it carries for the other half's hooks`); assert.match(stepOf(s, { only: ia }), /MANIFOLD_SOLID_BREP\('[^']*: lip'/);
     const vol = t => { let v = 0; for (let i = 0; i < t.length; i += 9) v += (t[i] * (t[i + 4] * t[i + 8] - t[i + 5] * t[i + 7]) - t[i + 1] * (t[i + 3] * t[i + 8] - t[i + 5] * t[i + 6]) + t[i + 2] * (t[i + 3] * t[i + 7] - t[i + 4] * t[i + 6])) / 6; return v; };
     assert.ok(vol(tris(stlOf(s, { only: ib }))) < vol(tris(stlOf(plain, { only: ib }))) - 1, `${a}: the groove takes material out of ${ib}`); assert.ok(vol(tris(stlOf(s, { only: ia }))) > vol(tris(stlOf(plain, { only: ia }))) + 1, `${a}: the lip adds material to ${ia}`); }
   // worked out each time, so it follows the parts, and reading an assembly twice changes nothing
@@ -233,4 +233,40 @@ test('lip and groove: where two housing halves close, the lip of one stands in t
   const tight = cleanAssembly(archetype('handheld')); tight.parts.find(p => p.id === 'top').groove.t = .3; // (set by hand: cleanAssembly would work it out again)
   assert.equal(inMaterial(tight.parts.find(p => p.id === 'top'), [x - 1.1, 20, z]), true, 'a groove 0.3 mm wide leaves the wall where the lip is');
   c = fitOf(tight).lip; assert.equal(c[0].level, 'bad'); assert.match(c[0].text, /hard against the wall of its groove/); assert.equal(c[0].clear[0], 0);
+});
+
+test('snap hooks: a cover that snaps on has its hooks and their catches as bodies, and the check measures the catch, the bend and the room to bend', async () => {
+  const { stepOf } = await import('../src/lab-step.js'), { SNAP_STRAIN } = await import('../src/lab-assembly.js');
+  const snapOf = s => fitOf(cleanAssembly(s)).snap, edit = (a, fn) => { const s = JSON.parse(JSON.stringify(archetype(a))); fn(id => s.parts.find(p => p.id === id), s); return s; };
+  // where there is room between the wall and what is inside, the starting assembly has them; where there is none, it has none and says nothing
+  const have = { desk: ['front', 'back', 4], cassette: ['front', 'back', 2], smartspeaker: ['grille', 'body', 4] };
+  for (const [a, [ia, ib, n]] of Object.entries(have)) { const s = archetype(a), A = s.parts.find(p => p.id === ia), B = s.parts.find(p => p.id === ib), f = fitOf(s).snap;
+    assert.equal(A.fix, 'snap'); assert.equal(A.snaps.into, ib); assert.equal(A.snaps.hooks.length, n, `${a}: ${n} hooks`);
+    assert.equal(A.adds.filter(x => x.kind === 'hook').length, n * 3, `${a}: each hook is a foot on the wall, a beam and a head`); assert.equal(B.adds.filter(x => x.kind === 'catch' && x.for === ia).length, n, `${a}: a catch for each on ${ib}`);
+    assert.equal(f.length, 1); assert.equal(f[0].level, 'ok', f[0].text); assert.equal(f[0].kind, 'snap'); assert.equal(f[0].hooks, n); assert.equal(f[0].engaged, .8);
+    const S = A.snaps, strain = 150 * S.t * .8 / (S.len - 1.5) ** 2; assert.ok(Math.abs(f[0].strain - strain) < .01 && strain < SNAP_STRAIN[A.resin], `${a}: bends ${f[0].strain}%, ${A.resin} takes ${SNAP_STRAIN[A.resin]}%`);
+    assert.ok(dfm(s).some(c => c.kind === 'snap' && c.text === f[0].text)); assert.equal(dfm(s).filter(c => c.level === 'bad').length, 0);
+    // in the material: the head is the cover's, the catch behind it is the other half's, and the two overlap by what the hook catches
+    const head = A.adds.filter(x => x.kind === 'hook')[1], ledge = B.adds.find(x => x.kind === 'catch'), hc = head.at.map((v, k) => v + A.at[k]), lc = ledge.at.map((v, k) => v + B.at[k]);
+    assert.equal(inMaterial(A, hc), true); assert.equal(inMaterial(B, hc), false); assert.equal(inMaterial(B, lc), true); assert.equal(inMaterial(A, lc), false);
+    const o = 'xyz'.indexOf(S.hooks[0].out[1]), al = 'xyz'.indexOf(S.hooks[0].along[1]), sg = S.hooks[0].out[0] === '-' ? -1 : 1;
+    const over = Math.min(sg * hc[o] + head.size[o] / 2, sg * lc[o] + ledge.size[o] / 2) - Math.max(sg * hc[o] - head.size[o] / 2, sg * lc[o] - ledge.size[o] / 2); assert.ok(Math.abs(over - .8) < .02, `${a}: head and catch overlap ${over} mm`);
+    assert.ok(Math.abs(Math.abs(hc[al] - lc[al]) - (head.size[al] + ledge.size[al]) / 2 - .1) < .02, `${a}: the catch is 0.1 mm behind the head`);
+    assert.match(stepOf(s, { only: ia }), /MANIFOLD_SOLID_BREP\('[^']*: hook'/); assert.match(stepOf(s, { only: ib }), /MANIFOLD_SOLID_BREP\('[^']*: catch'/); }
+  for (const a of ['puck', 'handheld', 'powerbank']) { const s = archetype(a); assert.equal(s.parts.some(p => p.snaps), false, `${a}: the board, the light ring or the cells are within 1.5 mm of the wall, so no hook is drawn`); assert.deepEqual(fitOf(s).snap, []); }
+  assert.ok(archetype('puck', { w: 300, h: 200 }).parts.find(p => p.id === 'top').snaps, 'a puck large enough has them'); assert.ok(archetype('powerbank', { w: 120, d: 220, h: 40 }).parts.find(p => p.id === 'top').snaps);
+  const once = cleanAssembly(archetype('desk')); assert.deepEqual(cleanAssembly(once), once, 'reading it twice changes nothing');
+  // broken on purpose
+  let c = snapOf(edit('desk', P => { P('front').snaps.y = 2; })); assert.equal(c.length, 4); assert.ok(c.every(x => x.level === 'bad' && /its head stands 2 mm out and the wall of back housing is 1\.2 mm away/.test(x.text)), c[0].text);
+  const shorter = (A, len) => { const by = A.snaps.len - len; A.snaps.len = len; A.snaps.hooks.forEach(h => { h.at['xyz'.indexOf(h.along[1])] += (h.along[0] === '-' ? -1 : 1) * by; }); }; // a shorter beam, its head where it was
+  c = snapOf(edit('desk', P => { shorter(P('front'), 5); P('front').snaps.hooks.forEach(h => { h.at['xyz'.indexOf(h.along[1])] -= (h.along[0] === '-' ? -1 : 1) * 5; }); })); assert.ok(c.every(x => x.level === 'bad' && /it bends 9\.8% as it is pushed home and PC\/ABS takes about 2\.5%/.test(x.text)), c[0].text); assert.match(c[0].text, /Lengthen it to 8\.4 mm/);
+  c = snapOf(edit('cassette', P => { shorter(P('front'), 9); })); assert.ok(c.every(x => x.level === 'warn' && /it bends 2\.13% as it is pushed home and ABS takes about 2%/.test(x.text)), c[0].text);
+  c = snapOf(edit('desk', P => { P('front').snaps.y = .5; })); assert.ok(c.every(x => x.level === 'warn' && /catches only 0\.3 mm/.test(x.text)), c[0].text);
+  c = snapOf(edit('desk', P => { P('front').snaps.hooks[0].at['xyz'.indexOf(P('front').snaps.hooks[0].out[1])] *= .8; })); assert.equal(c.filter(x => x.level === 'bad').length, 1); assert.match(c[0].text, /snap hook 1 of 4: it is not joined to front housing: there is no wall within 4 mm of its root/);
+  c = snapOf(edit('desk', (P, s) => { const A = P('front'), h = A.snaps.hooks[0], o = 'xyz'.indexOf(h.out[1]), al = 'xyz'.indexOf(h.along[1]), at = h.at.map((v, k) => v + A.at[k]); at[o] -= (h.out[0] === '-' ? -1 : 1) * 2.2; at[al] += (h.along[0] === '-' ? -1 : 1) * 11; s.parts.push({ id: 'rib', name: 'Rib', shape: 'box', size: [3, 3, 3], at, r: 0 }); }));
+  assert.equal(c.filter(x => x.level === 'bad').length, 1); assert.match(c[0].text, /it cannot bend: rib is 0\.[0-9]+ mm behind it and it has to move 0\.[0-9]+ mm there to pass its catch/); assert.equal(c[0].behind, 'rib');
+  c = snapOf(edit('desk', P => { P('front').resin = 'zinc (Zamak 3)'; P('front').process = 'die casting'; })); assert.ok(c.some(x => x.level === 'warn' && /zinc \(Zamak 3\) is not a resin a hook is moulded in/.test(x.text)));
+  c = snapOf(edit('desk', P => { P('front').snaps.hooks.length = 1; })); assert.equal(c[0].level, 'warn'); assert.match(c[0].text, /held on back housing by one snap hook/);
+  c = snapOf(edit('desk', P => { P('front').snaps.hooks.forEach(h => { h.at['xyz'.indexOf(h.along[1])] -= (h.along[0] === '-' ? -1 : 1) * -30; }); })); assert.ok(c.every(x => x.level === 'bad'), 'hooks moved off the joint find nothing');
+  assert.equal(cleanAssembly(edit('desk', P => { P('front').snaps.into = 'gone'; })).parts.find(p => p.id === 'front').snaps, undefined);
 });

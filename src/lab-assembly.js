@@ -330,7 +330,7 @@ function roomOf(par, parts) {
 }
 
 // ---- cleaning what the page sends ---------------------------------------------------------------------------------------------------------------
-const ID = /^[a-z0-9-]{1,32}$/;
+const ID = /^[a-z0-9-]{1,32}$/, WAYS = ['+x', '-x', '+y', '-y', '+z', '-z'];
 export function cleanPart(q = {}, i = 0) {
   const shape = SHAPES[q.shape] ? q.shape : 'box', resin = RESINS[q.resin] ? q.resin : 'ABS', process = PROCESSES[q.process] ? q.process : resin === 'bought in' ? 'bought in' : 'injection moulding';
   const size = [0, 1, 2].map(k => r1(num(q.size?.[k], .3, 2000, 20))), at = [0, 1, 2].map(k => r1(num(q.at?.[k], -3000, 3000, 0)));
@@ -353,6 +353,10 @@ export function cleanPart(q = {}, i = 0) {
   // what is moulded on it: a `lip` round its rim that stands in the other half's wall (the groove that takes it is worked out on that half)
   if ((shape === 'shell' || shape === 'cup') && q.lip && ID.test(String(q.lip.into || ''))) p.lip = { into: q.lip.into, h: r1(num(q.lip.h, .5, 5, 1.2)), t: r2(num(q.lip.t, .3, Math.max(.3, p.wall - .4), Math.max(.4, r1(p.wall * .45)))) };
   if ((shape === 'shell' || shape === 'cup') && q.groove && Number(q.groove.t) > 0) p.groove = { h: r2(num(q.groove.h, .3, 8, 1.5)), t: r2(num(q.groove.t, .1, p.wall, p.wall / 2)), ...(ID.test(String(q.groove.for || '')) ? { for: q.groove.for } : {}) };
+  // its snap hooks: which part they catch on, their size (beam length, thickness, width, how far the head stands out), and where each
+  // leaves the part (from its centre), which way it runs and which way its head points
+  if (q.snaps && ID.test(String(q.snaps.into || '')) && Array.isArray(q.snaps.hooks)) { const hs = q.snaps.hooks.slice(0, 12).filter(h => WAYS.includes(h?.along) && WAYS.includes(h?.out) && h.along[1] !== h.out[1]).map(h => ({ at: v3(h.at, -3000, 3000, 0), along: h.along, out: h.out }));
+    if (hs.length) p.snaps = { into: q.snaps.into, len: r1(num(q.snaps.len, 3, 60, 8)), t: r2(num(q.snaps.t, .5, 4, 1)), w: r1(num(q.snaps.w, 1.5, 30, 5)), y: r2(num(q.snaps.y, .3, 3, 1)), hooks: hs }; }
   if (Array.isArray(q.through)) { const t = [...new Set(q.through.map(String).filter(x => ID.test(x)))].slice(0, 4); if (t.length) p.through = t; }
   if (Array.isArray(q.spots) && p.qty > 1) { const sp = q.spots.slice(0, p.qty - 1).map(a => v3(a, -3000, 3000, 0)); if (sp.length) p.spots = sp; }
   if (Array.isArray(q.cuts)) { const cs = q.cuts.slice(0, 40).map(c => ({ at: v3(c?.at, -3000, 3000, 0), size: v3(c?.size, .2, 3000, 1), axis: AXN.includes(c?.axis) ? c.axis : 'z', ...(c?.round ? { round: true } : {}), ...(ID.test(String(c?.for || '')) ? { for: c.for } : {}) })); if (cs.length) p.cuts = cs; }
@@ -370,6 +374,7 @@ export function cleanAssembly(s = {}) {
   for (const p of parts) if (p.parent && (!seen.has(p.parent) || p.parent === p.id)) p.parent = null;
   for (const p of parts) if (p.through) { p.through = p.through.filter(id => seen.has(id) && id !== p.id); if (!p.through.length) delete p.through; }
   for (const p of parts) if (p.lip && (!seen.has(p.lip.into) || p.lip.into === p.id)) delete p.lip;
+  for (const p of parts) if (p.snaps && (!seen.has(p.snaps.into) || p.snaps.into === p.id)) delete p.snaps;
   moulded(parts);
   const v = Number(s.v) >= 2 ? 2 : 1; // 2: made since parts say what they pass through; 1 (nothing saved): made before
   openings(parts, v < 2);
@@ -441,11 +446,31 @@ function lipPair(a, b) {
   if (sk < .3 || tb - sk < .2) return { why: `${b.name.toLowerCase()} has no wall to take it (${r1(Math.max(sk, 0))} mm would be left outside the lip)` };
   return { ax, sa, gap, tl: r2(tl), k: r2(k), sk: r2(sk), gw: r2(tb - sk), step: r2(step) };
 }
+// A part that says it has snap hooks (`snaps`) gets each hook as bodies on it: the beam, the head at its end, and a foot that joins its root
+// to the part's wall when the root is not already in the part; the part it catches on gets a catch for each, a ledge on its wall behind the
+// head, 0.1 mm from it, with the beam 0.2 mm clear of it. The strain a hook may see once, as it is pushed home, is a guide value for a
+// first design (%), to be confirmed on the resin's datasheet.
+export const SNAP_STRAIN = { 'PC': 4, 'PC clear': 4, 'PC/ABS': 2.5, 'ABS': 2, 'HIPS': 1.5, 'PP': 4, 'POM (acetal)': 4, 'PA66 GF30': 1.5, 'PMMA (acrylic)': 1.5, 'Tritan': 3, 'PETG': 2.5 };
+const HEAD = 1.5, LEDGE = 1.5, FOOT = 2.5, wayOf = d => { const v = [0, 0, 0]; v['xyz'.indexOf(d[1])] = d[0] === '-' ? -1 : 1; return v; }, bare = p => featuresOf({ ...p, adds: undefined });
+// how far from a point, along a direction, to a part's own material with nothing cut out of it (0 inside it); null when there is none within `max`
+function reachTo(p, F, w, d, max) { const at = t => inPart(p, F, [w[0] + d[0] * t, w[1] + d[1] * t, w[2] + d[2] * t], true); if (at(0)) return 0;
+  for (let t = .05; t <= max + 1e-9; t += .05) if (at(t)) { let lo = t - .05, hi = t; for (let i = 0; i < 6; i++) { const m = (lo + hi) / 2; if (at(m)) hi = m; else lo = m; } return r2(hi); } return null; }
+// one hook of `a` (its snaps S, the hook h) and its catch on `b`, measured off the two bare parts: the bodies, and what was found
+function hookBodies(a, b, Fa, Fb, S, h) {
+  const A = wayOf(h.along), O = wayOf(h.out), T3 = [0, 1, 2].map(k => (A[k] || O[k] ? 0 : 1)), R = h.at.map((v, k) => v + a.at[k]), pos = (al, o) => R.map((v, k) => v + A[k] * al + O[k] * o);
+  const box = (kind, a0, a1, o0, o1, w, own) => ({ kind, shape: 'box', axis: 'z', r: 0, size: [0, 1, 2].map(k => r2(Math.abs(A[k]) * (a1 - a0) + Math.abs(O[k]) * (o1 - o0) + T3[k] * w)), at: pos((a0 + a1) / 2, (o0 + o1) / 2).map((v, k) => r2(v - own.at[k])) });
+  const L = S.len, t = S.t, hd = Math.min(HEAD, L / 3), rooted = inPart(a, Fa, pos(-.2, 0), true), gapA = rooted ? 0 : reachTo(a, Fa, pos(-FOOT / 2, t / 2), O, 4), za = L - hd - .1, gapB = b ? reachTo(b, Fb, pos(za - LEDGE / 2, t / 2), O, 4) : null;
+  const mine = [box('hook', -SINK, L, -t / 2, t / 2, S.w, a), box('hook', L - hd, L, t / 2 - SINK, t / 2 + S.y, S.w, a)]; if (!rooted && gapA != null) mine.push(box('hook', -FOOT, 0, -t / 2, t / 2 + gapA + SINK, S.w, a));
+  const ledge = gapB != null && gapB >= .45 ? box('catch', za - LEDGE, za, t / 2 + .2, t / 2 + gapB + SINK, S.w + 1, b) : null;
+  return { mine, ledge, joined: rooted || gapA != null, gapA, gapB, eng: ledge ? r2(Math.min(S.y, gapB) - .2) : 0, hd, pos, O, T3 };
+}
 function moulded(parts) {
   const byId = Object.fromEntries(parts.map(p => [p.id, p])); for (const p of parts) { delete p.adds; delete p.groove; }
   for (const a of parts) { if (!a.lip) continue; const b = byId[a.lip.into], L = lipPair(a, b); if (L.why || b.groove) continue;
     (a.adds ||= []).push({ kind: 'lip', shape: a.shape === 'cup' ? 'ring' : 'shell', open: 'both', axis: a.axis, size: a.size.map((v, i) => (i === L.ax ? r2(a.lip.h + SINK) : r2(v - 2 * L.k))), at: [0, 1, 2].map(i => (i === L.ax ? r2(L.sa * (a.size[i] + a.lip.h - SINK) / 2) : 0)), wall: L.tl, ...(a.shape === 'shell' ? { r: r2(Math.max((a.r ?? 0) - L.k, 0)) } : {}) });
     b.groove = { h: r2(a.lip.h - L.gap + LIP_TOP), t: L.gw, for: a.id }; }
+  for (const a of parts) { if (!a.snaps) continue; const b = byId[a.snaps.into], Fa = bare(a), Fb = bare(b);
+    for (const h of a.snaps.hooks) { const H = hookBodies(a, b, Fa, Fb, a.snaps, h); (a.adds ||= []).push(...H.mine); if (H.ledge) (b.adds ||= []).push({ ...H.ledge, for: a.id }); } }
 }
 
 
@@ -460,6 +485,23 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
   const screw = (id, name, d, len, axis, pts, o = {}) => add({ id, name, shape: 'cyl', axis, size: axis === 'x' ? [len, d, d] : axis === 'y' ? [d, len, d] : [d, d, len], at: pts[0], resin: 'bought in', process: 'bought in', cost: .02, qty: pts.length, spots: pts.slice(1).map(q => q.map((v, k) => v - pts[0][k])), fix: 'screws', order: 8, lvl: 2, ...o });
   const boss = (id, pts, d) => { const h = part(id); h.bosses = [...(h.bosses || []), ...pts.map(q => ({ at: q.map((v, k) => r2(v - h.at[k])), d }))]; };
   let made = null; // [w, d, h]: the size asked for, as built
+  // snap hooks for a cover that closes on another housing half: tried at places round the rim (the middle of each wall first), and kept where
+  // a hook is joined, finds a wall to catch on, is clear of every other part and has room to bend; sized so the resin takes the bend
+  const snapOn = (ia, ib, want = 4) => { const a = part(ia), b = part(ib), lim = a && SNAP_STRAIN[a.resin]; if (!a || !b || !lim || !floored(a) || !floored(b) || axisOf(a) !== axisOf(b)) return;
+    const ax = axisOf(a), sa = a.open === '-' ? -1 : 1, gap = sa * ((b.at[ax] - sa * b.size[ax] / 2) - (a.at[ax] + sa * a.size[ax] / 2)), rootIn = Math.min(6, a.size[ax] - a.wall - FOOT - .5), into = Math.min(8, b.size[ax] - b.wall - .6); if ((b.open === '-' ? -1 : 1) === sa || gap < -.01 || gap > 4 || rootIn < 2 || into < 4.6) return;
+    const t = 1, w = 5, len = r1(rootIn + gap + into), Le = len - HEAD, eng = Math.min(.8, Math.floor(lim * .85 * Le * Le / (150 * t) * 10) / 10); if (eng < .4) return;
+    const S = { into: ib, len, t, w, y: r2(eng + .2), hooks: [] }, g0 = S.y + .2, Fa = bare(a), Fb = bare(b), others = parts.filter(q => q !== a && q !== b).map(q => { const Fq = featuresOf(q); let sm = null; return [q, Fq, boxOf(q), () => (sm ||= samplesOf(q, Fq))]; }), cand = [];
+    // is a body (a box, placed from its part's centre) in another part's material: by a grid through it no wider than 0.5 mm, and by the other part's own surface
+    const span = (q, own) => [q.at.map((v, k) => own.at[k] + v - q.size[k] / 2 + .05), q.at.map((v, k) => own.at[k] + v + q.size[k] / 2 - .05)], gridOf = ([lo, hi]) => { const m = lo.map((v, k) => Math.max(2, Math.ceil((hi[k] - v) / .5))), pts = []; for (let i = 0; i <= m[0]; i++) for (let j = 0; j <= m[1]; j++) for (let k = 0; k <= m[2]; k++) pts.push([lo[0] + (hi[0] - lo[0]) * i / m[0], lo[1] + (hi[1] - lo[1]) * j / m[1], lo[2] + (hi[2] - lo[2]) * k / m[2]]); return pts; };
+    const inOthers = sp => others.some(([q, Fq, Bq, sm]) => !sp[0].some((v, k) => Bq.hi[k] < v || Bq.lo[k] > sp[1][k]) && (sm().some(p3 => p3.every((v, k) => v > sp[0][k] && v < sp[1][k])) || gridOf(sp).some(p3 => inPart(q, Fq, p3))));
+    for (const fr of [0, .5, -.5, .25, -.25, .75, -.75]) for (const c of [0, 1, 2]) { if (c === ax) continue; const d = 3 - ax - c, flat = a.shape === 'cup' ? 0 : a.size[d] / 2 - (a.r ?? 0) - w / 2 - 1; if (fr && flat < 8) continue;
+      for (const s of [1, -1]) { const at = [0, 0, 0]; at[c] = r2(s * (a.size[c] / 2 - a.wall - g0 - t / 2)); at[d] = r2(fr * flat); at[ax] = r2(sa * (a.size[ax] / 2 - rootIn)); cand.push({ at, along: `${sa < 0 ? '-' : '+'}${AXN[ax]}`, out: `${s < 0 ? '-' : '+'}${AXN[c]}` }); } }
+    for (const h of cand) { if (S.hooks.length >= want) break; const H = hookBodies(a, b, Fa, Fb, S, h); if (!H.joined || !H.ledge || H.gapB < S.y + .15 || S.hooks.some(o => Math.hypot(...o.at.map((v, k) => v - h.at[k])) < 15)) continue;
+      const bend = [.5, .75, 1].flatMap(f => [-.4, 0, .4].map(tw => H.pos(len * f, -t / 2 - (eng + .3) * f * f).map((v, i) => v + H.T3[i] * tw * w))), root = H.pos(1, 0), al = wayOf(h.along), past = p3 => p3.reduce((s, v, k) => s + (v - root[k]) * al[k], 0) > 0;
+      if (H.mine.some(q => inOthers(span(q, a))) || inOthers(span(H.ledge, b)) || bend.some(p3 => others.some(([q, Fq]) => inPart(q, Fq, p3)) || inPart(a, Fa, p3, true) || inPart(b, Fb, p3, true))) continue;
+      if (H.mine.slice(0, 2).some(q => gridOf(span(q, a)).some(p3 => inPart(b, Fb, p3, true) || (past(p3) && inPart(a, Fa, p3, true)))) || gridOf(span(H.ledge, b)).some(p3 => inPart(a, Fa, p3, true))) continue; // nor in the two halves themselves (their bosses stand solid)
+      S.hooks.push(h); }
+    if (S.hooks.length >= 2) a.snaps = S; };
   const elec = (kind, o) => { const e = ELEC[kind]; add({ name: e.name, shape: e.round ? 'cyl' : 'box', size: o.size || e.size, resin: 'bought in', process: 'bought in', cost: e.cost, fix: kind === 'speaker' ? 'screws' : kind === 'battery' ? 'adhesive' : 'solder', fixQty: kind === 'speaker' ? 2 : 0, elec: { kind }, r: .3, ...o }); };
   if (arch === 'puck') {
     // a round device: a bottom housing on its foot with the cell and the board on three bosses, a light ring between the halves that shows
@@ -805,6 +847,8 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     add({ id: 'armr', name: 'Right arm', shape: 'cyl', axis: 'x', size: [36 * k, 14 * k, 14 * k], at: [46 * k, 0, 96 * k], resin: 'soft PVC (vinyl)', process: 'rotocasting', finish: 'spray paint', fix: 'press', order: 4, dir: [1, 0, 0], lvl: 1.2 });
     add({ id: 'head', name: 'Head', shape: 'ball', size: [74 * k, 66 * k, 66 * k], at: [0, 0, 118 * k + 33 * k], resin: 'soft PVC (vinyl)', process: 'rotocasting', finish: 'spray paint', fix: 'press', order: 5, lvl: 3, main: true });
   } else { made = [num(dims.w, 5, 2000, 100), num(dims.d, 5, 2000, 60), num(dims.h, 5, 2000, 40)]; add({ id: 'body', name: 'Body', shape: 'shell', size: made, at: [0, 0, made[2] / 2], r: 4, wall: 2, open: '+', resin: 'ABS', finish: 'SPI C-1 (matte)', draft: 1, order: 1, main: true }); }
+  // a cover that snaps onto the other half of its housing gets its hooks
+  for (const [a2, ia, ib] of [['puck', 'top', 'bottom'], ['handheld', 'top', 'bottom'], ['desk', 'front', 'back'], ['cassette', 'front', 'back'], ['smartspeaker', 'grille', 'body'], ['powerbank', 'top', 'bottom']]) if (arch === a2) snapOn(ia, ib);
   return cleanAssembly({ arch, kind: ARCHES[arch]?.kind, v: 2, ...(made ? { dims: { w: made[0], d: made[1], h: made[2] } } : {}), parts });
 }
 // the archetype a concept reads as, from its words (the designer's own words first)
@@ -1018,7 +1062,7 @@ const boxOf = p => { const os = [[0, 0, 0], ...(p.spots || [])], bs = [...(p.bos
 // everything the fit checks measure, by kind: { contact, clash, fasteners, size }, each a list of { id, level, kind, text, ... }
 export function fitOf(s) {
   const parts = s.parts, n = parts.length, F = parts.map(featuresOf), B = parts.map(boxOf), S = new Array(n), smp = i => S[i] || (S[i] = samplesOf(parts[i], F[i])), name = p => p.name, low = p => p.name.toLowerCase();
-  const out = { contact: [], clash: [], fasteners: [], size: [], lip: [] }, say = (kind, id, level, text, more = {}) => out[kind].push({ id, level, kind, text, ...more });
+  const out = { contact: [], clash: [], fasteners: [], size: [], lip: [], snap: [] }, say = (kind, id, level, text, more = {}) => out[kind].push({ id, level, kind, text, ...more });
   const gap = (i, j) => Math.max(...[0, 1, 2].map(k => Math.max(B[j].lo[k] - B[i].hi[k], B[i].lo[k] - B[j].hi[k])));
   // ---- clash: one part's material in another's, deeper than a rounding ----
   const hard = [];
@@ -1083,6 +1127,24 @@ export function fitOf(s) {
     else { const notes = [share < .9 && `it finds the groove for only ${Math.round(share * 100)}% of its way round (the two outlines differ where they meet)`, c1 > .35 && `it is ${r1(c1)} mm clear of the groove at its loosest, so the halves can shift`, eng < .8 && `it stands only ${r1(eng)} mm into the groove (0.8 mm or more locates well)`, L.sk < .6 && `only ${r1(L.sk)} mm of ${low(b)}'s wall is left outside it (0.6 mm or more fills)`, L.tl < .5 && `it is ${L.tl} mm thick (0.5 mm or more fills)`, t0 != null && t0 < .05 && 'its top is on the groove\'s floor before the rims meet', L.step > .3 && `the two outsides step ${r1(L.step)} mm at the seam`].filter(Boolean);
       if (notes.length) say('lip', a.id, 'warn', `${what} in the groove of ${low(b)}: ${notes.join('; ')}.`, more);
       else say('lip', a.id, 'ok', `Lip and groove: ${low(a)} locates ${low(b)}. ${what} stands ${r1(eng)} mm into its groove, ${r1(c0)} mm clear at the side and ${t0 == null ? LIP_TOP : r1(t0)} mm at its top, with ${r1(L.sk)} mm of wall left outside it.`, more); } }
+  // ---- snap hooks: each joined to its part, a catch for it on the other part, how far it catches, how much it bends going home, room to bend ----
+  for (const a of parts) { if (!a.snaps) continue; const S = a.snaps, b = parts.find(p => p.id === S.into); if (!b) { say('snap', a.id, 'bad', `${name(a)} has snap hooks for a part that is not there. Say which part they catch on.`, {}); continue; }
+    const Fa = bare(a), Fb = bare(b), lim = SNAP_STRAIN[a.resin], Le = S.len - Math.min(HEAD, S.len / 3); let worst = 0, least = Infinity, wrong = 0;
+    const tell = (k, level, text, more) => { wrong++; say('snap', a.id, level, `${name(a)}, snap hook ${k + 1} of ${S.hooks.length}: ${text}`, { with: b.id, hook: k + 1, ...more }); };
+    if (!lim) { wrong++; say('snap', a.id, 'warn', `${name(a)} has snap hooks, and ${a.resin} is not a resin a hook is moulded in: it will not bend and spring back. Hold it another way, or make it in a resin that does.`, { with: b.id }); }
+    S.hooks.forEach((h, k) => { const H = hookBodies(a, b, Fa, Fb, S, h), strain = H.eng > 0 ? r2(150 * S.t * H.eng / (Le * Le)) : 0;
+      if (!H.joined) return tell(k, 'bad', `it is not joined to ${low(a)}: there is no wall within 4 mm of its root. Move it to a wall.`, {});
+      if (H.gapB == null) return tell(k, 'bad', `it finds no wall of ${low(b)} to catch on within 4 mm of its head. Move it to where the two parts overlap, or lengthen it.`, {});
+      if (!H.ledge || H.gapB < S.y + .05) return tell(k, 'bad', `its head stands ${S.y} mm out and the wall of ${low(b)} is ${H.gapB} mm away: the head is in the wall, with no room for a catch. Move the hook ${r1(S.y + .2 - H.gapB)} mm in, or shorten the head.`, { room: H.gapB });
+      // room behind it: the beam bends back by what it catches, most at its tip, as the head rides over the catch
+      let tight = null; for (const f of [.5, .75, 1]) for (const tw of [-.4, 0, .4]) { const need = (H.eng + .1) * f * f, w0 = H.pos(S.len * f - (f === 1 ? .05 : 0), -S.t / 2 - .02).map((v, i) => v + H.T3[i] * tw * S.w);
+        for (let j = 0; j < n && !tight; j++) { if (w0.some((v, i) => v < B[j].lo[i] - 2 || v > B[j].hi[i] + 2)) continue; for (let d = 0; d <= need + 1e-9; d += .05) if (inPart(parts[j], F[j], w0.map((v, i) => v - H.O[i] * d))) { tight = { j, gap: r2(d), need: r2(need) }; break; } } }
+      if (tight) return tell(k, 'bad', `it cannot bend: ${low(parts[tight.j])} is ${tight.gap} mm behind it and it has to move ${tight.need} mm there to pass its catch. Move the hook, or what is behind it.`, { behind: parts[tight.j].id, gap: tight.gap });
+      if (lim && strain > lim) return tell(k, strain > lim * 1.5 ? 'bad' : 'warn', `it bends ${strain}% as it is pushed home and ${a.resin} takes about ${lim}%: it will whiten or break. Lengthen it to ${r1(Math.sqrt(150 * S.t * H.eng / lim) + Math.min(HEAD, S.len / 3))} mm, thin it, or let it catch less.`, { strain, engaged: H.eng });
+      if (H.eng < .4) return tell(k, 'warn', `it catches only ${H.eng} mm under its catch (0.4 mm or more holds). Let its head stand further out.`, { engaged: H.eng });
+      worst = Math.max(worst, strain); least = Math.min(least, H.eng); });
+    if (!wrong && S.hooks.length < 2) say('snap', a.id, 'warn', `${name(a)} is held on ${low(b)} by one snap hook: it will rock on it. Give it two or more, on opposite sides.`, { with: b.id, hooks: 1 });
+    else if (!wrong) say('snap', a.id, 'ok', `Snap fit: ${low(a)} holds on ${low(b)} by ${S.hooks.length} hooks (${S.len} mm long, ${S.t} mm thick, ${S.w} mm wide). Each catches ${least} mm under a catch on ${low(b)} and bends ${worst}% as it is pushed home (${a.resin} takes about ${lim}%), with room behind it to bend.`, { with: b.id, hooks: S.hooks.length, engaged: least, strain: worst }); }
   return out;
 }
 // the moulding and fit checks: [{ id, level: 'bad'|'warn'|'ok', text }]
@@ -1127,7 +1189,7 @@ export function dfm(s) {
     if (d[0] <= SMALL.d && d[1] <= SMALL.d && d[2] <= SMALL.h) say(p.id, s.age === '0+' ? 'bad' : 'warn', s.age === '0+' ? `${p.name}: fits the small-parts cylinder (${SMALL.d} × ${SMALL.h} mm): not allowed for under-3s if it can come off (16 CFR 1501, EN 71-1). Make it larger or fix it so it passes the torque and tension tests.` : `${p.name}: a small part; label "Choking hazard: small parts. Not for children under 3 years" (16 CFR 1500.19).`);
   }
   // do the parts go together: clash by outline, contact, fasteners and size, measured off the parts as built (fitOf)
-  const fit = fitOf(s); out.push(...fit.clash, ...fit.contact, ...fit.fasteners, ...fit.size, ...fit.lip);
+  const fit = fitOf(s); out.push(...fit.clash, ...fit.contact, ...fit.fasteners, ...fit.size, ...fit.lip, ...fit.snap);
   if (s.kind === 'electronics') out.push(...elecChecks(s));
   return out;
 }

@@ -2093,6 +2093,21 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
     In the files: the groove is in the half's solid, in its STL and as exact faces in its STEP (its wall, its floor, the thinner rim).
     The lip is a closed body of its own in the same STL and a second solid in the STEP, named for its part, starting 0.3 mm inside
     the rim it stands on; it is not fused into the half's skin, so a toolmaker joins the two with one union.
+  - **Snap hooks** (`snaps`, kind `snap`). A part says which part its hooks catch on, their size and where each leaves it
+    (`snaps: { into, len, t, w, y, hooks: [{ at, along, out }] }`: beam length, thickness, width, how far the head stands out; `along` and
+    `out` are a direction each, such as `-z` and `+x`). Each hook is three bodies on its part (a foot on the wall, the beam, the head) and
+    the other part gets a catch for it: a ledge on its wall behind the head, 0.1 mm from it, the beam 0.2 mm clear. The check measures
+    each hook off the two parts: that its root is joined to its part, that there is a wall to catch on and how far away it is, how far
+    the head catches under the catch (0.4 mm or more), how much the beam bends as it is pushed home (1.5 × thickness × catch ÷ length²)
+    against what the resin takes once, and that nothing is behind the beam where it has to bend. The strain figures are guide values for
+    a first design, to be confirmed on the resin's datasheet: PC 4%, PP and POM 4%, Tritan 3%, PC/ABS and PETG 2.5%, ABS 2%, HIPS,
+    PMMA and glass-filled PA66 1.5%. A starting assembly's cover gets its hooks where they measure clear (the middle of each wall is
+    tried first): the desk device's front (4), the cassette player's front (2) and the smart speaker's grille (4) have them, each
+    catching 0.8 mm and bending 0.77%. The handheld's, the round device's and the power bank's covers have none drawn at their default
+    sizes: the board, the light ring or the cells are within 1.5 mm of the wall, and a hook needs 2.2 mm; their fix still says snap, and
+    no finding is made for a hook that is not there. Parts that snap on without being a housing half (a slider, a latch, ear pads, a
+    cassette door) have no hooks drawn either. In the files: hooks and catches are closed bodies of their own in their part's STL and
+    solids in the STEP, named for their part, each starting 0.3 mm inside what it stands on; they are not fused into the part's skin.
 - **An assembly saved before these rules** (it carries no `v`; a starting point or a design from a concept made now carries `v: 2`) is read as
   it was meant when it is opened: a part that plainly goes through a wall (in on one side and out on the other or flush with the far
   face, much narrower than the wall, and not a part that sits inside that housing) gets its opening, worked out each time and never written
