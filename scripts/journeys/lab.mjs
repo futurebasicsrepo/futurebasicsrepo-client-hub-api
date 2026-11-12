@@ -3975,6 +3975,12 @@ await journey('J267', 'Hard goods and electronics are engineered as 3D parts: an
     ok(rv.status === 202 && rv.json.judges.length === 2 && rj?.status === 'done' && rj.result === 'passed' && rj.score === 91 && rj.rounds.length === 2, '   the engineering review: Claude and ChatGPT, round by round, the stricter score clears the bar of 90', { judges: rv.json.judges, status: rj?.status, score: rj?.score, rounds: rj?.rounds?.length });
     ok(rj?.changes?.some(c => c.part === 'top' && c.field === 'wall' && c.to === 2.4) && rj.rejected?.some(c => c.part === 'bottom' && /too thin/.test(c.reason)) && rj.beyondModel?.some(x => /gasket groove/.test(x)) && rj.eng?.unit > 0, '   the change both asked for is made, the one that would make a wall too thin is refused, and what the parts cannot show is kept for an engineer', { changes: rj?.changes, rejected: rj?.rejected });
     const rd = await K(`/concepts/${cid}/assembly/read`, { body: {} }); ok(rd.status === 200 && rd.json.source === 'words' && rd.json.read.arch === 'puck', '   with no picture, the read falls back to the concept\'s words', rd.json);
+    // a concept whose words name two products (a turntable with a cassette deck) starts as the one that houses the other, and says it is a guess
+    const combo = await K('/concepts/from-scratch', { body: { category: 'electronics', name: `Turntable with cassette deck ${stamp}` } }), coid = combo.json.concept?.id; made.push(coid);
+    let ca = (await K(`/concepts/${coid}/assembly`)).json;
+    ok(ca.spec?.arch === 'turntable' && ca.saved === false && ca.start?.from === 'words' && ca.start.named.join() === 'turntable,cassette' && ca.start.picture === false, '   a turntable with a cassette deck starts as a turntable (it was a portable cassette player), and the answer says it is guessed from words that name two products', ca.start);
+    sql(`update lab_concepts set image=decode('${Buffer.from((await png(64, 64, [200, 200, 200])).split(',')[1], 'base64').toString('hex')}','hex') where id='${coid}'`); ca = (await K(`/concepts/${coid}/assembly`)).json;
+    ok(ca.start?.picture === true && (await K(`/concepts/${cid}/assembly`)).json.start === null, '   it says when the concept has a picture the guess was not drawn from; an assembly that was saved is nobody\'s guess', ca.start);
     const tb = await K('/concepts/from-scratch', { body: { category: 'home', name: `Insulated tumbler ${stamp}` } }), tid = tb.json.concept?.id; made.push(tid);
     g = await K(`/concepts/${tid}/assembly`);
     ok(g.json.spec.arch === 'tumbler' && g.json.spec.kind === 'goods' && g.json.eng.certs.some(c => /FDA 21 CFR/.test(c.name)) && (await K(`/concepts/${tid}/block.svg`)).status === 422, '5. a tumbler is hard goods: food-contact certifications, no block diagram', g.json.spec.arch);
@@ -4061,7 +4067,17 @@ await journey('J267', 'Hard goods and electronics are engineered as 3D parts: an
         await fr().click('#fileBtn'); const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), fr().click('[data-dl=stl1]')]);
         ok(/exploded\.stl$/.test(dl.suggestedFilename()), '10. Files → STL, exploded downloads', dl.suggestedFilename());
         await fr().click('#tabs [data-tab=elec]'); ok(await fr().locator('#pane .blk svg').count() === 1 && /Use on a charge/.test(await fr().locator('#pane').innerText()), '   the Electronics tab: the block diagram and the power budget');
-        ok(await fr().evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), '   nothing slides sideways'); ok(errs.length === 0, '   no page errors', errs);
+        ok(await fr().evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), '   nothing slides sideways');
+        ok(await fr().evaluate(() => document.querySelector('#startNote').classList.contains('hidden')), '   a saved assembly carries no notice');
+        // the starting assembly of a concept with a picture says what it is and is not, with the ways to make it the concept one press away
+        await page.goto(`${BASE}/lab/studio?concept=${coid}&view=pattern`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => [...document.querySelectorAll('iframe')].some(f => /\/lab\/engineer/.test(f.src)), null, { timeout: 30000 });
+        await fr().waitForFunction(() => window.FBEngineer?.ready?.(), null, { timeout: 30000 }); await fr().waitForSelector('#startNote:not(.hidden)', { timeout: 10000 });
+        const note = await fr().evaluate(() => ({ text: document.querySelector('#startNote').innerText.replace(/\s+/g, ' '), acts: [...document.querySelectorAll('#startNote [data-start]')].map(x => x.dataset.start), box: (r => [Math.round(r.left), Math.round(r.top), Math.round(r.right), innerWidth])(document.querySelector('#startNote').getBoundingClientRect()) }));
+        ok(/Not drawn from the concept's picture/.test(note.text) && /guessed from the concept's words: a turntable, not the product in its picture/.test(note.text) && /name more than one product \(turntable and cassette player\), and no starting point is both/.test(note.text) && note.acts.join() === 'compose,read,pick' && note.box[0] >= 0 && note.box[2] <= note.box[3], '11. a starting assembly guessed from the words says so on the view: which product, that it is not the picture\'s, that the words name two, and what to do', note);
+        await fr().click('#startNote [data-start=pick]'); ok(await fr().evaluate(() => document.querySelector('#startDlg').open && document.querySelector('#sArch').value === 'turntable'), '   Choose a starting point opens the kinds of product, on the one it is');
+        await fr().click('#sGo'); await fr().waitForFunction(() => !document.querySelector('#startDlg').open, null, { timeout: 15000 });
+        ok(await fr().evaluate(() => document.querySelector('#startNote').classList.contains('hidden')) && (await K(`/concepts/${coid}/assembly`)).json.saved === true, '   started from a kind chosen, it is saved and the notice is gone');
+        ok(errs.length === 0, '   no page errors', errs);
       } finally { await b.close(); }
     }
   } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }

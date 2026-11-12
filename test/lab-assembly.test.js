@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import '../src/elec.js';
 import { realMeshes, isoPicture } from '../src/lab-parts-mesh.js';
 import { harnessOf, cablePath, frontOf } from '../src/lab-assembly.js';
-import { archetype, engineer, cleanAssembly, cleanPart, meshOf, volumeOf, explodeOffsets, stlOf, drawingSvg, blockSvg, bomRows, bomCsv, guessArch, radioOf, power, cellOf, ARCHES, dfm } from '../src/lab-assembly.js';
+import { archetype, engineer, cleanAssembly, cleanPart, meshOf, volumeOf, explodeOffsets, stlOf, drawingSvg, blockSvg, bomRows, bomCsv, guessArch, namedArches, radioOf, power, cellOf, ARCHES, dfm } from '../src/lab-assembly.js';
 
 test('every starting assembly fits together: no part in another\'s space, nothing too big for its housing', () => {
   for (const a of Object.keys(ARCHES)) {
@@ -141,6 +141,11 @@ test('the archetype and radio are read from the concept\'s words; cleaning keeps
   assert.equal(guessArch({ category: 'electronics', name: 'Pocket remote' }), 'handheld');
   assert.equal(guessArch({ category: 'electronics', name: 'Bedside clock with display' }), 'desk');
   assert.equal(guessArch({ category: 'electronics', name: 'Bluetooth speaker' }), 'puck');
+  // words that name two products: the one that houses the other is the starting point (a turntable with a cassette deck was a portable cassette player)
+  assert.equal(guessArch({ category: 'electronics', name: 'Turntable with cassette deck' }), 'turntable'); assert.deepEqual(namedArches({ category: 'electronics', name: 'Turntable with cassette deck' }), ['turntable', 'cassette']);
+  assert.equal(guessArch({ category: 'electronics', name: 'Record player', spec: { description: 'Plays vinyl, CDs (a CD player in the base) and cassettes.' } }), 'turntable');
+  assert.equal(guessArch({ category: 'electronics', name: 'Portable cassette player' }), 'cassette'); assert.deepEqual(namedArches({ category: 'electronics', name: 'Portable cassette player' }), ['cassette']);
+  assert.equal(guessArch({ category: 'electronics', name: 'CD player with a cassette deck' }), 'cdplayer'); assert.deepEqual(namedArches({ category: 'electronics', name: 'Bluetooth speaker' }), []);
   assert.equal(guessArch({ category: 'home', name: 'Insulated tumbler' }), 'tumbler');
   assert.equal(guessArch({ category: 'toys', name: 'Vinyl collectible' }), 'figure');
   assert.equal(guessArch({ category: 'home', name: 'Desk organizer' }), 'case');

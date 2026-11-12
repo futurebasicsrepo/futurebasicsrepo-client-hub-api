@@ -22,7 +22,7 @@ import { sampleOf, factorsOf, calibrated } from './lab-cost-calibration.js';
 import { REFERENCE, runBenchmark } from './lab-benchmark.js';
 import { openaiAsk } from './lab-shoe-review.js';
 import { trackedFetch, timed } from './telemetry.js';
-import { archetype, cleanAssembly, engineer, guessArch, radioOf, stlOf, drawingSvg, blockSvg, bomCsv, bomRows, ARCHES, RESINS, PROCESSES, FINISHES, FIXES, SHAPES, ELEC, AGES } from './lab-assembly.js';
+import { archetype, cleanAssembly, engineer, guessArch, namedArches, radioOf, stlOf, drawingSvg, blockSvg, bomCsv, bomRows, ARCHES, RESINS, PROCESSES, FINISHES, FIXES, SHAPES, ELEC, AGES } from './lab-assembly.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // the categories engineered as parts rather than cut from a pattern
@@ -49,13 +49,15 @@ export function registerLabAssemblyRoutes(app, d) {
   const { pool, authenticate, adminOnly, env = process.env, askImpl = callJsonSchema, log = console } = d;
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
-  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select id, name, category, spec, product_id, twist from lab_concepts where id=$1', [id])).rows[0] : null);
+  const concept = async id => (UUID.test(String(id)) ? (await pool.query('select id, name, category, spec, product_id, twist, (image is not null) has_image from lab_concepts where id=$1', [id])).rows[0] : null);
   const proposal = c => { const s = archetype(guessArch(c), dimsOf(c), { radio: radioOf(c), display: /\boled\b/i.test(c.spec?.description || '') ? 'oled' : 'lcd' }); s.name = c.name; if (c.category === 'toys') s.age = '3+'; return s; };
   async function load(id) {
     const c = await concept(id); if (!c) return null;
     const row = (await pool.query('select spec, updated_at from lab_assemblies where concept_id=$1', [c.id])).rows[0] || null;
     const spec = row ? cleanAssembly({ ...row.spec, name: row.spec?.name || c.name }) : proposal(c);
-    return { c, spec, saved: Boolean(row), updatedAt: row?.updated_at || null };
+    // an assembly nobody has saved is a starting point: where it came from, so the page can say it is a guess (and not the concept's picture)
+    const start = row ? null : { from: ARCHES[c.spec?.arch] ? 'chosen' : 'words', arch: spec.arch, named: ARCHES[c.spec?.arch] ? [] : namedArches(c), picture: Boolean(c.has_image) };
+    return { c, spec, saved: Boolean(row), updatedAt: row?.updated_at || null, start };
   }
   const save = async (c, spec, actor) => { const s = cleanAssembly({ ...spec, name: spec.name || c.name }); await pool.query(`insert into lab_assemblies(concept_id, spec, updated_by) values($1,$2,$3) on conflict(concept_id) do update set spec=excluded.spec, updated_by=excluded.updated_by, updated_at=now()`, [c.id, s, actor]); return s; };
   const read = E => ({ parts: E.parts, tools: E.tools, toolCost: E.toolCost, weeks: E.weeks, checks: E.checks, steps: E.steps, labour: E.labour, unit: E.unit, amort: E.amort, landed: E.landed, mass: E.mass, pcb: E.pcb, power: E.power, certs: E.certs, extent: E.extent, harness: E.harness, bom: bomRows(E) });
@@ -64,7 +66,7 @@ export function registerLabAssemblyRoutes(app, d) {
   app.get('/v1/lab/concepts/:id/assembly', { preHandler: pre }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
     const E = engineer(L.spec);
-    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, productId: L.c.product_id || null }, engineered: ENGINEERED.includes(L.c.category), spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, options, eng: { ...read(E), calibrated: calibrated(E, (await calibration())[E.spec.kind === 'electronics' ? 'electronics' : 'goods']) }, calibration: await calibration() };
+    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, productId: L.c.product_id || null }, engineered: ENGINEERED.includes(L.c.category), spec: L.spec, saved: L.saved, start: L.start, updatedAt: L.updatedAt, options, eng: { ...read(E), calibrated: calibrated(E, (await calibration())[E.spec.kind === 'electronics' ? 'electronics' : 'goods']) }, calibration: await calibration() };
   });
   app.put('/v1/lab/concepts/:id/assembly', { preHandler: pre, bodyLimit: 2_000_000 }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);

@@ -2211,6 +2211,15 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   looks) as the view pulls apart, so the laser sled on its rails and the spindle show; the exploded STL and drawing show it open.
 - **The board's fixing.** Its mounting holes are where its screws pass through it; the screws, and the standoffs under a board on steel or
   MDF, are parts on the list, as many as the board says it is fixed by.
+- **What a concept opens as, and saying when that is a guess.** An assembly nobody has saved is a starting point: the kind chosen when the
+  concept was started from scratch (`spec.arch`), or else guessed from its words (`guessArch`). Words can name more than one product (a
+  turntable with a cassette deck): `namedArches` lists them with the one that houses the others first, and that one is the starting point
+  (a turntable, where it used to be a portable cassette player, because cassette was looked for first). No starting point is two products,
+  and none is drawn from the concept's picture. So the view carries a notice on an unsaved starting assembly (`start` on
+  `GET /v1/lab/concepts/:id/assembly`: `from`, `arch`, `named`, `picture`): which product it is, that it was guessed from the words and
+  is not the product in the picture, that the words name more than one, and what to do, one press each: **Design it from the concept**
+  (below), **Read the picture** (the kind, size and features read from the picture, then started from) or **Choose a starting point**. It
+  goes once the assembly is saved or changed. Nothing is designed or read by itself: both use Claude, and are pressed.
 - **Design it from the concept** (Start from…, `src/lab-assembly-compose.js`): for a product none of the starting points fit (a bike light,
   a drone, a kettle), Claude lays out every part from the concept's picture and words in the engine's own terms (its shapes, materials,
   processes, finishes and electronic parts, with its rules for units, placement, walls and draft), so it is checked, wired, costed and

@@ -935,17 +935,25 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
   return cleanAssembly({ arch, kind: ARCHES[arch]?.kind, v: 2, ...(made ? { dims: { w: made[0], d: made[1], h: made[2] } } : {}), parts });
 }
 // the archetype a concept reads as, from its words (the designer's own words first)
+// The products a concept's words name, each a starting point of its own. A concept can name more than one (a turntable with a cassette
+// deck): they are listed with the one that would house the others first, so that one is the starting point: a turntable can carry a
+// cassette deck or a CD drive, a portable cassette player cannot carry a turntable. No starting point is two products at once; the page
+// says so (src/lab-engineer.html) and offers to design it from the concept instead.
+const NAMED = [
+  ['turntable', t => /\b(turntable|record player|vinyl player|phonograph|lp player)\b/.test(t)],
+  ['cdplayer', t => /\b(cd|compact disc|disc player)\b/.test(t) && /\b(player|deck|hi-?fi|component|stereo|disc)\b/.test(t)],
+  ['cassette', t => /\b(cassette|walkman|tape (player|deck))\b/.test(t)],
+  ['headphones', t => /\b(headphones?|headset|over-?ear|on-?ear|cans)\b/.test(t) && !/\b(stand|hanger|case|hook)\b/.test(t)],
+  ['smartspeaker', t => /\b(smart speaker|voice assistant|smart home speaker|home assistant|alexa|assistant speaker)\b/.test(t)],
+  ['powerbank', t => /\bpower ?bank|portable charger|battery pack\b/.test(t)],
+  ['lamp', t => /\b(lamp|desk light|table light|night ?light|lantern|reading light)\b/.test(t)],
+  ['speaker', t => /\b(bookshelf|studio monitors?|powered speakers?|monitor speakers?|stereo speakers?|hi-?fi speakers?|floorstanding)\b/.test(t)]];
+const wordsOf = c => [c.name, c.spec?.silhouette, c.spec?.description, c.spec?.category].join(' ').toLowerCase();
+export const namedArches = (c = {}) => { const t = wordsOf(c); return NAMED.filter(([, is]) => is(t)).map(([k]) => k); };
 export function guessArch(c = {}) {
   if (ARCHES[c.spec?.arch]) return c.spec.arch; // chosen when it was started from scratch
-  const t = [c.name, c.spec?.silhouette, c.spec?.description, c.spec?.category].join(' ').toLowerCase();
-  if (/\b(cd|compact disc|disc player)\b/.test(t) && /\b(player|deck|hi-?fi|component|stereo|disc)\b/.test(t)) return 'cdplayer';
-  if (/\b(cassette|walkman|tape (player|deck))\b/.test(t)) return 'cassette';
-  if (/\b(turntable|record player|vinyl player|phonograph|lp player)\b/.test(t)) return 'turntable';
-  if (/\b(headphones?|headset|over-?ear|on-?ear|cans)\b/.test(t) && !/\b(stand|hanger|case|hook)\b/.test(t)) return 'headphones';
-  if (/\b(smart speaker|voice assistant|smart home speaker|home assistant|alexa|assistant speaker)\b/.test(t)) return 'smartspeaker';
-  if (/\bpower ?bank|portable charger|battery pack\b/.test(t)) return 'powerbank';
-  if (/\b(lamp|desk light|table light|night ?light|lantern|reading light)\b/.test(t)) return 'lamp';
-  if (/\b(bookshelf|studio monitors?|powered speakers?|monitor speakers?|stereo speakers?|hi-?fi speakers?|floorstanding)\b/.test(t)) return 'speaker';
+  const t = wordsOf(c), named = namedArches(c);
+  if (named.length) return named[0];
   if (c.category === 'electronics' || /\b(bluetooth|speaker|battery|usb|charger|electronic)\b/.test(t)) return /\b(remote|controller|power ?bank|handheld|tracker|clicker|key ?finder|fob|wand)\b/.test(t) ? 'handheld' : /\b(display|screen|clock|monitor|station|radio|frame)\b/.test(t) ? 'desk' : 'puck';
   if (/\b(tumbler|bottle|cup|mug|flask|drinkware|thermos|shaker)\b/.test(t)) return 'tumbler';
   if (/\b(figure|figurine|vinyl|collectible|doll|action figure|statue|mascot)\b/.test(t)) return 'figure';
