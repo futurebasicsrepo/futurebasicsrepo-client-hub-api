@@ -282,6 +282,8 @@ The flats zoom too: two fingers pinch and move them, one finger moves them once 
 
 **Room to draw.** **Panel** (or `\`) folds the right-hand panel away, on the picture and on both flats, so the drawing takes the width. **Focus** (or `F`) hides the page header, the console menu and the Guide switch, and asks for full screen where the browser allows it. The drawing (the picture, a flat or the pattern) then takes the whole screen and everything else floats over it in Liquid Glass (frosted, translucent): the bar is a capsule along the top with the essentials (the views, the checklist, Save, More, Panel, Focus; More opens the rest; the steps, Undo and Redo, which are on the rail, step aside), the tool rail is the tool palette (below), the tool's options a capsule under the bar, the panel a card on the right, and the zoom buttons, the size dock and, on the flats, their own size, measurements and zoom bar (a capsule at the foot) are glass too. The picture fits into the room the glass leaves. Side by side keeps its columns. Both are kept on the device for the next time Design opens, and a second press brings them back.
 
+**Focus is the drawing's.** Whether Focus is on is kept for next time, and it is put on only when something is open to draw on. On the Studio's list of concepts (and the sign-in notice) it is not: the page keeps its header and menu, there is no palette, and `F` does nothing. Left on there, the palette floated over the list with nothing under it, so its tools did nothing, and the header was hidden. Opening a drawing from the list puts Focus back.
+
 **The tool palette** (`src/lab-studio-palette.js`, Focus only). In Focus the rail becomes a palette like a notes app's pencil case, the same
 on the picture, a garment's flats and a bag's or a shoe's drawing:
 - **Open**, it is one dark glass dock: Undo and Redo, then every tool laid out in the rail's groups (none hidden in a group, so Polygon,
@@ -851,11 +853,17 @@ Routes: `src/lab-materials-routes.js` (`/v1/lab/materials…`, `/v1/lab/concepts
 
 Design Lab → **Recipe menu** (`/lab/recipe`): in the staff tab row, the hub's Design Lab, the client room's Design Lab view in Work, and on **+ New design**. On a phone the bases scroll sideways and a bar at the foot shows the piece as it is picked, with **Open** to hand. Pip has a guide for it. It is for someone who is not a designer: they choose a piece the way they would order it.
 
-1. **The base.** A staple at its usual fit: classic, boxy or oversized tee, long-sleeve, tank, polo, crewneck, hoodie, zip hoodie, button-up and camp shirts, zip jacket, vest, coat, straight or wide trousers, shorts, leggings, a dress, skirt, cami and bodysuit, a six-panel cap, bucket hat, cuffed beanie and a tote bag.
+1. **The base.** First the **staples**, each at its usual fit: classic, boxy or oversized tee, long-sleeve, tank, polo, crewneck, hoodie, zip hoodie, button-up and camp shirts, zip jacket, vest, coat, straight or wide trousers, shorts, leggings, a dress, skirt, cami and bodysuit, a six-panel cap, bucket hat, cuffed beanie and a tote bag. Then a **shelf for everything else there is a drawing of** (548 bases in all), with a search box over every one and, on a shelf with more than one style, a list to narrow it:
+   - **Every sketch in the sketch pack** (382), on the shelf of what it is: Tops, Outerwear, Bottoms, Dresses, Swim and underwear, Headwear. The piece is drawn on the sketch picked and takes the add-ons its style takes.
+   - **Bags** (the tote and the cooler as flats, and the library's 11 bags) and **Footwear** (the library's 38 shoes). A library bag or shoe opens as its own drawing in panels, its body in the colour picked. It takes a colour and nothing else: its pockets, straps and sole are edited on its drawing.
+   - **Product types** (70): Drinkware, Wall art and decor, Home textiles, Tech, Paper and small goods, Pets, Sports and outdoor, Automotive, Accessories. Each is drawn from its measurements with its print area. It asks for a cloth only when it is sewn from one (a pillow, a towel, socks; not a mug or a poster).
+   - **Plush** (7 shapes) and **Electronics and objects** (14 kinds). A plush shape opens on its pattern and its drawings; an object on its starting assembly in Engineering. Neither has anything more to pick here.
+   Every card has its picture. A sketch, a bag and a shoe have a thumbnail. A style with no sketch (the cuffed beanie, the tote bag, every product type) is drawn by the flats from its measurements; a plush shape from its pattern; an object from its starting assembly, from the top and the front (`src/lab-base-art.js`, shared with the sketch pack). The steps a base does not take are hidden and the ones left are numbered again.
 2. **Add-ons.** Pockets (chest, flap, kangaroo, zip, slant, jean, cargo, back welts, side pockets, a tote's front pocket), closures (quarter zip, button placket, drawcord waist, zip front, button front), collars (polo, johnny, retro, half-zip, rugby, henley and V-neck on knits; thin crew, mock neck and turtleneck drawn on the knit's own sketch with their measurements; shearling, shirt and stand collars on a jacket; band, camp and button-down on a shirt; one at a time), **wash & wear** (garment dyed, vintage stone wash, acid wash, sun faded, dirty vintage tint; worn edges, distressed, heavily destroyed; one wash and one wear at a time, drawn and written for the wash house as in the Studio) and finishes (front pleats, cropped, and **contrast pockets and trims**, which puts the pockets in the system's next colour; it waits, marked "add a pocket first", until a pocket it can colour is on). Only the add-ons that suit the base are shown. Tapping a second add-on that goes in the same place (a flap pocket after a chest pocket, a second collar) **replaces** the first rather than stacking on it, and so does a second add-on that changes the sketch (a shirt collar after a shearling collar). **Cropped goes with anything:** alone it uses the pack's cropped sketch where there is one; with a collar (or on a piece with no cropped sketch) it cuts that sketch 4 in shorter. The cut is a band of the body taken out above the hem band (`crop` on the flat, drawn by `renderSvg`). The hem band, its stitching and the long sleeves stay as drawn, and the body is found from the sketch's outline across the hem. The flats' **Cropped** box does the same on any sketch, and the tech pack says how much was taken out. An add-on the sketch already draws (a pullover hoodie's kangaroo pocket, a chino's slant and back pockets, cropped on the boxy tee) shows as **on the sketch** and cannot be added on top. Add-ons drawn on the back (back welt pockets) say **on the back**, since the preview shows the front. The picked base, add-ons, colour system and cloth glow green (the line plans' selected style).
 3. **A colour system.** Washed earth, Workwear, Monochrome, Coastal, Forest, Sport, Pastel, Future Basics, or four colours of your own. The chosen colour is the garment. The next colour in the system is the stitching. Every colour becomes a colourway on the tech pack.
-4. **The cloth** (optional), with the fabric check below shown as you pick.
-5. **Fit it together** (optional). Sliders for the base's lines, **Body width** and **Length** (±6 in, in ⅛ in), and for each placed add-on its **Size** (50–180%), **Up / down** (±8 in) and **Across** (±6 in; for a pair, **Apart**: both move out or in together, mirrored). The drawing follows as you slide, and **Put it back as it was** clears them all. Add-ons the sketch draws itself (a collar, a hoodie's kangaroo pocket, a chino's pockets) have no sliders: they move with the body.
+4. **The cloth** (optional). The library is **sorted for the piece** (`rankFabrics` in `src/lab-fabric-fit.js`, as on the sketch pack's sheet): best for it first, then what also suits it, then what works with changes, with the cloth that does not suit it folded away. It is sorted again when the base changes, or when an add-on changes what the piece is (a tee with a polo collar is a polo). The first twelve are shown and the rest are one press away; a box filters by any word or weight. The cards are a grid that wraps inside the step, so none can pass its edge at any width. The fabric check below shows as you pick.
+   **Parts from the sketch pack** sit under the add-ons on anything cut and sewn: the pack's 203 pockets, zips, collars, trims and buttons. Open a kind, tap a part, and it is placed where that kind usually goes on the piece (`defaultPart` in `src/lab-flats.js`). Up to 8 on a piece; more go on in the Studio.
+5. **Fit it together** (optional). Sliders for the base's lines, **Body width** and **Length** (±6 in, in ⅛ in), and for each placed add-on and each part from the sketch pack its **Size** (50–180%), **Up / down** (±8 in) and **Across** (±6 in; for a pair, **Apart**: both move out or in together, mirrored). The drawing follows as you slide, and **Put it back as it was** clears them all. Add-ons the sketch draws itself (a collar, a hoodie's kangaroo pocket, a chino's pockets) have no sliders: they move with the body.
 
 The piece is drawn as you pick, on the same flats the Studio uses. **Open in the Studio** makes the concept, its flats and its colourways in one go, and opens it there.
 
@@ -864,12 +872,14 @@ How the drawing is made (`src/lab-recipe.js`, `cookRecipe`):
 - A detail the sketch already draws is not drawn again: a hoodie's kangaroo pocket, or a chino's front and back pockets (`shown`; `drawnOn` lists them for the page).
 - Each base starts on a plain sketch of its own (`sketch` on the base, `baseSketch`), so an added pocket is never laid over one the sketch already has: the button-up is the plain classic shirt, not the Western shirt with two flap pockets. A button-down collar draws its two buttons at the collar points (the `button` detail in `src/lab-flats.js`).
 - Every add-on a base offers changes the drawing or shows as on the sketch; `test/lab-recipe.test.js` checks each one, so a chip that does nothing fails the tests.
+- **A base past the staples** has an id that says what it is: `sk:<sketch>`, `st:<style>` (a product type), `bag:<id>`, `shoe:<id>`, `plush:<shape>`, `obj:<kind>` (`baseOf`, `shelfBases`, `RECIPE_SHELVES`). A sketch from the pack keeps its sketch: the add-ons that only work by swapping the sketch for another (a polo collar, pleats) are not offered on it. A bag, shoe, plush shape or object is not a flat: `cookRecipe` answers with how it is started (`start: { via, body }`) and the service runs the route that already makes that kind of concept, so each kind is made one way.
+- **A part** is a flats edit of type `part` with the id `r-part-<part id>`, fitted under its own id in `fit.adjust`.
 - Anything else is added as a flats detail, placed where that kind of detail usually goes. Pairs are mirrored left and right.
 - **A collar is never laid over the base's neckline.** It picks the sketch drawn with that collar, so it always sits right: a classic tee with a polo collar is drawn on the classic polo sketch and becomes a polo (named "… classic polo"); a sweatshirt with a rugby collar is the rugby-collar sweatshirt. Each collar add-on says which sketch it uses for each base (`sketch` in `RECIPE_ADDONS`).
 - The piece is measured as its sketch is drawn (`fitToTemplate`, the same as picking a sketch on the flats page), then the Fit it together changes apply: body width and length change the measurements (chest or waist, length or inseam), and each add-on's size and place change its detail.
 - The sketch is stretched to follow those changes (`drawingOf` in `src/lab-flats.js`): wider makes it wider for the same height; shorter makes it less tall for the same width. At a piece's start (its style's usual measurements, or fitted to the sketch) it is drawn exactly as before, within 12% of the sketch's own proportions.
 
-The concept keeps `spec.recipe` (base, add-ons, colour system, which colour is the garment, your own colours if you picked them, and `fit`: `{ m: { width, length }, adjust: { [add-on]: { size, dy, dx } } }`, cleaned by `cleanFit`).
+The concept keeps `spec.recipe` (base, add-ons, parts, colour system, which colour is the garment, your own colours if you picked them, and `fit`: `{ m: { width, length }, adjust: { [add-on]: { size, dy, dx } } }`, cleaned by `cleanFit`).
 
 **Edit recipe.** In the Studio a piece made from the menu has **Edit recipe** in its header. It opens the menu on the piece's own picks and how it was fitted together; change any of them and press **Save the changes**. The flats are cooked again from the new picks, and its colourways follow. Graphics placed on the flats and details added by hand stay. A tech pack cannot be changed this way. Routes: `GET|PUT /v1/lab/concepts/:id/recipe`.
 
@@ -877,7 +887,11 @@ The concept keeps `spec.recipe` (base, add-ons, colour system, which colour is t
 
 Routes:
 - `GET /v1/lab/recipe` returns the menu.
-- `POST /v1/lab/concepts/from-recipe {base, addons, system (an id or {name, colours}), colour, name?}` returns `{concept, studio}`.
+- `POST /v1/lab/concepts/from-recipe {base, addons, parts, system (an id or {name, colours}), colour, name?, fit?, lineId?}` returns `{concept, studio}`. `lineId` puts the concept on that piece of a line plan.
+
+**The sketch pack lists the same things.** Its Sketches gallery has the 382 garment sketches, the bags and shoes, and now the product types, the plush shapes, the electronics and objects, the beanie and the tote (524 drawings; ranges Products, Plush, Electronics and objects). A product type opens its sheet with its colour, and its cloth when it is sewn from one; a plush shape and an object open as they are. They are made through `from-recipe`.
+
+Journey J312 covers the shelves, the parts, the cloth sorting and its layout on a phone and an iPad, and the sketch pack's new ranges.
 
 ## Does the fabric suit the style?
 
@@ -1005,13 +1019,21 @@ The catalogue sells things the Studio had no drawing for. Each is now a style of
 
 ## Starting from scratch
 
-**Design** (`/lab/studio`, with no concept chosen) offers **Start from scratch**: name it (optional), choose what it is and, for clothes, the style
-(`POST /v1/lab/concepts/from-scratch {name?, category, style?, shape?}`). The concept has no plan and uses no AI. Design opens on white paper with
-the product's own outline under it as a locked **guide**:
+**Design** (`/lab/studio`, with no concept chosen) offers **Start from scratch**: name it (optional), choose what it is and which one: the
+style for clothes and shoes, the shape for a plush, and for an electronic or an object what kind it is (a round device, a turntable, headphones,
+a figure, a tumbler…: `POST /v1/lab/concepts/from-scratch {name?, category, style?, shape?, arch?}`). The concept has no plan and uses no AI.
+Design opens on white paper with the product's own outline under it as a locked **guide**:
 
 - a garment shows its flat's pieces;
-- a plush shows its shape;
-- footwear, toys and electronics get a dot grid.
+- a plush shows its shape, a shoe its pattern;
+- an electronic, a toy or an object shows the assembly Engineering starts it from, seen from the top and from the front, one above the other
+  at one scale as on a drawing, each with its size in mm under it (`lineViews` in `src/lab-assembly.js`). Each view is drawn as an eye sees
+  it: the outline of the whole, and of every part that shows (the keys on a speaker's top, not the board under it). A clear part, such as a
+  turntable's dust cover, is seen through. It used to open on a dot grid, which read as a blank page while Engineering already had the product;
+- anything whose outline cannot be read gets a dot grid.
+
+The kind of device chosen is kept on the concept (`spec.arch`), so Engineering starts from that assembly. One started without choosing (or
+before this) is still guessed from its words, and an electronic with no words to go on starts as the round device.
 
 The guide is drawn at real size, so the studio knows the inches from the start (no ruler needed). Hide or delete the guide in Layers when you are
 done. A garment started from scratch draws its flats as a plain outline to draw over (`template: 'none'`), not from a sketch in the sketch pack.
@@ -2201,6 +2223,15 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   looks) as the view pulls apart, so the laser sled on its rails and the spindle show; the exploded STL and drawing show it open.
 - **The board's fixing.** Its mounting holes are where its screws pass through it; the screws, and the standoffs under a board on steel or
   MDF, are parts on the list, as many as the board says it is fixed by.
+- **What a concept opens as, and saying when that is a guess.** An assembly nobody has saved is a starting point: the kind chosen when the
+  concept was started from scratch (`spec.arch`), or else guessed from its words (`guessArch`). Words can name more than one product (a
+  turntable with a cassette deck): `namedArches` lists them with the one that houses the others first, and that one is the starting point
+  (a turntable, where it used to be a portable cassette player, because cassette was looked for first). No starting point is two products,
+  and none is drawn from the concept's picture. So the view carries a notice on an unsaved starting assembly (`start` on
+  `GET /v1/lab/concepts/:id/assembly`: `from`, `arch`, `named`, `picture`): which product it is, that it was guessed from the words and
+  is not the product in the picture, that the words name more than one, and what to do, one press each: **Design it from the concept**
+  (below), **Read the picture** (the kind, size and features read from the picture, then started from) or **Choose a starting point**. It
+  goes once the assembly is saved or changed. Nothing is designed or read by itself: both use Claude, and are pressed.
 - **Design it from the concept** (Start from…, `src/lab-assembly-compose.js`): for a product none of the starting points fit (a bike light,
   a drone, a kettle), Claude lays out every part from the concept's picture and words in the engine's own terms (its shapes, materials,
   processes, finishes and electronic parts, with its rules for units, placement, walls and draft), so it is checked, wired, costed and

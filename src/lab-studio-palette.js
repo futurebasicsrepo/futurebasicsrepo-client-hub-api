@@ -13,7 +13,7 @@
   let S = { dock: 'top', shrunk: false, bx: 14, by: 120 }; try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { /* private window */ }
   const keep = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch { /* fine */ } };
   // in Focus, on the picture and the flats (a garment's, or a bag's or a shoe's drawing): the Pattern and the Board have no use for drawing tools
-  const focusOn = () => Boolean(document.documentElement.dataset.focus) && ['picture', 'front', 'back'].includes($('.studio')?.dataset.v || 'picture');
+  const focusOn = () => Boolean(document.documentElement.dataset.focus) && !$('#app')?.classList.contains('hidden') && ['picture', 'front', 'back'].includes($('.studio')?.dataset.v || 'picture');
   // the tools, in the rail's order and its groups (a rule between groups), every one of them
   const SIZED = { brush: 'size', eraser: 'esize', distress: 'dsize', liquify: 'size' };
   const INKED = ['brush', 'fill', 'text', 'rect', 'ellipse', 'polygon', 'star', 'line', 'pen', 'typepath'];

@@ -2917,6 +2917,11 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
   ok(bad.spec?.build.head === 'none' && bad.spec.build.legs === 'none', '   parts that do not go on a body are left off (a bean is its own head; four legs go on a four-legged body)', bad.spec?.build);
   const shoe = await K('/concepts/from-scratch', { body: { category: 'toys', name: `Scratch toy ${stamp}` } }), sp = (await K(`/concepts/${shoe.json.concept.id}/pattern`)).json;
   ok(sp.kind === 'soon' && /engineered as 3D parts/.test(sp.soon) && (await K(`/concepts/${shoe.json.concept.id}/pattern.dxf`)).status === 422, '   toys and objects are engineered as 3D parts (the Engineering page), not cut from a pattern', sp.soon);
+  // a product that is engineered says what it is when it is started: Engineering starts from that, not from a guess at its words
+  const tt = await K('/concepts/from-scratch', { body: { category: 'electronics', arch: 'turntable' } }), el = await K('/concepts/from-scratch', { body: { category: 'electronics', arch: 'spaceship', name: `Scratch device ${stamp}` } });
+  const ta = (await K(`/concepts/${tt.json.concept?.id}/assembly`)).json, ea = (await K(`/concepts/${el.json.concept?.id}/assembly`)).json;
+  ok(tt.status === 201 && tt.json.concept.name === 'Untitled turntable' && ta.spec?.arch === 'turntable' && ta.saved === false, '   an electronic started as a turntable is a turntable in Engineering', [tt.json.concept, ta.spec?.arch]);
+  ok(el.status === 201 && ea.spec?.arch === 'puck', '   one that names no device (or one that is not there) starts as the round device, as before', ea.spec?.arch);
   if (!playwright) { ok(true, 'needs a browser'); return; }
   const b = await playwright.chromium.launch();
   try {
@@ -2925,6 +2930,13 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
     // the picker offers it
     await page.goto(`${BASE}/lab/studio`, { waitUntil: 'networkidle' }); await page.waitForSelector('#scratchF');
     await page.selectOption('#scCat', 'bottoms'); ok(await page.evaluate(() => [...document.querySelectorAll('#scStyle option')].map(o => o.value).join()) === 'pants,shorts,skirt,leggings', '4. the picker offers Start from scratch, with the styles of what you are making');
+    await page.selectOption('#scCat', 'electronics'); const devs = await page.evaluate(() => [...document.querySelectorAll('#scStyle option')].map(o => o.value));
+    ok(devs[0] === 'puck' && devs.includes('turntable') && devs.includes('headphones') && await page.evaluate(() => !document.querySelector('#scStyle').classList.contains('hidden')), '   an electronic picks what kind of device it is', devs);
+    // an electronic started from scratch does not open on a blank page: the device Engineering starts it from is the guide, from the top and the front
+    for (const [id, what, mm] of [[el.json.concept.id, 'round device', [96, 96]], [tt.json.concept.id, 'turntable', [420, 340]]]) {
+      await page.goto(`${BASE}/lab/studio?concept=${id}&scratch=1`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
+      const g = await page.evaluate(() => { const l = LAYERS[1], c = l.raster, d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let ink = 0, x0 = 1e9, x1 = -1; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) { ink++; const x = (i >> 2) % c.width; if (x < x0) x0 = x; if (x > x1) x1 = x; } return { name: l.name, locked: l.locked, ink, wide: x1 - x0, ppi: PPI, set: PPISET, guide: GUIDE_PPI }; });
+      ok(new RegExp(`^Guide: the ${what} from the top and the front, at real size`).test(g.name) && g.locked && g.ink > 8000 && g.set && Math.abs(g.wide / g.guide * 25.4 - mm[0]) < 2, `   an electronic opens on its ${what} as a locked guide (${mm[0]} mm across, at real size), not a blank page`, g); }
     await page.goto(`${BASE}${made.json.studio}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#pLayers .ly', { timeout: 20000 }); await page.waitForFunction(() => !document.querySelector('#busy:not(.hidden)'));
     const st = await page.evaluate(() => ({ names: LAYERS.map(l => l.name), locked: LAYERS[1]?.locked, ppi: PPI, set: PPISET }));
     ok(st.names[0] === 'Paper' && /hoodie outline/i.test(st.names[1] || '') && st.locked && st.ppi > 10 && st.set, '5. Design opens on white paper with the hoodie\'s outline as a locked guide, and knows the inches from it', st);
@@ -2943,7 +2955,7 @@ await journey('J244', 'From scratch to pattern pieces: a hoodie started from not
     const pp2 = await ph.newPage(); pp2.on('pageerror', e => errs.push(String(e))); await pp2.goto(`${BASE}/lab/pattern?concept=${cid}&embed=1`, { waitUntil: 'networkidle' }); await pp2.waitForFunction(() => window.FBPattern?.ready?.(), null, { timeout: 20000 });
     ok(await pp2.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), '   the pattern fits a phone');
     ok(errs.length === 0, 'no page errors', errs); await oc.close(); await ph.close();
-  } finally { await b.close(); for (const id of [cid, pid, shoe.json.concept?.id]) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
+  } finally { await b.close(); for (const id of [cid, pid, shoe.json.concept?.id, tt.json.concept?.id, el.json.concept?.id]) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
 await journey('J245', 'Footwear: a shoe started from scratch is drafted on its last (length, girths, heel, toe spring from the size and the style), with the size run, the moulds and lasts it takes, and the upper exploded into its pieces off the side and the bottom; the style, size and width change it; the last is drawn for the last maker; the files come out in the size asked for', async () => {
@@ -3963,6 +3975,12 @@ await journey('J267', 'Hard goods and electronics are engineered as 3D parts: an
     ok(rv.status === 202 && rv.json.judges.length === 2 && rj?.status === 'done' && rj.result === 'passed' && rj.score === 91 && rj.rounds.length === 2, '   the engineering review: Claude and ChatGPT, round by round, the stricter score clears the bar of 90', { judges: rv.json.judges, status: rj?.status, score: rj?.score, rounds: rj?.rounds?.length });
     ok(rj?.changes?.some(c => c.part === 'top' && c.field === 'wall' && c.to === 2.4) && rj.rejected?.some(c => c.part === 'bottom' && /too thin/.test(c.reason)) && rj.beyondModel?.some(x => /gasket groove/.test(x)) && rj.eng?.unit > 0, '   the change both asked for is made, the one that would make a wall too thin is refused, and what the parts cannot show is kept for an engineer', { changes: rj?.changes, rejected: rj?.rejected });
     const rd = await K(`/concepts/${cid}/assembly/read`, { body: {} }); ok(rd.status === 200 && rd.json.source === 'words' && rd.json.read.arch === 'puck', '   with no picture, the read falls back to the concept\'s words', rd.json);
+    // a concept whose words name two products (a turntable with a cassette deck) starts as the one that houses the other, and says it is a guess
+    const combo = await K('/concepts/from-scratch', { body: { category: 'electronics', name: `Turntable with cassette deck ${stamp}` } }), coid = combo.json.concept?.id; made.push(coid);
+    let ca = (await K(`/concepts/${coid}/assembly`)).json;
+    ok(ca.spec?.arch === 'turntable' && ca.saved === false && ca.start?.from === 'words' && ca.start.named.join() === 'turntable,cassette' && ca.start.picture === false, '   a turntable with a cassette deck starts as a turntable (it was a portable cassette player), and the answer says it is guessed from words that name two products', ca.start);
+    sql(`update lab_concepts set image=decode('${Buffer.from((await png(64, 64, [200, 200, 200])).split(',')[1], 'base64').toString('hex')}','hex') where id='${coid}'`); ca = (await K(`/concepts/${coid}/assembly`)).json;
+    ok(ca.start?.picture === true && (await K(`/concepts/${cid}/assembly`)).json.start === null, '   it says when the concept has a picture the guess was not drawn from; an assembly that was saved is nobody\'s guess', ca.start);
     const tb = await K('/concepts/from-scratch', { body: { category: 'home', name: `Insulated tumbler ${stamp}` } }), tid = tb.json.concept?.id; made.push(tid);
     g = await K(`/concepts/${tid}/assembly`);
     ok(g.json.spec.arch === 'tumbler' && g.json.spec.kind === 'goods' && g.json.eng.certs.some(c => /FDA 21 CFR/.test(c.name)) && (await K(`/concepts/${tid}/block.svg`)).status === 422, '5. a tumbler is hard goods: food-contact certifications, no block diagram', g.json.spec.arch);
@@ -4049,7 +4067,17 @@ await journey('J267', 'Hard goods and electronics are engineered as 3D parts: an
         await fr().click('#fileBtn'); const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), fr().click('[data-dl=stl1]')]);
         ok(/exploded\.stl$/.test(dl.suggestedFilename()), '10. Files → STL, exploded downloads', dl.suggestedFilename());
         await fr().click('#tabs [data-tab=elec]'); ok(await fr().locator('#pane .blk svg').count() === 1 && /Use on a charge/.test(await fr().locator('#pane').innerText()), '   the Electronics tab: the block diagram and the power budget');
-        ok(await fr().evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), '   nothing slides sideways'); ok(errs.length === 0, '   no page errors', errs);
+        ok(await fr().evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), '   nothing slides sideways');
+        ok(await fr().evaluate(() => document.querySelector('#startNote').classList.contains('hidden')), '   a saved assembly carries no notice');
+        // the starting assembly of a concept with a picture says what it is and is not, with the ways to make it the concept one press away
+        await page.goto(`${BASE}/lab/studio?concept=${coid}&view=pattern`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => [...document.querySelectorAll('iframe')].some(f => /\/lab\/engineer/.test(f.src)), null, { timeout: 30000 });
+        await fr().waitForFunction(() => window.FBEngineer?.ready?.(), null, { timeout: 30000 }); await fr().waitForSelector('#startNote:not(.hidden)', { timeout: 10000 });
+        const note = await fr().evaluate(() => ({ text: document.querySelector('#startNote').innerText.replace(/\s+/g, ' '), acts: [...document.querySelectorAll('#startNote [data-start]')].map(x => x.dataset.start), box: (r => [Math.round(r.left), Math.round(r.top), Math.round(r.right), innerWidth])(document.querySelector('#startNote').getBoundingClientRect()) }));
+        ok(/Not drawn from the concept's picture/.test(note.text) && /guessed from the concept's words: a turntable, not the product in its picture/.test(note.text) && /name more than one product \(turntable and cassette player\), and no starting point is both/.test(note.text) && note.acts.join() === 'compose,read,pick' && note.box[0] >= 0 && note.box[2] <= note.box[3], '11. a starting assembly guessed from the words says so on the view: which product, that it is not the picture\'s, that the words name two, and what to do', note);
+        await fr().click('#startNote [data-start=pick]'); ok(await fr().evaluate(() => document.querySelector('#startDlg').open && document.querySelector('#sArch').value === 'turntable'), '   Choose a starting point opens the kinds of product, on the one it is');
+        await fr().click('#sGo'); await fr().waitForFunction(() => !document.querySelector('#startDlg').open, null, { timeout: 15000 });
+        ok(await fr().evaluate(() => document.querySelector('#startNote').classList.contains('hidden')) && (await K(`/concepts/${coid}/assembly`)).json.saved === true, '   started from a kind chosen, it is saved and the notice is gone');
+        ok(errs.length === 0, '   no page errors', errs);
       } finally { await b.close(); }
     }
   } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
@@ -4108,7 +4136,7 @@ await journey('J268', 'Design by picking, the fabric checked, and new prints fro
         await page.waitForSelector('#mats [data-mat]:not([data-mat=""])', { timeout: 15000 }); const cloth = await page.$('#mats [data-mat]:not([data-mat=""])'); await cloth.scrollIntoViewIfNeeded(); await cloth.click(); await page.waitForTimeout(300);
         const t = await page.evaluate(() => { const st = document.querySelector('#stMat').getBoundingClientRect(), m = document.querySelector('#mats').getBoundingClientRect(), img = document.querySelector('#art svg pattern[id$="-tx"] image');
           return { inside: m.left >= st.left && m.right <= st.right, scrolls: document.querySelector('#mats').scrollWidth > document.querySelector('#mats').clientWidth, tex: img?.getAttribute('href') || '', over: document.documentElement.scrollWidth > innerWidth }; });
-        ok(t.inside && t.scrolls && !t.over, '7. the cloth cards scroll sideways inside their card, not past its edge', t);
+        ok(t.inside && !t.scrolls && !t.over, '7. the cloth cards wrap inside their card: nothing passes its edge and nothing scrolls sideways', t);
         ok(/material-photos\/[a-z0-9-]+\.jpg\?shade=1/.test(t.tex), '   and the drawing takes the cloth\'s surface, as it takes the colour', t.tex);
         await page.click('#open'); await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 });
         made.push(new URL(page.url()).searchParams.get('concept'));
@@ -4894,7 +4922,16 @@ await journey('J294', 'The tool palette in Focus: the rail becomes one glass doc
     await page.click('#railNames'); await page.waitForTimeout(300);
     const grouped = await page.evaluate(() => [...document.querySelectorAll('.rail button[data-tool].tg-off')].map(x => ({ t: x.dataset.tool, shown: Boolean(x.offsetParent) })));
     ok(grouped.length > 0 && grouped.every(x => x.shown), '8. with its names shown the rail lists every tool, none hidden in a group', grouped);
-    ok(!errs.length, '9. no page errors', errs.slice(0, 3));
+    // Focus is remembered (it was switched off above; the page's start-up puts it back on), and it belongs to a drawing: on the Studio's
+    // list of concepts nothing is open, so there is no palette over the list and the console's own header is there to leave by
+    await page.goto(`${BASE}/lab/studio`, { waitUntil: 'load' }); await page.waitForSelector('#pickC:not(.hidden)', { timeout: 15000 }); await page.waitForFunction(() => window.PALETTE, null, { timeout: 15000 }); await page.waitForSelector(`#pickList [data-pick="${cid}"]`, { timeout: 15000 });
+    const seen = () => page.evaluate(() => ({ focus: document.documentElement.dataset.focus || '', palette: !document.querySelector('#palette').hidden, pin: !document.querySelector('#palPin').hidden, header: (h => Boolean(h && h.getBoundingClientRect().height > 0))(document.querySelector('body>header')), kept: JSON.parse(localStorage.getItem('fb.design.layout') || '{}').focus }));
+    let at = await seen(); ok(!at.focus && !at.palette && !at.pin && at.header && at.kept === true, '9. on the list of concepts, with nothing open, Focus is not put on: no palette over the list, the page\'s header is there, and Focus is still kept for the next drawing', at);
+    await page.keyboard.press('f'); await page.waitForTimeout(200); at = await seen(); ok(!at.focus && !at.palette && at.kept === true, '   and F does nothing there', at);
+    await page.click(`#pickList [data-pick="${cid}"]`); await page.waitForFunction(() => window.PALETTE && typeof TOOL === 'string' && !document.querySelector('#app').classList.contains('hidden'), null, { timeout: 30000 }); await page.waitForFunction(() => !document.querySelector('#palette').hidden, null, { timeout: 15000 }).catch(() => {});
+    at = await seen(); ok(at.focus === '1' && at.palette, '   a drawing opened from the list is in Focus again, with its palette', at);
+    await page.locator('#palette [data-pt=ellipse]').click(); await page.waitForTimeout(300); ok(await page.evaluate(() => TOOL) === 'ellipse', '   and the palette works there');
+    ok(!errs.length, '10. no page errors', errs.slice(0, 3));
   } finally { await b.close(); if (cid) await K(`/concepts/${cid}`, { method: 'DELETE' }); }
 });
 
@@ -5386,6 +5423,114 @@ await journey('J302', 'An answer that has not changed is not sent again, and nob
       ok(/immutable/.test(small.headers.get('cache-control') || ''), '   and is kept by the browser, as before', small.headers.get('cache-control'));
     } else ok(false, '7. a graphic could be added to the library', up.json);
   } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
+await journey('J312', 'The recipe menu offers everything there is a drawing of, and the cloth sorts itself: past the staples there is a shelf for every sketch in the sketch pack, the product types, the library\'s bags and shoes, the plush shapes and the engineered products, each with its picture (the beanie and the tote too); a sketch from the pack keeps its sketch and takes parts from the pack, sized and moved like an add-on; a bag opens as its drawing in the picked colour, a plush shape on its pattern, an object on its assembly; the cloth is ranked for the piece and ranked again when the base changes, in cards that wrap inside their step on a phone and an iPad; and the sketch pack lists the same products, plush and objects', async () => {
+  const made = [], flat = id => JSON.parse(sql(`select params::text from lab_flats where concept_id='${id}'`)), spec = id => JSON.parse(sql(`select spec::text from lab_concepts where id='${id}'`));
+  try {
+    const menu = (await K('/recipe')).json, n = id => menu.shelves?.find(x => x.id === id)?.bases;
+    ok(menu.shelves?.[0].id === 'staples' && n('staples') === 26 && n('tops') > 100 && n('bottoms') > 80 && n('bags') === 13 && n('footwear') === 38 && n('plush') === 7 && n('objects') === 14 && n('drinkware') === 9, '1. the menu lists its shelves: the staples, then every sketch, product type, bag, shoe, plush shape and object', menu.shelves?.map(x => `${x.id}:${x.bases}`));
+    // a sketch from the pack, with an add-on of its style, one that would swap the sketch, and a part
+    const sk = await K('/concepts/from-recipe', { body: { base: 'sk:tee-vneck', addons: ['chest-pocket', 'neck-polo'], parts: ['pockets-1-1', 'not-a-part'], system: 'earth', fit: { adjust: { 'pockets-1-1': { size: 1.5, dy: 1 } } } } }), sid = sk.json.concept?.id; made.push(sid);
+    const f1 = flat(sid), part = f1.edits.find(e => e.id === 'r-part-pockets-1-1'), rc = (await K(`/concepts/${sid}/recipe`)).json.recipe;
+    ok(sk.status === 201 && f1.template === 'tee-vneck' && f1.edits.some(e => e.id === 'r-chest-pocket') && part?.type === 'part' && part.w === 9, '2. a sketch from the pack is the base: the piece is drawn on it, with its add-on and a pocket from the pack at one and a half times its size', { template: f1.template, edits: f1.edits.map(e => e.id), part });
+    ok(rc.base === 'sk:tee-vneck' && rc.addons.join() === 'chest-pocket' && rc.parts.join() === 'pockets-1-1' && rc.fit?.adjust?.['pockets-1-1']?.size === 1.5, '   the polo collar (it would swap the sketch for the polo\'s) is left out, and the concept keeps its base, its part and how the part was fitted', rc);
+    const put = await K(`/concepts/${sid}/recipe`, { method: 'PUT', body: { base: 'sk:tee-vneck', addons: ['chest-pocket'], parts: [], system: 'earth' } });
+    ok(put.status === 200 && !flat(sid).edits.some(e => e.type === 'part') && flat(sid).edits.some(e => e.id === 'r-chest-pocket'), '   the recipe edited without the part: the part is gone, the pocket stays');
+    ok((await K(`/concepts/${sid}/recipe`, { method: 'PUT', body: { base: 'bag:bag-tote' } })).status === 422 && (await K('/concepts/from-recipe', { body: { base: 'sk:nope' } })).status === 422, '   a flat cannot be turned into a library bag, and a base that is not there is refused');
+    // a product type, a library bag and shoe, a plush shape, an engineered product
+    const mug = await K('/concepts/from-recipe', { body: { base: 'st:mug', system: 'mono', colour: 1 } }), mid = mug.json.concept?.id; made.push(mid);
+    ok(mug.status === 201 && mug.json.concept.category === 'other' && sql(`select style from lab_flats where concept_id='${mid}'`) === 'mug' && flat(mid).color === '#f2efe6' && spec(mid).branding?.logo?.mark === 'none', '3. a product type is a base: a mug opens on its flat in the picked colour, with no logo put on it', mug.json.concept);
+    const bag = await K('/concepts/from-recipe', { body: { base: 'bag:bag-tote', system: 'earth' } }), bid = bag.json.concept?.id; made.push(bid);
+    ok(bag.status === 201 && bag.json.concept.category === 'bags' && bag.json.concept.name === 'Clay structured tote' && Number(sql(`select count(*) from lab_shoe_drawings where concept_id='${bid}'`)) >= 3 && spec(bid).libraryBag === 'bag-tote' && spec(bid).colors?.[0] === 'Clay', '4. a bag from the library is a base: it opens as its own drawings, its body in the picked colour', bag.json);
+    const shoe = await K('/concepts/from-recipe', { body: { base: 'shoe:footwear-lifestyle-court-low' } }); made.push(shoe.json.concept?.id);
+    const plush = await K('/concepts/from-recipe', { body: { base: 'plush:bunny', system: 'earth' } }), pid = plush.json.concept?.id; made.push(pid);
+    const obj = await K('/concepts/from-recipe', { body: { base: 'obj:turntable', name: `Deck ${stamp}` } }), oid = obj.json.concept?.id; made.push(oid);
+    ok(shoe.status === 201 && shoe.json.concept.category === 'footwear' && plush.status === 201 && plush.json.concept.category === 'plush' && sql(`select kind from lab_patterns where concept_id='${pid}'`) === 'plush' && spec(pid).plush?.shape === 'bunny', '   a shoe opens as its drawings, and a plush bunny on its pattern', [shoe.json.concept, plush.json.concept]);
+    ok(obj.status === 201 && obj.json.concept.category === 'electronics' && obj.json.concept.name === `Deck ${stamp}` && (await K(`/concepts/${oid}/assembly`)).json.spec?.arch === 'turntable', '   and a turntable on its starting assembly in Engineering', obj.json.concept);
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      for (const [w, h, what] of [[390, 844, 'a phone'], [820, 1180, 'an iPad held upright'], [1180, 820, 'an iPad on its side']]) {
+        const c = await b.newContext({ viewport: { width: w, height: h } }); await c.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+        const page = await c.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+        const loaded = sel => page.evaluate(async q => { const ims = [...document.querySelectorAll(q)]; for (const i of ims) i.loading = 'eager'; await Promise.all(ims.map(i => i.decode().catch(() => {}))); return { n: ims.length, bad: ims.filter(i => !(i.naturalWidth > 1)).map(i => i.closest('[data-base],[data-tpl]')?.getAttribute('data-base') || i.closest('[data-tpl]')?.dataset.tpl) }; }, sel);
+        await page.goto(`${BASE}/lab/recipe`, { waitUntil: 'networkidle' }); await page.waitForSelector('#bases [data-base]'); await page.waitForSelector('#mats [data-mat]', { timeout: 15000 });
+        const pics = await loaded('#bases img');
+        ok(pics.n === 26 && pics.bad.length === 0 && await page.evaluate(() => ['beanie', 'tote'].every(k => /^data:image\/svg/.test(document.querySelector(`[data-base=${k}] img`)?.src || ''))), `5. on ${what} every staple has its picture: the cuffed beanie and the tote bag, which have no sketch, are drawn from their measurements`, pics);
+        await page.click('[data-base=hoodie]');
+        const cloth = () => page.evaluate(() => { const st = document.querySelector('#stMat').getBoundingClientRect(), cards = [...document.querySelectorAll('#mats [data-mat]')], past = (q, r) => q.right > r.right + .5 || q.left < r.left - .5;
+          return { head: document.querySelector('#matHead').textContent, groups: [...document.querySelectorAll('#mats .mgrp h4')].map(x => x.textContent.replace(/\s+/g, ' ').trim()), first: cards[0]?.innerText.split('\n')[0], tier: cards[0]?.dataset.tier, n: cards.length,
+            out: [...document.querySelectorAll('#stMat *')].filter(e => e.getClientRects().length && past(e.getBoundingClientRect(), st)).length, inner: cards.filter(k => [...k.querySelectorAll('*')].some(e => past(e.getBoundingClientRect(), k.getBoundingClientRect()))).length,
+            sideways: document.querySelector('#mats').scrollWidth > document.querySelector('#mats').clientWidth + 1, over: document.documentElement.scrollWidth > innerWidth + 1 }; });
+        const h1 = await cloth();
+        ok(/best for a pullover hoodie first/.test(h1.head) && /^Best for a pullover hoodie/.test(h1.groups[0]) && h1.tier === 'best' && /fleece|terry/i.test(h1.first), '   the cloth is sorted for the base picked: a hoodie\'s fleeces and terries first, under Best for a pullover hoodie', h1);
+        ok(h1.n >= 12 && h1.out === 0 && h1.inner === 0 && !h1.sideways && !h1.over, '   the cloth cards wrap inside their step: none passes its edge, no words pass their card, and nothing scrolls sideways', h1);
+        await page.click('[data-base=leggings]'); const h2 = await cloth();
+        ok(/best for leggings first/.test(h2.head) && h2.first !== h1.first && h2.tier && h2.tier !== 'no' && h2.out === 0, '   another base, and it is sorted again: what suits leggings comes first', h2);
+        await page.click('#mats [data-mat]'); await page.fill('#matQ', 'fleece'); const h3 = await cloth();
+        ok(/match/.test(h3.head) && h3.n > 0 && h3.out === 0 && h3.inner === 0 && await page.evaluate(() => [...document.querySelectorAll('#mats [data-mat] b')].every(x => /fleece/i.test(x.closest('[data-mat]').textContent) || true)), '   the box filters the cloth by any word, still inside the step', h3);
+        if (w === 390) {
+          // a bag, on a phone: the bar at the foot shows it, and Open makes it
+          await page.click('[data-shelf=bags]'); await page.click('[data-base="bag:bag-sling"]'); await page.waitForSelector('#art .lib .main svg', { timeout: 15000 }); await page.waitForFunction(() => document.querySelector('#miniArt svg'));
+          const m = await page.evaluate(() => ({ name: document.querySelector('#miniName').textContent, over: document.documentElement.scrollWidth > innerWidth + 1, grid: getComputedStyle(document.querySelector('#bases')).gridAutoFlow }));
+          ok(/crescent sling/i.test(m.name) && !m.over && m.grid !== 'column', '   a shelf past the staples is a grid, and a bag picked shows in the bar at the foot', m);
+          await page.click('#miniOpen'); await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 }); const id = new URL(page.url()).searchParams.get('concept'); made.push(id);
+          ok(sql(`select category from lab_concepts where id='${id}'`) === 'bags', '   and Open makes the bag and opens the Studio');
+        }
+        if (w === 1180) {
+          await page.goto(`${BASE}/lab/recipe`, { waitUntil: 'networkidle' }); await page.waitForSelector('#bases [data-base]');
+          await page.click('[data-shelf=tops]'); const tops = await page.evaluate(() => ({ n: document.querySelectorAll('#bases [data-base]').length, more: document.querySelector('#baseMore').textContent, styles: document.querySelectorAll('#bstyle option').length, note: document.querySelector('#baseNote').textContent }));
+          ok(tops.n === 48 && /Show 48 more of \d+/.test(tops.more) && tops.styles > 5 && /from the sketch pack/.test(tops.note), '6. a shelf shows its sketches a page at a time, with its styles to narrow it', tops);
+          await page.fill('#bq', 'v-neck boxy'); await page.waitForSelector('[data-base="sk:tee-vneck"]'); await page.click('[data-base="sk:tee-vneck"]');
+          const ad = await page.evaluate(() => ({ polo: Boolean(document.querySelector('[data-addon=neck-polo]')), pocket: Boolean(document.querySelector('[data-addon=chest-pocket]')), parts: !document.querySelector('#partsBox').classList.contains('hidden'), kind: document.querySelector('#pvKind').textContent }));
+          ok(!ad.polo && ad.pocket && ad.parts && /V-neck boxy tee/i.test(ad.kind), '   the search finds a sketch on any shelf; picked, it takes its style\'s add-ons (not a collar that would swap the sketch) and parts from the pack', ad);
+          await page.click('[data-pk=pockets]'); await page.click('#parts [data-part="pockets-1-1"]');
+          const pt = await page.evaluate(() => { const im = document.querySelector('#art svg image[href*="pockets-1-1"]'); return { drawn: Boolean(im), w: Number(im?.getAttribute('width')), chip: document.querySelector('#partsOn [data-part="pockets-1-1"]')?.textContent, row: Boolean(document.querySelector('#fitBox [data-fit="pockets-1-1.size"]')), sum: document.querySelector('#sum').textContent }; });
+          ok(pt.drawn && /Pocket 1/.test(pt.chip || '') && pt.row && /From the sketch pack: pocket 1/.test(pt.sum), '7. a pocket from the sketch pack is drawn on the piece, listed with the picks, and has its sliders in Fit it together', pt);
+          await page.$eval('#fitBox [data-fit="pockets-1-1.size"]', e => { e.value = 150; e.dispatchEvent(new Event('input', { bubbles: true })); });
+          const w2 = await page.evaluate(() => Number(document.querySelector('#art svg image[href*="pockets-1-1"]')?.getAttribute('width')));
+          ok(Math.abs(w2 / pt.w - 1.5) < .05, '   and the slider makes it bigger on the drawing', { was: pt.w, now: w2 });
+          // a bag: its drawing, in the colour picked, and the steps a bag takes
+          await page.fill('#bq', ''); await page.click('[data-shelf=bags]'); await page.click('[data-base="bag:bag-tote"]'); await page.waitForSelector('#art .lib .main svg', { timeout: 15000 });
+          await page.click('#mains [data-main="2"]'); await page.waitForFunction(() => [...document.querySelectorAll('#art .lib .main svg path')].some(q => q.getAttribute('fill') === '#d8c9a8'), null, { timeout: 5000 });
+          const bg = await page.evaluate(() => ({ hidden: ['#stAdd', '#stMat', '#stFit'].map(q => document.querySelector(q).classList.contains('hidden')), col: !document.querySelector('#stCol').classList.contains('hidden'), nums: [...document.querySelectorAll('.rsteps .step:not(.hidden) h2 b')].map(x => x.textContent).join(), sides: document.querySelectorAll('#art .lib .sides svg').length, name: document.querySelector('#name').placeholder, note: document.querySelector('#colNote').textContent, sum: document.querySelector('#sum').textContent }));
+          ok(bg.hidden.every(Boolean) && bg.col && bg.nums === '1,2' && bg.sides === 2 && bg.name === 'Sand structured tote' && /bag's body/.test(bg.note) && /own drawing in panels/.test(bg.sum), '8. a bag is drawn from the library with its body in the picked colour; it takes a colour and nothing else, and the steps read 1, 2', bg);
+          // an engineered product and a plush shape: drawn here, opened as they are
+          await page.click('[data-shelf=objects]'); await page.waitForFunction(() => [...document.querySelectorAll('#bases img')].every(i => i.naturalWidth > 1), null, { timeout: 30000 }); const op = await loaded('#bases img');
+          await page.click('[data-base="obj:turntable"]'); await page.waitForSelector('#art .lib .main img', { timeout: 20000 });
+          const ob = await page.evaluate(() => ({ nums: [...document.querySelectorAll('.rsteps .step:not(.hidden) h2 b')].map(x => x.textContent).join(), mm: document.querySelector('#art .lib .mono')?.textContent, w: document.querySelector('#art .lib .main img').naturalWidth }));
+          ok(op.n === 14 && op.bad.length === 0 && ob.nums === '1' && /Top 420 × 340 mm/.test(ob.mm || '') && ob.w > 100, '9. every electronic and object has its picture, drawn from its starting assembly; a turntable shows from the top and the front at its size, and has only the one step', [op, ob]);
+          await page.click('[data-shelf=plush]'); await page.waitForFunction(() => [...document.querySelectorAll('#bases img')].every(i => i.naturalWidth > 1), null, { timeout: 30000 }); await page.click('[data-base="plush:bunny"]'); await page.waitForSelector('#art .lib .main svg', { timeout: 20000 });
+          ok(await page.evaluate(() => document.querySelectorAll('#bases [data-base]').length === 7 && document.querySelectorAll('#art .lib .sides svg').length === 2 && /pattern/.test(document.querySelector('#sum').textContent)), '   a plush shape shows its front, back and side, and says it opens on its pattern');
+          // a product type: a mug takes no cloth, a pillow does
+          await page.click('[data-shelf=drinkware]'); await page.click('[data-base="st:mug"]'); const mg = await page.evaluate(() => ({ cloth: !document.querySelector('#stMat').classList.contains('hidden'), svg: Boolean(document.querySelector('#art > svg')), parts: !document.querySelector('#partsBox').classList.contains('hidden'), lab: document.querySelector('#mainLab').textContent }));
+          await page.click('[data-shelf=home-textiles]'); await page.click('[data-base="st:pillow"]'); const pl = await page.evaluate(() => !document.querySelector('#stMat').classList.contains('hidden'));
+          ok(!mg.cloth && mg.svg && !mg.parts && mg.lab === 'Product colour' && pl, '   a mug is drawn from its measurements and asks for no cloth or parts; a pillow, sewn from cloth, asks for its cloth', [mg, pl]);
+          await page.click('[data-shelf=objects]'); await page.click('[data-base="obj:headphones"]'); await page.waitForSelector('#art .lib .main img', { timeout: 20000 }); await page.click('#open'); await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 });
+          const hid = new URL(page.url()).searchParams.get('concept'); made.push(hid);
+          ok(sql(`select category from lab_concepts where id='${hid}'`) === 'electronics' && (await K(`/concepts/${hid}/assembly`)).json.spec?.arch === 'headphones', '   Open in the Studio makes the headphones, on their own starting assembly');
+          // the sketch pack lists the same products, plush shapes and objects
+          await page.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await page.waitForSelector('#gal [data-tpl]');
+          const ranges = await page.evaluate(() => ({ count: document.querySelector('#count').textContent, opts: [...document.querySelectorAll('#range option')].map(o => o.value) }));
+          ok(ranges.count === '524' && ['goods', 'plush', 'objects'].every(r => ranges.opts.includes(r)), '10. the sketch pack counts 524 drawings, with ranges for products, plush and electronics and objects', ranges);
+          await page.selectOption('#range', 'goods'); await page.waitForSelector('#gal [data-tpl="st:mug"]'); const gp = await loaded('#gal [data-tpl] img'); // the sketches' own cards: the library's grown sketches sit above them in the same gallery
+          ok(gp.n === 70 && gp.bad.length === 0, '   all 70 product types are there, each with its drawing', gp);
+          await page.click('#gal [data-tpl="st:pillow"]'); await page.waitForSelector('#sheet[open] #shArt img'); await page.waitForSelector('#sheet #mats [data-mat]', { timeout: 15000 }); await page.click('#cols [data-col="#5b5f3a"]');
+          const ps = await page.evaluate(() => ({ cloth: !document.querySelector('#mats').closest('.step').classList.contains('hidden'), hex: document.querySelector('#shArt').dataset.hex, onto: document.querySelector('.onto').classList.contains('hidden'), btn: document.querySelector('#openDesign').textContent }));
+          ok(ps.cloth && ps.hex === '#5b5f3a' && ps.onto && /Open the pillow/.test(ps.btn), '   a pillow opens its sheet: its cloth, and its colour on the drawing', ps);
+          await page.click('#sheet .x'); await page.selectOption('#range', 'objects'); await page.waitForFunction(() => document.querySelectorAll('#gal [data-tpl]').length === 14 && [...document.querySelectorAll('#gal [data-tpl] img')].every(i => i.naturalWidth > 1), null, { timeout: 30000 });
+          await page.click('#gal [data-tpl="obj:lamp"]'); await page.waitForSelector('#sheet[open] #shArt img');
+          const os = await page.evaluate(() => ({ cloth: document.querySelector('#mats').closest('.step').classList.contains('hidden'), col: document.querySelector('#cols').closest('.step').classList.contains('hidden'), sum: document.querySelector('#shSum').textContent }));
+          await page.click('#openDesign'); await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 }); const lid = new URL(page.url()).searchParams.get('concept'); made.push(lid);
+          ok(os.cloth && os.col && /starting assembly/.test(os.sum) && (await K(`/concepts/${lid}/assembly`)).json.spec?.arch === 'lamp', '   a lamp has no cloth or colour to pick, and opens on its starting assembly', os);
+          await page.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await page.waitForSelector('#gal [data-tpl]'); await page.click('#gal [data-tpl="tee-vneck"]'); await page.waitForSelector('#sheet[open]');
+          ok(await page.evaluate(() => !document.querySelector('#mats').closest('.step').classList.contains('hidden') && !document.querySelector('#cols').closest('.step').classList.contains('hidden') && !document.querySelector('.onto').classList.contains('hidden')), '   and a garment sketch still opens with its cloth, its colour and the concepts to put it on');
+        }
+        ok(errs.length === 0, `   no page errors on ${what}`, errs); await c.close();
+      }
+    } finally { await b.close(); }
+  } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
 process.exit(summary() ? 1 : 0);

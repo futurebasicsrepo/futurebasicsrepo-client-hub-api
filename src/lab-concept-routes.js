@@ -15,7 +15,7 @@ import { generateConcepts, artworkFiles, renderConcept, finishConcept, aiOpinion
 import { cleanPin } from './lab-share-routes.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 import { STYLES as FLAT_STYLES } from './lab-flats.js';
-import { RECIPE_BASES, RECIPE_ADDONS, RECIPE_GROUPS, COLOUR_SYSTEMS, addonsFor, baseOf, cookRecipe, systemOf } from './lab-recipe.js';
+import { RECIPE_BASES, RECIPE_ADDONS, RECIPE_GROUPS, COLOUR_SYSTEMS, addonsFor, baseOf, cookRecipe, systemOf, RECIPE_SHELVES, shelfBases } from './lab-recipe.js';
 import { cleanColourways } from './lab-materials.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -161,10 +161,10 @@ export function registerLabConceptRoutes(app, d) {
 
   // the recipe menu (/lab/recipe): a base, its add-ons and a colour system → a concept with its flats already measured, drawn and coloured
   // (src/lab-recipe.js), and the colour system as its colourways; no AI, so nothing is charged
-  app.get('/v1/lab/recipe', { preHandler: pre }, async () => ({ bases: RECIPE_BASES.map(b => ({ ...b, styleLabel: FLAT_STYLES[b.style]?.label || b.style, category: FLAT_STYLES[b.style]?.category || 'other', addons: addonsFor(b).map(a => a.id) })),
+  app.get('/v1/lab/recipe', { preHandler: pre }, async () => ({ shelves: RECIPE_SHELVES.map(s => ({ ...s, bases: shelfBases(s.id).length })), bases: RECIPE_BASES.map(b => ({ ...b, styleLabel: FLAT_STYLES[b.style]?.label || b.style, category: FLAT_STYLES[b.style]?.category || 'other', addons: addonsFor(b).map(a => a.id) })),
     addons: RECIPE_ADDONS.map(({ detail, shown, ...a }) => ({ ...a, detail: Boolean(detail) })), groups: RECIPE_GROUPS, systems: COLOUR_SYSTEMS }));
   // what the concept keeps of its recipe, so the menu can open on it again (Edit recipe)
-  const recipeOf = (b, r) => ({ base: baseOf(b.base).id, addons: r.addons, system: typeof b.system === 'string' ? b.system : b.system ? 'own' : null, colour: r.colourIndex, ...(Object.keys(r.fit.m).length || Object.keys(r.fit.adjust).length ? { fit: r.fit } : {}), ...(b.system && typeof b.system === 'object' ? { colours: r.colourways.length ? systemOf(b.system)?.colours || [] : [] } : {}) });
+  const recipeOf = (b, r) => ({ base: baseOf(b.base).id, addons: r.addons, ...(r.parts.length ? { parts: r.parts } : {}), system: typeof b.system === 'string' ? b.system : b.system ? 'own' : null, colour: r.colourIndex, ...(Object.keys(r.fit.m).length || Object.keys(r.fit.adjust).length ? { fit: r.fit } : {}), ...(b.system && typeof b.system === 'object' ? { colours: r.colourways.length ? systemOf(b.system)?.colours || [] : [] } : {}) });
   app.get('/v1/lab/concepts/:id/recipe', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const c = (await pool.query('select id, name, status, spec from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!c) return bad(reply, 'Not found', 404);
     if (!c.spec?.recipe) return bad(reply, 'This concept was not made from the recipe menu', 404);
@@ -175,7 +175,8 @@ export function registerLabConceptRoutes(app, d) {
   app.put('/v1/lab/concepts/:id/recipe', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const c = (await pool.query('select id, name, status, spec from lab_concepts where id=$1', [req.params.id])).rows[0]; if (!c) return bad(reply, 'Not found', 404);
     if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack. Change it there.', 409);
-    const b = req.body || {}, r = cookRecipe({ base: b.base, addons: b.addons, system: b.system || null, colour: b.colour, name: clip(b.name, 120), fit: b.fit || null }); if (r.error) return bad(reply, r.error);
+    const b = req.body || {}, r = cookRecipe({ base: b.base, addons: b.addons, parts: b.parts, system: b.system || null, colour: b.colour, name: clip(b.name, 120), fit: b.fit || null }); if (r.error) return bad(reply, r.error);
+    if (r.start) return bad(reply, 'That base opens as its own drawing. Start a new piece from it.');
     const f = (await pool.query('select params, placements from lab_flats where concept_id=$1', [c.id])).rows[0];
     const kept = (f?.params?.edits || []).filter(e => !String(e.id || '').startsWith('r-')), placements = f?.placements || [];
     const params = { ...r.params, edits: [...r.params.edits, ...kept], ...(f?.params?.allover ? { allover: f.params.allover } : {}) }, colourways = cleanColourways(r.colourways);
@@ -185,12 +186,24 @@ export function registerLabConceptRoutes(app, d) {
     return { concept: await one(c.id), studio: `/lab/studio?concept=${c.id}&view=front` };
   });
   app.post('/v1/lab/concepts/from-recipe', { preHandler: pre }, async (req, reply) => {
-    const b = req.body || {}, r = cookRecipe({ base: b.base, addons: b.addons, system: b.system || null, colour: b.colour, name: clip(b.name, 120), fit: b.fit || null }); if (r.error) return bad(reply, r.error);
+    const b = req.body || {}, r = cookRecipe({ base: b.base, addons: b.addons, parts: b.parts, system: b.system || null, colour: b.colour, name: clip(b.name, 120), fit: b.fit || null }); if (r.error) return bad(reply, r.error);
+    // from a piece on a line plan (the sketch pack opened for that piece): the concept made is that piece's
+    const line = b.lineId ? await planLineOf(pool, b.lineId, own(req)) : null; if (b.lineId && !line) return bad(reply, 'That piece is not on a line plan here', 404);
+    if (r.start) {
+      // a base that is not a flat (a library bag or shoe, a plush shape, an engineered product): started by the route that already makes that
+      // kind of concept, as the same person (their room, their access), so there is one way each kind is made (as the catalogue does)
+      const made = await app.inject({ method: 'POST', url: r.start.via, headers: { 'content-type': 'application/json', ...(req.headers?.authorization ? { authorization: req.headers.authorization } : {}), ...(req.headers?.cookie ? { cookie: req.headers.cookie } : {}) }, payload: { ...r.start.body, ...(line ? { lineId: b.lineId } : {}) } });
+      let out = null; try { out = made.json(); } catch { out = null; }
+      if (made.statusCode !== 201 || !out?.concept?.id) return bad(reply, out?.error || 'The piece could not be opened in the Studio', made.statusCode >= 400 ? made.statusCode : 502);
+      return reply.code(201).send({ concept: await one(out.concept.id), studio: out.studio });
+    }
     const colourways = cleanColourways(r.colourways);
     const spec = { description: `Made from the recipe menu. ${r.words}`, silhouette: r.silhouette, fabric: '', fit: r.params.fit, details: r.details, trims: '', colors: colourways.map(c => c.name), ...(r.template ? { template: r.template } : {}), ...(r.colour ? { color: r.colour.hex } : {}), ...(colourways.length ? { colourways } : {}),
+      ...(FLAT_STYLES[r.style]?.kind === 'goods' ? { style: r.style, branding: { logo: { mark: 'none' } } } : {}), // a product type starts bare, as it does from the catalogue: no logo is put on a mug for its maker
       recipe: recipeOf(b, r) };
     const c = (await pool.query(`insert into lab_concepts(name, category, role, spec, twist, created_by, client_id) values($1,$2,'core',$3,'',$4,$5) returning id`, [r.name, r.category, spec, actorOf(req), own(req)])).rows[0];
     await pool.query(`insert into lab_flats(concept_id, style, params, placements, check_result, checked_at, updated_by) values($1,$2,$3,'[]',$4,now(),$5)`, [c.id, r.style, r.params, { findings: {}, summary: { fail: 0, warn: 0, placements: 0 }, at: new Date().toISOString() }, actorOf(req)]);
+    if (line) await putOnLine(pool, c.id, line);
     return reply.code(201).send({ concept: await one(c.id), studio: `/lab/studio?concept=${c.id}&view=front${r.template ? `&template=${encodeURIComponent(r.template)}` : ''}` });
   });
 
