@@ -4,7 +4,7 @@ A brief for making short promotional videos (15 to 60 seconds) about the Future 
 someone with no other context can plan, script and cut a video that is accurate. Every claim here is true of the product today (November
 2026). If a feature is not in this brief, check `docs/design-lab.md` and `docs/design-to-factory.md` before showing or promising it.
 
-**Keep it current.** When a tool, a price or a number below changes, update this file in the same PR. The Design Lab card in the client hub (the reel, `LAB_REEL` in `src/client.html`) quotes the same numbers (26 bases, 42 details, 8 colour systems, 382 flat sketches across 24 styles, 12 leathers, 14 vegan leathers): change them there too.
+**Keep it current.** When a tool, a price or a number below changes, update this file in the same PR. The Design Lab card in the client hub (the reel, `LAB_REEL` in `src/client.html`) quotes the same numbers (548 bases of which 26 are staples, 42 details, 203 parts, 8 colour systems, 382 flat sketches across 24 styles, 12 leathers, 14 vegan leathers): change them there too.
 
 ---
 
@@ -40,15 +40,19 @@ The ones to lead with are first.
 ### Recipe menu (lead with this)
 `/lab/recipe`. Design by picking, the way you would order food.
 
-1. **Pick a base:** 26 staples at their usual fit. These are the tee (classic, boxy, oversized), long-sleeve, tank, polo, crewneck, hoodie,
-   zip hoodie, button-up and camp shirts, zip jacket, vest, coat, straight and wide trousers, shorts, leggings, dress, skirt, cami, bodysuit,
-   six-panel cap, bucket hat, beanie and tote.
-2. **Add details** (42 add-ons): pockets, zips, plackets, drawcords, collars (polo, johnny, rugby, henley, V-neck, button-down, camp, stand,
+1. **Pick a base:** 548 in all, on 20 shelves, with a search box over every one. First the 26 staples at their usual fit: the tee (classic,
+   boxy, oversized), long-sleeve, tank, polo, crewneck, hoodie, zip hoodie, button-up and camp shirts, zip jacket, vest, coat, straight and
+   wide trousers, shorts, leggings, dress, skirt, cami, bodysuit, six-panel cap, bucket hat, beanie and tote. Then a shelf for everything
+   else there is a drawing of: all 382 sketches from the sketch pack (tops, outerwear, bottoms, dresses, swim and underwear, headwear), the
+   11 library bags, the 38 library shoes, 70 product types (drinkware, wall art, home textiles, tech, paper goods, pets, sports, automotive,
+   accessories), 7 plush shapes and 14 electronics and objects. Every card has its picture.
+2. **Add details** (42 add-ons, plus the sketch pack's 203 parts: any pocket, zip, collar, trim or button, up to 8 on a piece): pockets, zips, plackets, drawcords, collars (polo, johnny, rugby, henley, V-neck, button-down, camp, stand,
    shearling, thin crew, mock neck, turtleneck…), pleats, cropped (with any collar: a cropped shearling aviator), contrast pockets, and wash &
    wear (garment dyed, vintage stone wash, acid wash, sun faded, dirty vintage tint, worn edges, distressed, heavily destroyed).
 3. **Pick a colour system** (8 ready-made, or four colours of your own). The first colour is the garment, the next is the stitching, and
    every colour becomes a colourway.
-4. **Optional:** pick the cloth. The drawing takes on its surface (denim reads as denim, sherpa as sherpa) in the colour you picked. It comes with a fabric check that flags cloth that does not suit the style. You can also fit it together
+4. **Optional:** pick the cloth. It is sorted for the piece: the best cloth for a hoodie comes first when a hoodie is picked, and it sorts
+   again when the base changes. The drawing takes on its surface (denim reads as denim, sherpa as sherpa) in the colour you picked. It comes with a fabric check that flags cloth that does not suit the style. You can also fit it together
    with sliders for body width, length, and the size and place of each pocket.
 5. **Open in the Studio:** the concept, its flats and its colourways are made in one go.
 
@@ -99,7 +103,8 @@ already has show as "on the sketch".
   own picks.
 
 ### Sketch pack
-`/lab/sketches`. 382 flat sketches (men's, women's and accessories) and 203 parts: pockets, zips, collars, trims and buttons. Pick one and
+`/lab/sketches`. 524 drawings: 382 flat sketches (men's, women's and accessories), 11 bags, 38 shoes, 70 product types, 7 plush shapes,
+14 electronics and objects, the beanie and the tote; and 203 parts: pockets, zips, collars, trims and buttons. Pick one and
 open it in the Studio with your material and colour already applied. The cloth is ranked for the sketch you picked: for a tee, the best tee jerseys come first, then what also suits it,
 then what works with changes, with the cloth that does not suit it folded away. Type to filter by any word or weight ("organic", "180").
 

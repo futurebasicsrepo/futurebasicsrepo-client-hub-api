@@ -27,7 +27,8 @@ h2 b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;bo
 .rsteps{display:grid;gap:16px;min-width:0}
 /* on a phone: the bases scroll sideways, and a bar at the foot shows the piece as it is picked, with Open in the Studio to hand */
 .mini{display:none}
-@media(max-width:920px){.bases{grid-auto-flow:column;grid-auto-columns:132px;grid-template-columns:none;overflow-x:auto;scroll-snap-type:x mandatory;padding:10px 10px 14px;margin:-8px -8px -6px;scroll-padding:10px}.bases button{scroll-snap-align:start}
+@media(max-width:920px){.bases[data-shelf=staples]{grid-auto-flow:column;grid-auto-columns:132px;grid-template-columns:none;overflow-x:auto;scroll-snap-type:x mandatory;padding:10px 10px 14px;margin:-8px -8px -6px;scroll-padding:10px}.bases[data-shelf=staples] button{scroll-snap-align:start}
+  .bases{grid-template-columns:repeat(auto-fill,minmax(104px,1fr))}
   .mini{display:flex;position:fixed;left:96px;right:12px;bottom:12px;z-index:30;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 30px rgba(20,20,22,.16);padding:8px;gap:10px;align-items:center}
   .mini .th{width:58px;height:58px;flex:none;border-radius:10px;background:var(--fog);position:relative;overflow:hidden}.mini .th>svg{position:absolute;inset:6%;width:88%;height:88%}.mini .th>svg>rect:first-child{fill:transparent}
   .mini .tx{flex:1;min-width:0;font-size:12.5px;line-height:1.3}.mini .tx b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mini .tx button{border:0;background:none;padding:8px 0;margin:-8px 0;color:var(--dim);text-decoration:underline;font:inherit;cursor:pointer}
@@ -40,7 +41,16 @@ h2 b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;bo
 .step{background:#fff;border:1px solid var(--line);border-radius:20px;padding:16px 18px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0}
 .bases{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
 .bases button{border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px 6px 9px;cursor:pointer;display:grid;gap:4px;text-align:left;font-size:12.5px;line-height:1.25}
-.bases button img{width:100%;aspect-ratio:1;object-fit:contain;background:var(--fog);border-radius:9px}.bases button small{color:var(--dim);font-size:11px}
+.bases button{min-width:0;align-content:start}.bases button img{width:100%;aspect-ratio:1;object-fit:contain;background:#fff;border-radius:9px}.bases button small{color:var(--dim);font-size:11px}.bases button b,.bases button small{overflow-wrap:anywhere}
+/* the base step: a search over every base, then the shelves (the staples, and every sketch, product type, bag, shoe, plush shape and object there is a drawing of) */
+.shelfbar{display:flex;gap:8px;flex-wrap:wrap}.shelfbar .t{flex:1 1 200px;width:auto;min-width:0}.shelfbar select.t{flex:0 1 200px}
+.shelves{display:flex;flex-wrap:wrap;gap:6px;min-width:0}.shelves button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;cursor:pointer;font-size:12.5px;white-space:nowrap;min-height:34px;flex:none}
+.shelves button small{color:var(--dim);margin-left:5px;font:500 10px 'IBM Plex Mono',monospace}.shelves button[aria-selected=true]{background:var(--ink);color:#fff;border-color:var(--ink)}.shelves button[aria-selected=true] small{color:rgba(255,255,255,.7)}
+/* parts from the sketch pack, under the add-ons: the kinds, the ones picked, and the open kind's parts */
+.partsbox{display:grid;gap:8px;border-top:1px solid var(--line);padding-top:12px;min-width:0}.chips button.open{background:var(--ink);color:#fff;border-color:var(--ink)}.chips button small{color:var(--dim);font-size:11px;margin-left:3px}.chips button.open small{color:rgba(255,255,255,.7)}
+.partgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;min-width:0}.partgrid:empty{display:none}
+.partgrid button{border:1px solid var(--line);background:#fff;border-radius:12px;padding:5px;cursor:pointer;display:grid;gap:3px;justify-items:center;font-size:11.5px;line-height:1.2;text-align:center;min-width:0}
+.partgrid img{width:100%;aspect-ratio:1;object-fit:contain}.partgrid button[aria-pressed=true]{border-color:var(--pick);box-shadow:var(--pick-glow)}.partgrid button:disabled{opacity:.45;cursor:default}
 .bases button[aria-checked=true]{border-color:var(--pick);box-shadow:var(--pick-glow)}
 .grp{display:grid;gap:6px}.grp .mono{letter-spacing:.08em}
 .chips{display:flex;flex-wrap:wrap;gap:6px}.chips button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 13px;cursor:pointer;font-size:13px}
@@ -52,13 +62,23 @@ h2 b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;bo
 .strip{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;height:28px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
 .mains{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.mains button{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);cursor:pointer}.mains button[aria-checked=true]{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--pick),0 0 16px 5px rgba(75,255,154,.5)}.mains{padding:6px}
 .own{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.own input[type=color]{width:38px;height:38px;border:1px solid var(--line);border-radius:10px;padding:2px;background:#fff}
-/* the cloth row scrolls sideways inside its card: it may shrink to the card (min-width:0), and its glow room stays inside the card's padding */
-.mats{display:grid;grid-auto-flow:column;grid-auto-columns:110px;gap:10px;overflow-x:auto;overscroll-behavior-x:contain;min-width:0;max-width:100%;padding:10px 8px 14px;margin:-8px -6px -8px;scroll-snap-type:x proximity;scroll-padding:8px}.mats button{scroll-snap-align:start}
-.mats button{border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px;display:grid;gap:4px;text-align:left;font-size:12px;line-height:1.25;cursor:pointer}.mats button .sw{aspect-ratio:1;border-radius:9px;background:var(--fog) center/cover;display:block}.mats button small{color:var(--dim)}
+/* the cloth: ranked for the piece (best first) in a grid that wraps, so no card can pass the edge of the step; a card's words wrap inside it */
+.matbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}.matbar .t{flex:1 1 180px;width:auto;min-width:0}
+.matbar .later{flex:none;border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 14px;font-size:13px;cursor:pointer;min-height:40px}.matbar .later[aria-checked=true]{border-color:var(--pick);box-shadow:0 0 0 1.5px #4bff9a}
+.mats{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;min-width:0}.mgrp{min-width:0}.mgrp h4{margin:0 0 6px;font:600 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}.mgrp h4 span{color:var(--ink);margin-left:4px}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,172px),1fr));gap:8px;min-width:0}
+.mats button[data-mat]{border:1px solid var(--line);background:#fff;border-radius:14px;padding:6px;display:grid;grid-template-columns:48px minmax(0,1fr);align-items:center;gap:10px;min-width:0;text-align:left;font-size:12.5px;line-height:1.3;cursor:pointer}
+.mats button .sw{width:48px;height:48px;border-radius:10px;background:var(--fog) center/cover;display:block}.mats button .tx{display:grid;gap:2px;min-width:0}.mats button b,.mats button small{overflow-wrap:anywhere}.mats button small{color:var(--dim)}
+.mats .tag{justify-self:start;font-style:normal;color:var(--warn);background:rgba(138,90,0,.07);font-size:11.5px;line-height:1.35;border-radius:8px;padding:3px 7px;overflow-wrap:anywhere}
+.moreno{border:1px dashed var(--line);background:none;border-radius:12px;padding:9px 12px;width:100%;text-align:left;font-size:13px;color:var(--dim);cursor:pointer;min-height:40px}.mgrp.no .mgrid{margin-top:8px}.mgrp.no .mgrid button{opacity:.8}
 .mats button[aria-checked=true]{border-color:var(--pick);box-shadow:var(--pick-glow)}
 .fitnote{padding:8px 10px;border-radius:10px;border:1px solid var(--line);font-size:12.5px;line-height:1.4;margin:0}.fitnote[data-verdict=good]{color:var(--ok);background:rgba(23,96,58,.06)}.fitnote[data-verdict=check]{color:var(--warn);background:rgba(138,90,0,.06)}.fitnote[data-verdict=wrong]{color:var(--bad);background:rgba(160,42,32,.06)}
 .prev{position:sticky;top:96px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:14px;display:grid;gap:10px;min-width:0}@media(max-width:920px){.prev{position:static}}
 .art{position:relative;border-radius:14px;background:var(--fog);display:grid;place-items:center;aspect-ratio:1/1.05;overflow:hidden}.art>svg{position:absolute;inset:4%;width:92%;height:92%;display:block}.art>svg>rect:first-child{fill:transparent}
+/* a base that is not a flat (a library bag or shoe, a plush shape, an engineered product): its main view, and the others small under it */
+.lib{position:absolute;inset:4%;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:8px;justify-items:center}.lib .main{min-height:0;width:100%;display:grid;place-items:center}.lib .main>svg,.lib .main>img{width:100%;height:100%;object-fit:contain;min-height:0}
+.lib .sides{display:flex;gap:10px;justify-content:center;width:100%}.lib .sides>div{flex:0 1 24%;text-align:center;min-width:0}.lib .sides svg{width:100%;height:64px!important}.lib .mono{letter-spacing:.06em;text-align:center}
+.mini .th .lib{inset:6%}.mini .th .lib .sides,.mini .th .lib>.mono{display:none}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}.seg button{border:0;background:none;padding:6px 14px;cursor:pointer;font-size:13px}.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
 .sum{font-size:13px;line-height:1.45}.sum b{font-weight:600}.cw{display:flex;gap:4px;flex-wrap:wrap}.cw span{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;padding:2px 9px 2px 3px;font-size:12px}.cw i{width:16px;height:16px;border-radius:50%;border:1px solid var(--line)}
 .fitgrid{display:grid;gap:12px}.fitrow{display:grid;grid-template-columns:minmax(92px,auto) minmax(0,1fr) 64px;gap:10px;align-items:center;font-size:13px}.fitrow output{font:500 12px 'IBM Plex Mono',monospace;text-align:right;color:var(--ink)}
@@ -79,13 +99,19 @@ html body .rsteps .step:last-child h2 b{background:#fff;box-shadow:none}html bod
     <p class="note" style="max-width:62ch">Choose a base, add the pockets, closures and finishes you want, and pick a colour system. The piece is drawn as you go, on a real flat with real measurements, and opens in the Studio ready to finish.</p>
     <div class="lay">
       <div class="rsteps">
-        <section class="step" id="stBase"><h2><b>1</b>The base</h2><div class="bases" id="bases" role="radiogroup" aria-label="Base"></div></section>
-        <section class="step" id="stAdd"><h2><b>2</b>Add-ons</h2><p class="note" id="addNote">Choose a base first.</p><div id="addons" style="display:grid;gap:12px"></div></section>
-        <section class="step" id="stCol"><h2><b>3</b>A colour system</h2><p class="note">The first colour is the garment and the next one is the stitching. Every colour in the system becomes a colourway on the tech pack.</p>
+        <section class="step" id="stBase"><h2><b>1</b>The base</h2>
+          <div class="shelfbar"><input class="t" id="bq" type="search" autocomplete="off" placeholder="Search every base: cargo, bomber, mug, sneaker, speaker…" aria-label="Search the bases"><select class="t hidden" id="bstyle" aria-label="Style"></select></div>
+          <div class="shelves" id="shelves" role="tablist" aria-label="Kinds of base"></div><p class="note" id="baseNote" role="status"></p>
+          <div class="bases" id="bases" role="radiogroup" aria-label="Base" data-shelf="staples"></div><div><button class="btn hidden" type="button" id="baseMore">Show more</button></div></section>
+        <section class="step" id="stAdd"><h2><b>2</b>Add-ons</h2><p class="note" id="addNote">Choose a base first.</p><div id="addons" style="display:grid;gap:12px"></div>
+          <div class="partsbox hidden" id="partsBox"><div class="grp"><span class="mono">Parts from the sketch pack</span><p class="note" id="partNote"></p><div class="chips" id="pkinds"></div></div><div class="chips" id="partsOn" aria-label="Parts on the piece"></div><div class="partgrid" id="parts"></div><div><button class="btn hidden" type="button" id="partMore">Show all</button></div></div></section>
+        <section class="step" id="stCol"><h2><b>3</b>A colour system</h2><p class="note" id="colNote">The first colour is the garment and the next one is the stitching. Every colour in the system becomes a colourway on the tech pack.</p>
           <div class="systems" id="systems" role="radiogroup" aria-label="Colour system"></div>
           <div id="ownBox" class="hidden"><p class="mono" style="margin:0 0 6px">Your own colours</p><div class="own" id="own"></div></div>
-          <div class="grp"><span class="mono">Garment colour</span><div class="mains" id="mains" role="radiogroup" aria-label="Garment colour"></div></div></section>
-        <section class="step" id="stMat"><h2><b>4</b>The cloth <span class="note" style="font-weight:400">(optional)</span></h2><div class="mats" id="mats" role="radiogroup" aria-label="Cloth"><span class="note">Loading the library…</span></div><p class="fitnote hidden" id="matFit" role="status"></p></section>
+          <div class="grp"><span class="mono" id="mainLab">Garment colour</span><div class="mains" id="mains" role="radiogroup" aria-label="Main colour"></div></div></section>
+        <section class="step" id="stMat"><h2><b>4</b>The cloth <span class="note" style="font-weight:400">(optional)</span></h2>
+          <div class="matbar"><input class="t" id="matQ" type="search" autocomplete="off" placeholder="Type to filter: jersey, 180, organic, Supima…" aria-label="Filter the cloth"><button type="button" class="later" role="radio" data-mat="" id="matLater" aria-checked="true">Decide later</button></div>
+          <p class="note" id="matHead" role="status"></p><div class="mats" id="mats" role="radiogroup" aria-label="Cloth"><span class="note">Loading the library…</span></div><p class="fitnote hidden" id="matFit" role="status"></p></section>
         <section class="step" id="stFit"><h2><b>5</b>Fit it together <span class="note" style="font-weight:400">(optional)</span></h2><p class="note" id="fitNote">Make the body wider, narrower, longer or shorter, and each add-on bigger, smaller or moved, until they sit right. The drawing follows as you slide.</p>
           <div class="fitgrid" id="fitBox"></div><div><button class="btn" type="button" id="fitReset">Put it back as it was</button></div></section>
       </div>
@@ -104,37 +130,109 @@ html body .rsteps .step:last-child h2 b{background:#fff;box-shadow:none}html bod
 <script>try{if(!localStorage.getItem('fb.admin.token')&&localStorage.getItem('fb.client.token'))document.documentElement.dataset.labClient='1'}catch{}</script>
 <script src="/console-nav.js" defer></script>
 <script type="module">
-import { RECIPE_BASES, RECIPE_ADDONS, RECIPE_GROUPS, COLOUR_SYSTEMS, addonsFor, cookRecipe, baseSketch, toggleAddon, drawnOn, pocketless } from '/lab/lab-recipe.js';
-import { renderSvg, MASK_URL, defaultTemplate, STYLES } from '/lab/lab-flats.js';
-import { fabricFit } from '/lab/lab-fabric-fit.js';
+import { RECIPE_BASES, RECIPE_ADDONS, RECIPE_GROUPS, RECIPE_SHELVES, COLOUR_SYSTEMS, MAX_PARTS, addonsFor, baseOf, shelfBases, allBases, takesParts, takesCloth, cookRecipe, baseSketch, toggleAddon, drawnOn, pocketless } from '/lab/lab-recipe.js';
+import { renderSvg, MASK_URL, STYLES, partOf, PART_URL } from '/lab/lab-flats.js';
+import { FLAT_PARTS, PART_KINDS } from '/lab/lab-flat-parts.js';
+import { fabricFit, rankFabrics } from '/lab/lab-fabric-fit.js';
+import { thumbNow, thumbLater, plushArt, objectArt, librarySvg, bodyIn } from '/lab/lab-base-art.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||localStorage.getItem('fb.client.token')||''}catch{return ''}};
 async function api(path,body,method){const r=await fetch(path,{method:method||(body?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||`Request failed (${r.status})`),{status:r.status});return j}
 // the picks; OWN is the colour system of your own (four colours)
-const S={base:null,addons:[],system:'earth',colour:0,view:'front',mat:null,fit:{m:{},adjust:{}}};let OWN=['#2b2b2e','#e9e4d8','#8c6a4a','#5e6b7a'],MATS=null,COOKED=null,NAMED=false;
+const S={base:null,shelf:'staples',addons:[],parts:[],system:'earth',colour:0,view:'front',mat:null,fit:{m:{},adjust:{}}};let OWN=['#2b2b2e','#e9e4d8','#8c6a4a','#5e6b7a'],MATS=null,COOKED=null,NAMED=false;
 const sys=()=>S.system==='own'?{id:'own',name:'Your own colours',colours:OWN.map((h,i)=>({name:`Colour ${i+1}`,hex:h}))}:COLOUR_SYSTEMS.find(x=>x.id===S.system);
 const sysArg=()=>S.system==='own'?{name:'Our colours',colours:sys().colours}:S.system;
-function paintBases(){$('#bases').innerHTML=RECIPE_BASES.map(b=>{const t=baseSketch(b);return `<button type="button" role="radio" data-base="${b.id}" aria-checked="${S.base===b.id}" title="${esc(b.note)}">${t?`<img loading="lazy" alt="" src="/lab/flat-templates/thumbs/${t}.webp">`:''}<b>${esc(b.label)}</b><small>${esc(b.note)}</small></button>`}).join('');$('#stBase').classList.toggle('done',Boolean(S.base))}
-function paintAddons(){const fits=S.base?addonsFor(S.base):[],drawn=S.base?drawnOn(S.base,S.addons):[],bare=S.base&&pocketless(S.base,S.addons);$('#addNote').textContent=!S.base?'Choose a base first.':fits.length?'Tap to add or take away. Only the ones that suit this base are shown.':'This base has no add-ons yet: it opens as it is.';
-  $('#addons').innerHTML=RECIPE_GROUPS.map(g=>{const l=fits.filter(a=>a.group===g);return l.length?`<div class="grp"><span class="mono">${esc(g)}</span><div class="chips">${l.map(a=>drawn.includes(a.id)?`<button type="button" class="drawn" disabled title="The sketch already draws this">${esc(a.label)} <small>on the sketch</small></button>`:a.contrast&&bare&&!S.addons.includes(a.id)?`<button type="button" class="drawn" disabled title="Contrast colours the pockets: add a pocket first">${esc(a.label)} <small>add a pocket first</small></button>`:`<button type="button" data-addon="${a.id}" aria-pressed="${S.addons.includes(a.id)}"${a.detail?.view==='back'?' title="Drawn on the back view"':''}>${esc(a.label)}${a.detail?.view==='back'?' <small>on the back</small>':''}</button>`).join('')}</div></div>`:''}).join('');$('#stAdd').classList.toggle('done',S.addons.length>0)}
+// The base: the staples first, then a shelf for everything else there is a drawing of (src/lab-recipe.js shelfBases): every sketch in the
+// sketch pack, the product types, the library's bags and shoes, the plush shapes and the engineered products. The box searches all of them.
+// Every card has its picture: the sketch's thumbnail, or the thing drawn here (a beanie and a tote have no sketch: the flats draw them from
+// their measurements; a plush shape and an object are drawn from their pattern and their starting assembly, src/lab-base-art.js).
+const SHELF_PAGE=48,BLANK='data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';let BQ='',BSTYLE='',BSHOW=SHELF_PAGE;
+const shelfLabel=id=>RECIPE_SHELVES.find(s=>s.id===id)?.label||'',baseSmall=b=>b.kind==='sketch'?STYLES[b.style]?.label||'':b.note||'';
+const baseWords=b=>`${b.label} ${b.note||''} ${STYLES[b.style]?.label||''} ${shelfLabel(b.shelf)}`.toLowerCase(),bWords=()=>BQ.toLowerCase().split(/\s+/).filter(Boolean);
+function baseList(){const words=bWords();if(words.length)return allBases().filter(b=>words.every(w=>baseWords(b).includes(w)));const l=shelfBases(S.shelf);return BSTYLE?l.filter(b=>b.style===BSTYLE):l}
+const SHELF_NOTE={staples:'A plain body at its usual fit, with every pocket, collar and finish that suits it.',bags:'The tote and the cooler are flats; the rest open as their own drawings in panels, the body in your colour.',footwear:'Each opens as its own drawing: outside, inside, top, bottom and heel, the upper in your colour.',plush:'Each opens on its pattern and its drawings.',objects:'Each opens on its starting assembly in Engineering, with its outline as the guide to draw over.'};
+function baseCard(b){const u=thumbNow(b,baseSketch(b));return `<button type="button" role="radio" data-base="${esc(b.id)}" aria-checked="${S.base===b.id}" title="${esc(b.note||b.label)}"><img loading="lazy" alt="" ${u?`src="${esc(u)}"`:`src="${BLANK}" data-later="${esc(b.id)}"`}><b>${esc(b.label)}</b><small>${esc(baseSmall(b))}</small></button>`}
+function paintBases(){const words=bWords(),l=baseList(),shelf=shelfBases(S.shelf);
+  $('#shelves').innerHTML=RECIPE_SHELVES.map(s=>`<button type="button" role="tab" data-shelf="${s.id}" aria-selected="${!words.length&&S.shelf===s.id}">${esc(s.label)}<small>${shelfBases(s.id).length}</small></button>`).join('');
+  const styles=[...new Set(shelf.filter(b=>b.kind==='sketch').map(b=>b.style))],sel=$('#bstyle');sel.classList.toggle('hidden',words.length>0||styles.length<2);
+  sel.innerHTML=`<option value="">All ${esc(shelfLabel(S.shelf).toLowerCase())}</option>`+styles.map(s=>`<option value="${s}" ${s===BSTYLE?'selected':''}>${esc(STYLES[s]?.label||s)} (${shelf.filter(b=>b.style===s).length})</option>`).join('');
+  $('#baseNote').textContent=words.length?(l.length?`${l.length} base${l.length===1?'':'s'} match “${BQ.trim()}”, across every shelf.`:`No base matches “${BQ.trim()}”. Try fewer words.`):SHELF_NOTE[S.shelf]||(shelf.some(b=>b.kind==='sketch')?`${shelf.length} from the sketch pack. The piece is drawn on the sketch you pick.`:'Each is drawn from its measurements, with its print area.');
+  const box=$('#bases');box.dataset.shelf=words.length?'search':S.shelf;box.innerHTML=l.slice(0,BSHOW).map(baseCard).join('');
+  const more=$('#baseMore'),left=l.length-BSHOW;more.classList.toggle('hidden',left<=0);more.textContent=`Show ${Math.min(SHELF_PAGE,left)} more of ${l.length}`;
+  for(const im of box.querySelectorAll('img[data-later]'))thumbLater(baseOf(im.dataset.later)).then(u=>{if(u&&im.isConnected)im.src=u}).catch(()=>{});
+  $('#stBase').classList.toggle('done',Boolean(S.base))}
+$('#shelves').addEventListener('click',e=>{const b=e.target.closest('[data-shelf]');if(!b)return;S.shelf=b.dataset.shelf;BQ='';$('#bq').value='';BSTYLE='';BSHOW=SHELF_PAGE;paintBases()});
+let bqT=0;$('#bq').addEventListener('input',()=>{BQ=$('#bq').value;BSHOW=SHELF_PAGE;clearTimeout(bqT);bqT=setTimeout(paintBases,120)});
+$('#bstyle').addEventListener('change',()=>{BSTYLE=$('#bstyle').value;BSHOW=SHELF_PAGE;paintBases()});$('#baseMore').addEventListener('click',()=>{BSHOW+=SHELF_PAGE;paintBases()});
+// the steps a base takes: a garment takes them all; a product type takes a cloth only when it is sewn from one (a pillow, not a mug); a
+// library bag or shoe takes its colour and nothing else; a plush shape and an engineered product open as they are. The steps left are numbered again, so they never read 1, 3
+function paintSteps(){const b=baseOf(S.base),flat=!b||Boolean(b.style),coloured=flat||b.kind==='bag'||b.kind==='shoe',goods=flat&&b&&STYLES[b.style]?.kind==='goods';
+  $('#stAdd').classList.toggle('hidden',!flat);$('#stMat').classList.toggle('hidden',Boolean(b)&&!takesCloth(b));$('#stFit').classList.toggle('hidden',!flat);$('#stCol').classList.toggle('hidden',!coloured);
+  $$('.rsteps .step:not(.hidden) h2 b').forEach((x,i)=>{x.textContent=i+1});document.querySelector('.seg').classList.toggle('hidden',!flat);
+  $('#mainLab').textContent=!flat?(b.kind==='shoe'?'Upper colour':'Body colour'):goods?'Product colour':'Garment colour';
+  $('#colNote').textContent=!flat?(b.kind==='shoe'?'The colour you pick goes on the shoe\'s upper; the overlays, sole and laces stay as drawn. Recolour any panel in the Studio.':'The colour you pick goes on the bag\'s body; the trim, webbing and hardware stay as drawn. Recolour any panel in the Studio.'):goods?'The first colour is the product\'s. Every colour in the system becomes a colourway on the tech pack.':'The first colour is the garment and the next one is the stitching. Every colour in the system becomes a colourway on the tech pack.'}
+function paintAddons(){const fits=S.base?addonsFor(S.base):[],drawn=S.base?drawnOn(S.base,S.addons):[],bare=S.base&&pocketless(S.base,S.addons);$('#addNote').textContent=!S.base?'Choose a base first.':fits.length?'Tap to add or take away. Only the ones that suit this base are shown.':takesParts(S.base)?'This base has no add-ons of its own. Parts from the sketch pack go on it, below.':'This base has no add-ons yet: it opens as it is.';paintParts();
+  $('#addons').innerHTML=RECIPE_GROUPS.map(g=>{const l=fits.filter(a=>a.group===g);return l.length?`<div class="grp"><span class="mono">${esc(g)}</span><div class="chips">${l.map(a=>drawn.includes(a.id)?`<button type="button" class="drawn" disabled title="The sketch already draws this">${esc(a.label)} <small>on the sketch</small></button>`:a.contrast&&bare&&!S.addons.includes(a.id)?`<button type="button" class="drawn" disabled title="Contrast colours the pockets: add a pocket first">${esc(a.label)} <small>add a pocket first</small></button>`:`<button type="button" data-addon="${a.id}" aria-pressed="${S.addons.includes(a.id)}"${a.detail?.view==='back'?' title="Drawn on the back view"':''}>${esc(a.label)}${a.detail?.view==='back'?' <small>on the back</small>':''}</button>`).join('')}</div></div>`:''}).join('');$('#stAdd').classList.toggle('done',S.addons.length+S.parts.length>0)}
+// Parts from the sketch pack (the pockets, zips, collars, trims and buttons cut from the sketches): a kind opens its parts; a part picked is
+// placed where that kind usually goes on this piece (src/lab-flats.js defaultPart) and is sized and moved in Fit it together
+let PK=null,PSHOW=12;
+function paintParts(){const ok=Boolean(S.base)&&takesParts(S.base);$('#partsBox').classList.toggle('hidden',!ok);if(!ok)return;const full=S.parts.length>=MAX_PARTS,l=PK?FLAT_PARTS.filter(p=>p.kind===PK):[];
+  $('#partNote').textContent=full?`${MAX_PARTS} parts are on the piece, the most the menu places. Take one off to add another, or add more in the Studio.`:'Open a kind and tap a part: it goes where that kind usually sits. Size and move it in Fit it together.';
+  $('#pkinds').innerHTML=Object.entries(PART_KINDS).map(([k,name])=>{const on=S.parts.filter(id=>partOf(id)?.kind===k).length;return `<button type="button" data-pk="${k}" class="${PK===k?'open':''}" aria-expanded="${PK===k}">${esc(name)}s<small>${on?`${on} on · `:''}${FLAT_PARTS.filter(p=>p.kind===k).length}</small></button>`}).join('');
+  $('#partsOn').innerHTML=S.parts.map(partOf).filter(Boolean).map(p=>`<button type="button" data-part="${p.id}" aria-pressed="true" title="Take it off">${esc(p.label)}</button>`).join('');
+  $('#parts').innerHTML=l.slice(0,PSHOW).map(p=>`<button type="button" data-part="${p.id}" aria-pressed="${S.parts.includes(p.id)}" ${full&&!S.parts.includes(p.id)?'disabled':''}><img loading="lazy" alt="" src="${PART_URL(p.file)}">${esc(p.label)}</button>`).join('');
+  const more=$('#partMore');more.classList.toggle('hidden',l.length<=PSHOW);more.textContent=`Show all ${l.length}`}
+$('#partsBox').addEventListener('click',e=>{const k=e.target.closest('[data-pk]'),p=e.target.closest('[data-part]');
+  if(k){PK=PK===k.dataset.pk?null:k.dataset.pk;PSHOW=12;paintParts();return}if(e.target.closest('#partMore')){PSHOW=999;paintParts();return}if(!p)return;const id=p.dataset.part;
+  if(S.parts.includes(id)){S.parts=S.parts.filter(x=>x!==id);delete S.fit.adjust[id]}else if(S.parts.length<MAX_PARTS)S.parts=[...S.parts,id];paintAddons();paintPreview();paintFit()});
 function paintSystems(){$('#systems').innerHTML=[...COLOUR_SYSTEMS,{id:'own',name:'Your own',mood:'Pick four colours',colours:OWN.map(h=>({hex:h}))}].map(s=>`<button type="button" role="radio" data-sys="${s.id}" aria-checked="${S.system===s.id}"><span class="strip">${s.colours.map(c=>`<i style="background:${c.hex}"></i>`).join('')}</span><b>${esc(s.name)}</b><small>${esc(s.mood)}</small></button>`).join('');
   $('#ownBox').classList.toggle('hidden',S.system!=='own');$('#own').innerHTML=OWN.map((h,i)=>`<input type="color" value="${h}" data-own="${i}" aria-label="Colour ${i+1}">`).join('');
   const c=sys().colours;if(S.colour>=c.length)S.colour=0;$('#mains').innerHTML=c.map((x,i)=>`<button type="button" role="radio" data-main="${i}" aria-checked="${S.colour===i}" title="${esc(x.name)}" aria-label="${esc(x.name)}" style="background:${x.hex}"></button>`).join('');$('#stCol').classList.add('done')}
 const photoSrc=m=>m.photo?`/lab/material-photos/${encodeURIComponent(m.photo)}.jpg?c=${encodeURIComponent((sys().colours[S.colour]?.hex||'').replace('#',''))}&s=200`:'';
-function paintMats(){if(!MATS){return}$('#mats').innerHTML=`<button type="button" role="radio" data-mat="" aria-checked="${!S.mat}"><span class="sw" style="background:repeating-linear-gradient(45deg,#fff 0 6px,#f1f1ec 6px 12px)"></span><b>Decide later</b><small>In the Studio</small></button>`+MATS.map(m=>`<button type="button" role="radio" data-mat="${m.id}" aria-checked="${S.mat===m.id}"><span class="sw" style="${photoSrc(m)?`background-image:url('${photoSrc(m)}')`:`background:${esc(sys().colours[S.colour]?.hex||'#eee')}`}"></span><b>${esc(m.name)}</b><small>${esc([m.spec?.weightGsm?m.spec.weightGsm+' gsm':'',m.spec?.construction||''].filter(Boolean).join(' · '))}</small></button>`).join('');
-  const el=$('#matFit'),m=MATS.find(x=>x.id===S.mat),b=RECIPE_BASES.find(x=>x.id===S.base);$('#stMat').classList.toggle('done',Boolean(m));
-  if(!m||!b){el.classList.add('hidden');return}const f=fabricFit({style:b.style,fit:b.fit,materials:[{kind:'fabric',role:'main',name:m.name,spec:m.spec||{}}]});if(f.verdict==='unknown'){el.classList.add('hidden');return}
+// The cloth, ranked for the piece as it stands (src/lab-fabric-fit.js rankFabrics, as the sketch pack ranks it): the usual cloth at a usual
+// weight first, then what suits it, then what works with changes; what does not suit it is folded away. It is ranked again whenever the base
+// or an add-on changes what the piece is (a tee with a polo collar is a polo). The first dozen are shown, the rest one press away, and the
+// box filters by any word or weight. The cards are a grid that wraps: the row used to scroll sideways and could pass the edge of the step.
+const MAT_PAGE=12;let MATQ='',MAT_ALL=false,SHOW_NO=false;
+const clothStyle=()=>(COOKED&&!COOKED.error&&COOKED.style)||baseOf(S.base)?.style||'';
+const matWords=m=>`${m.name} ${m.code||''} ${m.spec?.composition||''} ${m.spec?.construction||''} ${m.spec?.finish||''} ${m.spec?.weightGsm?m.spec.weightGsm+' gsm '+m.spec.weightGsm+'gsm':''} ${m.notes||''}`.toLowerCase();
+function matCard(m){const g=m.spec?.weightGsm,sub=[g&&!new RegExp('^'+g+'\\s*gsm','i').test(m.name)?g+' gsm':'',m.spec?.composition||m.spec?.construction||''].filter(Boolean).join(' · ');
+  return `<button type="button" role="radio" data-mat="${m.id}" data-tier="${m.fit?.tier||''}" aria-checked="${S.mat===m.id}" title="${esc(m.fit?.why||'')}"><span class="sw" style="${photoSrc(m)?`background-image:url('${photoSrc(m)}')`:`background:${esc(sys().colours[S.colour]?.hex||'#eee')}`}"></span><span class="tx"><b>${esc(m.name)}</b><small>${esc(sub)}</small>${m.fit?.tier==='check'?`<i class="tag">${esc(m.fit.why)}</i>`:''}</span></button>`}
+function paintMats(){if(!MATS){return}const style=clothStyle(),kind=(STYLES[style]?.label||'').toLowerCase(),a=kind?(/[^s]s$/.test(kind)?'':/^[aeiou]/.test(kind)?'an ':'a ')+kind:'',words=MATQ.toLowerCase().split(/\s+/).filter(Boolean);
+  const ranked=rankFabrics(style,MATS),found=ranked.filter(m=>words.every(w=>matWords(m).includes(w))),suits=found.filter(m=>m.fit.tier!=='no'),no=found.filter(m=>m.fit.tier==='no'),known=ranked.some(m=>m.fit.tier);
+  const cut=MAT_ALL||words.length?suits:suits.filter((m,i)=>i<MAT_PAGE||m.id===S.mat),by=t=>cut.filter(m=>m.fit.tier===t),left=suits.length-cut.length;
+  const groups=[['best',`Best for ${a}`],['good',`Also suits ${a}`],['check','Works with changes'],['','The cloth']].map(([t,h])=>[h,by(t)]).filter(([,l])=>l.length);
+  $('#matLater').setAttribute('aria-checked',String(!S.mat));
+  $('#matHead').textContent=!found.length?`No cloth matches “${MATQ}”. Try fewer words.`:words.length?`${found.length} of ${MATS.length} match${known?`, best for ${a} first`:''}.`:known?`${MATS.length} in the library, best for ${a} first.`:S.base?`${MATS.length} in the library.`:`${MATS.length} in the library. Pick a base and the cloth that suits it comes first.`;
+  $('#mats').innerHTML=groups.map(([h,l])=>`<div class="mgrp"><h4>${esc(h)} <span>${l.length}</span></h4><div class="mgrid">${l.map(matCard).join('')}</div></div>`).join('')
+    +(left>0?`<button type="button" class="moreno" data-matall>Show ${left} more${known?' that suit it':''}</button>`:'')
+    +(no.length?`<div class="mgrp no"><button type="button" class="moreno" data-shno aria-expanded="${SHOW_NO||words.length>0}">${SHOW_NO||words.length?'Hide':'Show'} ${no.length} that ${no.length===1?'does':'do'} not suit ${a}</button>${SHOW_NO||words.length?`<div class="mgrid">${no.map(matCard).join('')}</div>`:''}</div>`:'');
+  const el=$('#matFit'),m=MATS.find(x=>x.id===S.mat),b=baseOf(S.base);$('#stMat').classList.toggle('done',Boolean(m));
+  if(!m||!b||!style){el.classList.add('hidden');return}const f=fabricFit({style,fit:b.fit,materials:[{kind:'fabric',role:'main',name:m.name,spec:m.spec||{}}]});if(f.verdict==='unknown'){el.classList.add('hidden');return}
   el.classList.remove('hidden');el.dataset.verdict=f.verdict;el.textContent=f.verdict==='good'?`✓ ${f.summary}`:`${f.verdict==='wrong'?'✕':'!'} ${f.findings[0].msg} ${f.findings[0].fix}`}
 // the drawing: the picks cooked into flats, drawn the way the flats page draws them, in the picked colour and, once one is picked, the cloth's surface
 // (its close-up laid over the colour as shading: a twill reads as a twill, a fleece as a fleece). The close-up is shown larger than life, a tile
 // (the close-up mirrored four ways) to about half the chest, so the surface reads at the size of the drawing (at true scale a weave is finer than a pixel here).
 const TEX_INCHES=9;
 const clothTexture=()=>{const m=MATS&&S.mat?MATS.find(x=>x.id===S.mat):null;return m?.photo?{href:`/lab/material-photos/${encodeURIComponent(m.photo)}.jpg?shade=1&s=320`,w:TEX_INCHES,h:TEX_INCHES}:null};
-function paintPreview(){COOKED=S.base?cookRecipe({base:S.base,addons:S.addons,system:sysArg(),colour:S.colour,fit:S.fit}):null;$('#open').disabled=!COOKED||Boolean(COOKED.error)||LOCKED;$('#miniOpen').disabled=$('#open').disabled;queueMicrotask(paintMini);
+function paintPreview(){COOKED=S.base?cookRecipe({base:S.base,addons:S.addons,parts:S.parts,system:sysArg(),colour:S.colour,fit:S.fit}):null;$('#open').disabled=!COOKED||Boolean(COOKED.error)||LOCKED;$('#miniOpen').disabled=$('#open').disabled;queueMicrotask(paintMini);
   if(!COOKED||COOKED.error){$('#art').innerHTML=`<p class="note" style="padding:20px;text-align:center">${esc(COOKED?.error||'Pick a base to see it drawn.')}</p>`;$('#sum').innerHTML='';$('#pvKind').textContent='Pick a base';return}
+  if(COOKED.start){paintOther();return}
   try{$('#art').innerHTML=renderSvg(COOKED.params,S.view,{maskHref:MASK_URL,showDims:false,scale:0,plain:true,texture:clothTexture()})}catch(x){$('#art').innerHTML=`<p class="note" style="padding:20px">${esc(x.message)}</p>`}
   if(!NAMED)$('#name').placeholder=COOKED.name;$('#pvKind').textContent=`${STYLES[COOKED.style]?.label||COOKED.style}${COOKED.sketch?' · '+COOKED.sketch:''}`;
   $('#sum').innerHTML=`<p style="margin:0 0 6px">${esc(COOKED.words)}</p>${COOKED.colourways.length?`<div class="cw" aria-label="Colourways">${COOKED.colourways.map(c=>`<span><i style="background:${c.hex}"></i>${esc(c.name)}</span>`).join('')}</div>`:''}`}
+// a base that is not a flat: the library's own drawing of the bag or shoe with its body in the picked colour, the plush shape's views, or the
+// engineered product's starting assembly from the top and the front; and what it opens as, since it takes no add-ons here
+const LIB={},OPENS={bag:'Opens in the Studio as its own drawing in panels: front, back and side. Add-ons, cloth and fit are for pieces drawn as flats; a bag\'s pockets, straps and hardware are edited on its drawing.',shoe:'Opens in the Studio as its own drawing: outside, inside, top, bottom and heel. Its panels, sole and laces are edited there.',plush:'Opens on its pattern and its drawings, ready to shape, colour and dress.',object:'Opens on its starting assembly in Engineering, with this outline as the guide on the drawing page.'};
+async function paintOther(){const b=baseOf(S.base),was=S.base,live=()=>S.base===was&&COOKED?.start,put=h=>{if(live()){$('#art').innerHTML=h;paintMini()}};
+  $('#pvKind').textContent=`${shelfLabel(b.shelf)} · ${b.label}`;if(!NAMED)$('#name').placeholder=COOKED.name;
+  $('#sum').innerHTML=`<p style="margin:0 0 6px">${esc(COOKED.words)}</p><p class="note" style="margin:0">${esc(OPENS[b.kind]||'')}</p>`;
+  try{if(b.kind==='bag'||b.kind==='shoe'){if(!LIB[b.id]){put(`<p class="note" style="padding:20px;text-align:center">Loading the ${b.kind}…</p>`);LIB[b.id]=await api(`/v1/lab/library/${b.kind==='shoe'?'footwear':'bags'}/${b.library}`)}if(!live())return;
+      const v=bodyIn(LIB[b.id].views,COOKED.colour?.hex),main=b.kind==='shoe'?'lateral':'front',sides=(b.kind==='shoe'?['medial','top','back']:['back','side']).filter(k=>v[k]);
+      put(`<div class="lib"><div class="main">${librarySvg(v[main],0)}</div><div class="sides">${sides.map(k=>`<div>${librarySvg(v[k],0)}<span class="mono">${k==='medial'?'inside':k==='back'&&b.kind==='shoe'?'heel':k}</span></div>`).join('')}</div></div>`)}
+    else if(b.kind==='plush'){const a=await plushArt(b.shape);put(`<div class="lib"><div class="main">${a.front}</div><div class="sides">${['back','side'].filter(k=>a[k]).map(k=>`<div>${a[k]}<span class="mono">${k}</span></div>`).join('')}</div></div>`)}
+    else{const a=await objectArt(b.arch,760);put(`<div class="lib"><div class="main"><img alt="" src="${a.url}"></div><span class="mono">${esc(a.views.map(v=>`${v.name} ${v.mm[0]} × ${v.mm[1]} mm`).join(' · '))}</span></div>`)}}
+  catch(x){put(`<p class="note" style="padding:20px;text-align:center">${esc(x.message||'It could not be drawn')}</p>`)}}
 // the bar at the foot (phones): the same drawing, small, its name, and Open
 function paintMini(){if(!COOKED||COOKED.error){$('#miniArt').innerHTML='';$('#miniName').textContent=COOKED?.error||'Pick a base to start';return}
   $('#miniArt').innerHTML=$('#art').innerHTML;$('#miniName').textContent=$('#name').value.trim()||COOKED.name}
@@ -148,10 +246,11 @@ const adj=id=>S.fit.adjust[id]||{size:1,dy:0,dx:0};
 function fitRow(key,label,min,max,step,val,shown){return `<label class="fitrow"><span>${esc(label)}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${val}" data-fit="${key}"><output>${esc(shown)}</output></label>`}
 function paintFit(){const box=$('#fitBox');if(!COOKED||COOKED.error){box.innerHTML='<p class="note">Choose a base first.</p>';$('#fitReset').disabled=true;return}
   const lines=[['width','Body width'],['length','Length']].map(([k,l])=>fitRow(`m.${k}`,l,-6,6,.25,S.fit.m[k]||0,inch(S.fit.m[k]||0))).join('');
-  const parts=placed().map(a=>{const v=adj(a.id),[,,,,szF]=FIT_ROWS.size;return `<div class="fitpart" data-part="${a.id}"><span class="flab">${esc(a.label)}</span>${fitRow(`${a.id}.size`,'Size',50,180,5,Math.round(v.size*100),szF(Math.round(v.size*100)))}${fitRow(`${a.id}.dy`,'Up / down',-8,8,.25,v.dy,FIT_ROWS.dy[4](v.dy))}${fitRow(`${a.id}.dx`,a.detail.pair?'Apart':'Across',-6,6,.25,v.dx,a.detail.pair?(v.dx?`${v.dx>0?'wider ':'closer '}${inch(Math.abs(v.dx)).replace('+','')}`:'as placed'):FIT_ROWS.dx[4](v.dx))}</div>`}).join('');
+  const parts=placed().map(a=>{const v=adj(a.id),[,,,,szF]=FIT_ROWS.size;return `<div class="fitpart" data-part="${a.id}"><span class="flab">${esc(a.label)}</span>${fitRow(`${a.id}.size`,'Size',50,180,5,Math.round(v.size*100),szF(Math.round(v.size*100)))}${fitRow(`${a.id}.dy`,'Up / down',-8,8,.25,v.dy,FIT_ROWS.dy[4](v.dy))}${fitRow(`${a.id}.dx`,a.detail.pair?'Apart':'Across',-6,6,.25,v.dx,a.detail.pair?(v.dx?`${v.dx>0?'wider ':'closer '}${inch(Math.abs(v.dx)).replace('+','')}`:'as placed'):FIT_ROWS.dx[4](v.dx))}</div>`}).join('')
+    +(COOKED.parts||[]).map(id=>{const q=partOf(id),v=adj(id);return `<div class="fitpart" data-part="${id}"><span class="flab">${esc(q.label)} <span class="note" style="font-weight:400">from the sketch pack</span></span>${fitRow(`${id}.size`,'Size',50,180,5,Math.round(v.size*100),`${Math.round(v.size*100)}%`)}${fitRow(`${id}.dy`,'Up / down',-8,8,.25,v.dy,FIT_ROWS.dy[4](v.dy))}${fitRow(`${id}.dx`,'Across',-6,6,.25,v.dx,FIT_ROWS.dx[4](v.dx))}</div>`}).join('');
   // add-ons the sketch draws itself (a collar, jean pockets on the five-pocket sketch) move with the body, so they have no sliders of their own
   const own=COOKED.addons.map(id=>RECIPE_ADDONS.find(a=>a.id===id)).filter(a=>a&&(a.sketch||(a.detail&&!placed().includes(a))));
-  box.innerHTML=`<div class="fitpart" style="border:0;padding:0"><span class="flab">The base</span>${lines}</div>${parts}${own.length?`<p class="note">${esc(own.map(a=>a.label).join(', '))}: drawn on the ${esc(COOKED.sketch.toLowerCase()||'base')} sketch itself, so ${own.length>1?'they sit':'it sits'} right whatever the body's size.</p>`:''}${!parts&&!own.length?'<p class="note">Add a pocket or other add-on to size and move it here.</p>':''}`;
+  box.innerHTML=`<div class="fitpart" style="border:0;padding:0"><span class="flab">The base</span>${lines}</div>${parts}${own.length?`<p class="note">${esc(own.map(a=>a.label).join(', '))}: drawn on the ${esc(COOKED.sketch.toLowerCase()||'base')} sketch itself, so ${own.length>1?'they sit':'it sits'} right whatever the body's size.</p>`:''}${!parts&&!own.length?`<p class="note">${takesParts(S.base)?'Add a pocket, another add-on or a part from the sketch pack to size and move it here.':'This is drawn from its measurements: make it wider or taller here, and set every measurement in the Studio.'}</p>`:''}`;
   const any=Object.keys(S.fit.m).length||Object.keys(S.fit.adjust).length;$('#fitReset').disabled=!any;$('#stFit').classList.toggle('done',Boolean(any))}
 $('#fitBox').addEventListener('input',e=>{const r=e.target.closest('[data-fit]');if(!r)return;const [id,k]=r.dataset.fit.split('.'),v=Number(r.value);
   if(id==='m'){if(v)S.fit.m[k]=v;else delete S.fit.m[k];r.nextElementSibling.value=inch(v)}
@@ -159,29 +258,31 @@ $('#fitBox').addEventListener('input',e=>{const r=e.target.closest('[data-fit]')
     r.nextElementSibling.value=k==='size'?`${v}%`:k==='dy'?FIT_ROWS.dy[4](v):a?.detail?.pair?(v?`${v>0?'wider ':'closer '}${inch(Math.abs(v)).replace('+','')}`:'as placed'):FIT_ROWS.dx[4](v)}
   const any=Object.keys(S.fit.m).length||Object.keys(S.fit.adjust).length;$('#fitReset').disabled=!any;$('#stFit').classList.toggle('done',Boolean(any));paintPreview()});
 $('#fitReset').addEventListener('click',()=>{S.fit={m:{},adjust:{}};paintPreview();paintFit()});
-function paintAll(){paintBases();paintAddons();paintSystems();paintMats();paintPreview();paintFit()}
-$('#bases').addEventListener('click',e=>{const b=e.target.closest('[data-base]');if(!b)return;S.base=b.dataset.base;const ok=addonsFor(S.base).map(a=>a.id);S.addons=S.addons.filter(a=>ok.includes(a));paintAll()});
+function paintAll(){paintBases();paintSteps();paintAddons();paintSystems();paintPreview();paintMats();paintFit()}
+$('#bases').addEventListener('click',e=>{const b=e.target.closest('[data-base]');if(!b)return;S.base=b.dataset.base;const ok=addonsFor(S.base).map(a=>a.id);S.addons=S.addons.filter(a=>ok.includes(a));if(!takesParts(S.base))S.parts=[];if(!takesCloth(S.base))S.mat=null;MAT_ALL=false;SHOW_NO=false;paintAll()});
 $('#addons').addEventListener('click',e=>{const b=e.target.closest('[data-addon]');if(!b)return;const id=b.dataset.addon,a=RECIPE_ADDONS.find(x=>x.id===id);
-  S.addons=toggleAddon(S.addons,id,S.base);paintAddons();paintPreview();paintFit()});
+  S.addons=toggleAddon(S.addons,id,S.base);paintAddons();paintPreview();paintMats();paintFit()});
 $('#systems').addEventListener('click',e=>{const b=e.target.closest('[data-sys]');if(!b)return;S.system=b.dataset.sys;S.colour=0;paintSystems();paintMats();paintPreview()});
 $('#mains').addEventListener('click',e=>{const b=e.target.closest('[data-main]');if(!b)return;S.colour=Number(b.dataset.main);paintSystems();paintMats();paintPreview()});
 $('#own').addEventListener('input',e=>{const i=e.target.dataset.own;if(i==null)return;OWN[Number(i)]=e.target.value.toLowerCase();$$('#systems [data-sys=own] .strip i')[i].style.background=e.target.value;$$('#mains [data-main]')[i]&&($$('#mains [data-main]')[i].style.background=e.target.value);paintPreview()});
-$('#mats').addEventListener('click',e=>{const b=e.target.closest('[data-mat]');if(!b)return;S.mat=b.dataset.mat||null;paintMats();paintPreview()});
+$('#stMat').addEventListener('click',e=>{if(e.target.closest('[data-shno]')){SHOW_NO=!SHOW_NO;paintMats();return}if(e.target.closest('[data-matall]')){MAT_ALL=true;paintMats();return}const b=e.target.closest('[data-mat]');if(!b)return;S.mat=b.dataset.mat||null;paintMats();paintPreview()});
+$('#matQ').addEventListener('input',()=>{MATQ=$('#matQ').value.trim();paintMats()});
 document.querySelector('.seg').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(!b)return;S.view=b.dataset.view;$$('.seg [data-view]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));paintPreview()});
 $('#name').addEventListener('input',()=>{NAMED=Boolean($('#name').value.trim())});
 // the concept, its flats and colourways made in one go; the cloth put on it as its main fabric; then the Studio. Editing a concept's recipe
 // (?concept=…) cooks its flats again from the new picks instead, keeping the graphics placed on them
 const EDIT=new URLSearchParams(location.search).get('concept')||'';let LOCKED=false;
 $('#open').addEventListener('click',async()=>{const b=$('#open');FBN?.begin?.(b);$('#msg').textContent='';
-  try{const keep=placed().map(a=>a.id),body={base:S.base,addons:S.addons,system:sysArg(),colour:S.colour,name:$('#name').value.trim(),fit:{m:S.fit.m,adjust:Object.fromEntries(Object.entries(S.fit.adjust).filter(([k])=>keep.includes(k)))}},j=EDIT?await api(`/v1/lab/concepts/${EDIT}/recipe`,body,'PUT'):await api('/v1/lab/concepts/from-recipe',body);
-    const main=sys().colours[S.colour];if(S.mat)await api(`/v1/lab/concepts/${j.concept.id}/materials`,{material:S.mat,role:'main',colour:main?.hex}).catch(()=>FBN?.toast?.('The piece is made; add the cloth in the Studio'));
+  try{const keep=[...placed().map(a=>a.id),...(COOKED?.parts||[])],body={base:S.base,addons:S.addons,parts:S.parts,system:sysArg(),colour:S.colour,name:$('#name').value.trim(),fit:{m:S.fit.m,adjust:Object.fromEntries(Object.entries(S.fit.adjust).filter(([k])=>keep.includes(k)))}},j=EDIT?await api(`/v1/lab/concepts/${EDIT}/recipe`,body,'PUT'):await api('/v1/lab/concepts/from-recipe',body);
+    const main=sys().colours[S.colour];if(S.mat&&COOKED?.params)await api(`/v1/lab/concepts/${j.concept.id}/materials`,{material:S.mat,role:'main',colour:main?.hex}).catch(()=>FBN?.toast?.('The piece is made; add the cloth in the Studio'));
     FBN?.end?.(b,true);location.href=j.studio}
   catch(x){FBN?.end?.(b,false);$('#msg').textContent=x.message;$('#msg').classList.add('bad')}});
 (async()=>{if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}try{await api('/v1/lab/concepts?limit=1')}catch(x){if(x.status===401||x.status===403){$('#needSignin').classList.remove('hidden');return}}
-  $('#app').classList.remove('hidden');const q=new URLSearchParams(location.search);if(RECIPE_BASES.some(b=>b.id===q.get('base')))S.base=q.get('base');
-  if(EDIT){try{const r=await api(`/v1/lab/concepts/${EDIT}/recipe`),rc=r.recipe;S.base=rc.base;S.addons=rc.addons||[];if(rc.system==='own'&&rc.colours?.length){OWN=rc.colours.map(c=>c.hex).concat(OWN).slice(0,Math.max(4,rc.colours.length));S.system='own'}else if(rc.system)S.system=rc.system;S.colour=Number(rc.colour)||0;if(rc.fit)S.fit={m:{...(rc.fit.m||{})},adjust:{...(rc.fit.adjust||{})}};
+  $('#app').classList.remove('hidden');const q=new URLSearchParams(location.search);if(baseOf(q.get('base')))S.base=q.get('base');if(RECIPE_SHELVES.some(s=>s.id===q.get('shelf')))S.shelf=q.get('shelf');
+  if(EDIT){try{const r=await api(`/v1/lab/concepts/${EDIT}/recipe`),rc=r.recipe;S.base=rc.base;S.addons=rc.addons||[];S.parts=(rc.parts||[]).filter(id=>partOf(id));if(rc.system==='own'&&rc.colours?.length){OWN=rc.colours.map(c=>c.hex).concat(OWN).slice(0,Math.max(4,rc.colours.length));S.system='own'}else if(rc.system)S.system=rc.system;S.colour=Number(rc.colour)||0;if(rc.fit)S.fit={m:{...(rc.fit.m||{})},adjust:{...(rc.fit.adjust||{})}};
       $('#name').value=r.name;NAMED=true;$('#eyebrow').textContent='Edit the recipe';$('#title').textContent=r.name;$('#open').textContent='Save the changes';$('#miniOpen').textContent='Save';
       if(r.locked){LOCKED=true;$('#msg').textContent='This piece is already a tech pack: change it there.'}}catch(x){$('#msg').textContent=x.message;$('#msg').classList.add('bad')}}
+  {const b0=baseOf(S.base);if(b0&&!RECIPE_BASES.includes(b0)&&b0.shelf)S.shelf=b0.shelf} // a base off the staples (a sketch, a bag, a mug) opens on its own shelf
   paintAll();
   try{MATS=(await api('/v1/lab/materials?kind=fabric')).materials}catch{MATS=[]}paintMats();if(S.mat)paintPreview()})();
 </script>

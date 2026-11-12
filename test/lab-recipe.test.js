@@ -150,3 +150,92 @@ test('more add-ons: necklines, washes and wear, measured and written for the fac
   assert.deepEqual(toggleAddon(['wash-acid'], 'wash-sun', 'tee'), ['wash-sun'], 'one wash at a time');
   assert.ok(RECIPE_GROUPS.includes('Wash & wear'));
 });
+
+// ---- every other base: the sketch pack, the product types, the library's bags and shoes, plush shapes and engineered products ----
+test('the shelves carry everything there is a drawing of, each base once, and every one cooks', async () => {
+  const { RECIPE_SHELVES, shelfBases, allBases, baseOf, isFlat, takesParts, takesCloth, RECIPE_PLUSH, RECIPE_OBJECTS } = await import('../src/lab-recipe.js');
+  const { FLAT_TEMPLATES } = await import('../src/lab-flat-templates.js'), { BAG_TEMPLATES } = await import('../src/lab-bag-templates.js'), { FOOTWEAR_TEMPLATES } = await import('../src/lab-footwear-templates.js');
+  const { GOODS } = await import('../src/lab-goods.js'), { STYLES } = await import('../src/lab-flats.js');
+  const all = allBases(), ids = all.map(b => b.id), of = k => all.filter(b => b.kind === k);
+  assert.equal(new Set(ids).size, ids.length, 'no base is listed twice');
+  assert.equal(shelfBases('staples').length, RECIPE_BASES.length); assert.deepEqual(shelfBases('staples').map(b => b.id), RECIPE_BASES.map(b => b.id));
+  // every sketch in the sketch pack is a base, on the shelf of what it is
+  assert.equal(of('sketch').length, FLAT_TEMPLATES.length); for (const t of FLAT_TEMPLATES) assert.ok(baseOf(`sk:${t.id}`)?.sketch === t.id, t.id);
+  assert.equal(of('bag').length, BAG_TEMPLATES.length); assert.equal(of('shoe').length, FOOTWEAR_TEMPLATES.length);
+  // every product type the flats draw (but the catch-all "other") is a base
+  const types = Object.keys(GOODS).filter(s => STYLES[s] && s !== 'other'); assert.deepEqual(of('type').map(b => b.style).sort(), [...types].sort());
+  // the plush shapes and the engineered kinds are listed here by name: they stay in step with the pattern's and the assembly's own lists
+  const { PLUSH_TYPE } = await import('../src/lab-pattern.js'), { ARCHES } = await import('../src/lab-assembly.js');
+  assert.deepEqual(Object.keys(RECIPE_PLUSH).sort(), Object.keys(PLUSH_TYPE).filter(k => k !== 'build').sort()); for (const [k, v] of Object.entries(RECIPE_PLUSH)) assert.equal(v, PLUSH_TYPE[k]);
+  assert.deepEqual(Object.keys(RECIPE_OBJECTS).sort(), Object.keys(ARCHES).filter(k => k !== 'custom').sort());
+  for (const [k, [label, category]] of Object.entries(RECIPE_OBJECTS)) { assert.equal(label, ARCHES[k].label.split(' (')[0], k); assert.ok(['electronics', 'toys', 'home'].includes(category), k); assert.equal(category === 'electronics', ARCHES[k].kind === 'electronics', `${k}: an electronic is on the electronics category`); }
+  // no shelf is empty, every base says which shelf it is on, and a staple with no sketch of its own (the beanie, the tote) is with its kind too
+  for (const s of RECIPE_SHELVES) { const l = shelfBases(s.id); assert.ok(l.length > 0, `${s.label} has bases`); if (s.id !== 'staples') for (const b of l) assert.ok(b.shelf === s.id || RECIPE_BASES.includes(b), `${b.id} is on ${s.id}`); }
+  assert.ok(shelfBases('headwear').some(b => b.id === 'beanie') && shelfBases('bags').some(b => b.id === 'tote'));
+  // every base cooks: a flat into flats that draw, anything else into how it is started
+  for (const b of all) {
+    const r = cookRecipe({ base: b.id, system: 'earth' }); assert.ok(!r.error, `${b.id}: ${r.error}`); assert.ok(r.name && r.words && r.category, b.id);
+    if (isFlat(b)) { assert.ok(r.params && !r.start && r.style === b.style, b.id); if (b.kind === 'sketch') assert.equal(r.template, b.sketch, `${b.id} is drawn on its sketch`); }
+    else { assert.ok(r.start && !r.params && !takesParts(b) && !takesCloth(b) && addonsFor(b).length === 0, b.id); assert.match(r.start.via, /^\/v1\/lab\/concepts\/from-(library-bag|library-footwear|scratch)$/); }
+  }
+  // what is not a base is refused
+  for (const id of ['sk:nope', 'st:tee', 'st:other', 'bag:nope', 'shoe:nope', 'plush:build', 'obj:custom', 'x:y', ':']) assert.ok(cookRecipe({ base: id }).error, id);
+});
+
+test('a sketch from the pack keeps its sketch: it takes its style\'s add-ons, but not the ones that swap the sketch for another', async () => {
+  const { baseOf, sketchOf, reshapes } = await import('../src/lab-recipe.js');
+  const v = cookRecipe({ base: 'sk:tee-vneck', addons: ['chest-pocket', 'neck-polo', 'cropped'], system: 'earth' });
+  assert.equal(v.template, 'tee-vneck'); assert.equal(v.style, 'tee'); assert.deepEqual(v.addons, ['chest-pocket', 'cropped']);
+  assert.ok(v.params.edits.some(e => e.id === 'r-chest-pocket') && v.params.crop === 4, 'the pocket is drawn and the sketch is cut shorter');
+  const offered = addonsFor('sk:tee-vneck').map(a => a.id); for (const id of ['neck-polo', 'neck-johnny', 'neck-vneck', 'neck-halfzip']) assert.ok(!offered.includes(id), `${id} would swap the sketch`);
+  for (const id of ['chest-pocket', 'placket', 'neck-mock', 'cropped', 'wash-acid', 'contrast']) assert.ok(offered.includes(id), id);
+  // on trousers: the pocket add-ons stay (drawn, or shown as on the sketch), pleats (a different sketch) does not
+  const tr = addonsFor('sk:pt-wide-leg-trousers').map(a => a.id); assert.ok(tr.includes('cargo') && tr.includes('back-welts') && !tr.includes('pleats'));
+  for (const a of RECIPE_ADDONS) { assert.equal(sketchOf(a, baseOf('sk:tee-vneck')), null); assert.equal(reshapes(a, 'sk:tee-vneck'), false); }
+  // the same add-on on the staple still swaps the sketch, as before
+  assert.equal(cookRecipe({ base: 'tee', addons: ['neck-polo'] }).template, 'polo-classic-polo');
+});
+
+test('parts from the sketch pack go on a piece where that kind of part usually sits, and are sized and moved like an add-on', async () => {
+  const { takesParts, MAX_PARTS, cleanFit: clean } = await import('../src/lab-recipe.js'), { FLAT_PARTS } = await import('../src/lab-flat-parts.js'), { defaultPart, renderSvg } = await import('../src/lab-flats.js');
+  const pocket = FLAT_PARTS.find(p => p.kind === 'pockets'), zip = FLAT_PARTS.find(p => p.kind === 'zips'), button = FLAT_PARTS.find(p => p.kind === 'buttons');
+  const r = cookRecipe({ base: 'hoodie', parts: [pocket.id, zip.id, pocket.id, 'not-a-part'], system: 'mono' });
+  assert.deepEqual(r.parts, [pocket.id, zip.id], 'each part once, and only parts there are');
+  const e = r.params.edits.find(x => x.id === `r-part-${pocket.id}`), d = defaultPart(pocket.id, r.params, 'front');
+  assert.ok(e && e.type === 'part' && e.part === pocket.id && e.x === d.x && e.y === d.y && e.w === d.w && e.h === d.h, 'placed where a pocket usually goes');
+  assert.match(r.words, /From the sketch pack: pocket 1, zip 1\./); assert.ok(r.details.includes(pocket.label));
+  assert.ok(renderSvg(r.params, 'front', { plain: true, scale: 0 }).includes(pocket.file), 'and it is drawn');
+  // sized and moved under its own id (ids have numbers in them)
+  const f = cookRecipe({ base: 'hoodie', parts: [pocket.id], fit: { adjust: { [pocket.id]: { size: 1.5, dy: 2, dx: -1 } } } }), q = f.params.edits.find(x => x.id === `r-part-${pocket.id}`);
+  assert.ok(Math.abs(q.w - e.w * 1.5) < .13 && q.y === e.y + 2 && q.x === e.x - 1, JSON.stringify([e, q])); assert.deepEqual(clean({ adjust: { [pocket.id]: { size: 1.5 } } }).adjust[pocket.id], { size: 1.5, dy: 0, dx: 0 });
+  // no more than the menu places, on anything cut and sewn; never on a product type or a base that is not a flat
+  assert.equal(cookRecipe({ base: 'tee', parts: FLAT_PARTS.slice(0, 20).map(p => p.id) }).parts.length, MAX_PARTS);
+  assert.ok(takesParts('tee') && takesParts('beanie') && takesParts('sk:tee-vneck') && !takesParts('st:mug') && !takesParts('bag:bag-tote') && !takesParts('obj:puck'));
+  assert.deepEqual(cookRecipe({ base: 'st:mug', parts: [button.id] }).parts, []); assert.ok(cookRecipe({ base: 'beanie', parts: [button.id] }).parts.length === 1);
+});
+
+test('a base that is not a flat says how it is started: a bag and a shoe in the picked colour, a plush shape and an object as they are', async () => {
+  const { takesCloth } = await import('../src/lab-recipe.js');
+  const bag = cookRecipe({ base: 'bag:bag-tote', system: 'earth', colour: 2 });
+  assert.deepEqual(bag.start, { via: '/v1/lab/concepts/from-library-bag', body: { template: 'bag-tote', name: 'Sand structured tote', colour: { name: 'Sand', hex: '#d8c9a8' } } }); assert.equal(bag.category, 'bags');
+  const shoe = cookRecipe({ base: 'shoe:footwear-lifestyle-court-low', name: '  My  court shoe ' });
+  assert.deepEqual(shoe.start, { via: '/v1/lab/concepts/from-library-footwear', body: { template: 'footwear-lifestyle-court-low', name: 'My court shoe' } });
+  assert.deepEqual(cookRecipe({ base: 'plush:bunny', system: 'earth' }).start, { via: '/v1/lab/concepts/from-scratch', body: { category: 'plush', name: 'Plush bunny', shape: 'bunny' } });
+  assert.deepEqual(cookRecipe({ base: 'obj:turntable' }).start, { via: '/v1/lab/concepts/from-scratch', body: { category: 'electronics', name: 'Turntable', arch: 'turntable' } });
+  assert.equal(cookRecipe({ base: 'obj:figure' }).start.body.category, 'toys'); assert.equal(cookRecipe({ base: 'obj:case' }).start.body.category, 'home');
+  assert.equal(cookRecipe({ base: 'bag:bag-tote', system: 'nope' }).error, 'That colour system is not known');
+  // a product type is a flat: drawn from its measurements in the picked colour; a cloth only for what is sewn from one
+  const mug = cookRecipe({ base: 'st:mug', system: 'mono', colour: 1 }); assert.ok(mug.params && mug.style === 'mug' && mug.params.color === '#f2efe6' && mug.name === 'Off white mug' && mug.template === null);
+  assert.ok(takesCloth('tee') && takesCloth('st:pillow') && takesCloth('st:socks') && !takesCloth('st:mug') && !takesCloth('st:poster') && !takesCloth('plush:bear'));
+});
+
+test('the cloth is ranked for the piece as it stands: a hoodie\'s fleece first, and a different cloth first for leggings', async () => {
+  const { rankFabrics } = await import('../src/lab-fabric-fit.js'), { BUILTIN_MATERIALS } = await import('../src/lab-materials.js');
+  const cloth = BUILTIN_MATERIALS.filter(m => m.kind === 'fabric'), first = style => rankFabrics(style, cloth)[0], tiers = style => rankFabrics(style, cloth).map(m => m.fit.tier);
+  // a best cloth comes first and what does not suit never comes before what does (the page then shows them by tier: best, also suits, works with changes, and the rest folded away)
+  for (const base of ['hoodie', 'shirt', 'sk:tee-vneck', 'pants']) { const style = cookRecipe({ base }).style, t = tiers(style), best = t.filter(x => x === 'best').length;
+    assert.ok(best > 0 && t[0] === 'best', `${base}: a best cloth first`); assert.ok(t.indexOf('no') === -1 || t.indexOf('no') > t.lastIndexOf('good'), `${base}: what does not suit comes after what does`); }
+  assert.match(first(cookRecipe({ base: 'hoodie' }).style).name, /fleece|terry/i); assert.notEqual(first('hoodie').name, first('leggings').name); assert.ok(['best', 'good'].includes(first('leggings').fit.tier) && first('leggings').fit.verdict === 'good', 'a cloth that suits leggings comes first for leggings');
+  // a collar that makes the tee a polo ranks the cloth for a polo
+  assert.equal(cookRecipe({ base: 'tee', addons: ['neck-polo'] }).style, 'polo');
+});

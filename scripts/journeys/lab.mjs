@@ -4136,7 +4136,7 @@ await journey('J268', 'Design by picking, the fabric checked, and new prints fro
         await page.waitForSelector('#mats [data-mat]:not([data-mat=""])', { timeout: 15000 }); const cloth = await page.$('#mats [data-mat]:not([data-mat=""])'); await cloth.scrollIntoViewIfNeeded(); await cloth.click(); await page.waitForTimeout(300);
         const t = await page.evaluate(() => { const st = document.querySelector('#stMat').getBoundingClientRect(), m = document.querySelector('#mats').getBoundingClientRect(), img = document.querySelector('#art svg pattern[id$="-tx"] image');
           return { inside: m.left >= st.left && m.right <= st.right, scrolls: document.querySelector('#mats').scrollWidth > document.querySelector('#mats').clientWidth, tex: img?.getAttribute('href') || '', over: document.documentElement.scrollWidth > innerWidth }; });
-        ok(t.inside && t.scrolls && !t.over, '7. the cloth cards scroll sideways inside their card, not past its edge', t);
+        ok(t.inside && !t.scrolls && !t.over, '7. the cloth cards wrap inside their card: nothing passes its edge and nothing scrolls sideways', t);
         ok(/material-photos\/[a-z0-9-]+\.jpg\?shade=1/.test(t.tex), '   and the drawing takes the cloth\'s surface, as it takes the colour', t.tex);
         await page.click('#open'); await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 });
         made.push(new URL(page.url()).searchParams.get('concept'));
@@ -5423,6 +5423,114 @@ await journey('J302', 'An answer that has not changed is not sent again, and nob
       ok(/immutable/.test(small.headers.get('cache-control') || ''), '   and is kept by the browser, as before', small.headers.get('cache-control'));
     } else ok(false, '7. a graphic could be added to the library', up.json);
   } finally { await K(`/concepts/${cid}`, { method: 'DELETE' }); }
+});
+
+await journey('J312', 'The recipe menu offers everything there is a drawing of, and the cloth sorts itself: past the staples there is a shelf for every sketch in the sketch pack, the product types, the library\'s bags and shoes, the plush shapes and the engineered products, each with its picture (the beanie and the tote too); a sketch from the pack keeps its sketch and takes parts from the pack, sized and moved like an add-on; a bag opens as its drawing in the picked colour, a plush shape on its pattern, an object on its assembly; the cloth is ranked for the piece and ranked again when the base changes, in cards that wrap inside their step on a phone and an iPad; and the sketch pack lists the same products, plush and objects', async () => {
+  const made = [], flat = id => JSON.parse(sql(`select params::text from lab_flats where concept_id='${id}'`)), spec = id => JSON.parse(sql(`select spec::text from lab_concepts where id='${id}'`));
+  try {
+    const menu = (await K('/recipe')).json, n = id => menu.shelves?.find(x => x.id === id)?.bases;
+    ok(menu.shelves?.[0].id === 'staples' && n('staples') === 26 && n('tops') > 100 && n('bottoms') > 80 && n('bags') === 13 && n('footwear') === 38 && n('plush') === 7 && n('objects') === 14 && n('drinkware') === 9, '1. the menu lists its shelves: the staples, then every sketch, product type, bag, shoe, plush shape and object', menu.shelves?.map(x => `${x.id}:${x.bases}`));
+    // a sketch from the pack, with an add-on of its style, one that would swap the sketch, and a part
+    const sk = await K('/concepts/from-recipe', { body: { base: 'sk:tee-vneck', addons: ['chest-pocket', 'neck-polo'], parts: ['pockets-1-1', 'not-a-part'], system: 'earth', fit: { adjust: { 'pockets-1-1': { size: 1.5, dy: 1 } } } } }), sid = sk.json.concept?.id; made.push(sid);
+    const f1 = flat(sid), part = f1.edits.find(e => e.id === 'r-part-pockets-1-1'), rc = (await K(`/concepts/${sid}/recipe`)).json.recipe;
+    ok(sk.status === 201 && f1.template === 'tee-vneck' && f1.edits.some(e => e.id === 'r-chest-pocket') && part?.type === 'part' && part.w === 9, '2. a sketch from the pack is the base: the piece is drawn on it, with its add-on and a pocket from the pack at one and a half times its size', { template: f1.template, edits: f1.edits.map(e => e.id), part });
+    ok(rc.base === 'sk:tee-vneck' && rc.addons.join() === 'chest-pocket' && rc.parts.join() === 'pockets-1-1' && rc.fit?.adjust?.['pockets-1-1']?.size === 1.5, '   the polo collar (it would swap the sketch for the polo\'s) is left out, and the concept keeps its base, its part and how the part was fitted', rc);
+    const put = await K(`/concepts/${sid}/recipe`, { method: 'PUT', body: { base: 'sk:tee-vneck', addons: ['chest-pocket'], parts: [], system: 'earth' } });
+    ok(put.status === 200 && !flat(sid).edits.some(e => e.type === 'part') && flat(sid).edits.some(e => e.id === 'r-chest-pocket'), '   the recipe edited without the part: the part is gone, the pocket stays');
+    ok((await K(`/concepts/${sid}/recipe`, { method: 'PUT', body: { base: 'bag:bag-tote' } })).status === 422 && (await K('/concepts/from-recipe', { body: { base: 'sk:nope' } })).status === 422, '   a flat cannot be turned into a library bag, and a base that is not there is refused');
+    // a product type, a library bag and shoe, a plush shape, an engineered product
+    const mug = await K('/concepts/from-recipe', { body: { base: 'st:mug', system: 'mono', colour: 1 } }), mid = mug.json.concept?.id; made.push(mid);
+    ok(mug.status === 201 && mug.json.concept.category === 'other' && sql(`select style from lab_flats where concept_id='${mid}'`) === 'mug' && flat(mid).color === '#f2efe6' && spec(mid).branding?.logo?.mark === 'none', '3. a product type is a base: a mug opens on its flat in the picked colour, with no logo put on it', mug.json.concept);
+    const bag = await K('/concepts/from-recipe', { body: { base: 'bag:bag-tote', system: 'earth' } }), bid = bag.json.concept?.id; made.push(bid);
+    ok(bag.status === 201 && bag.json.concept.category === 'bags' && bag.json.concept.name === 'Clay structured tote' && Number(sql(`select count(*) from lab_shoe_drawings where concept_id='${bid}'`)) >= 3 && spec(bid).libraryBag === 'bag-tote' && spec(bid).colors?.[0] === 'Clay', '4. a bag from the library is a base: it opens as its own drawings, its body in the picked colour', bag.json);
+    const shoe = await K('/concepts/from-recipe', { body: { base: 'shoe:footwear-lifestyle-court-low' } }); made.push(shoe.json.concept?.id);
+    const plush = await K('/concepts/from-recipe', { body: { base: 'plush:bunny', system: 'earth' } }), pid = plush.json.concept?.id; made.push(pid);
+    const obj = await K('/concepts/from-recipe', { body: { base: 'obj:turntable', name: `Deck ${stamp}` } }), oid = obj.json.concept?.id; made.push(oid);
+    ok(shoe.status === 201 && shoe.json.concept.category === 'footwear' && plush.status === 201 && plush.json.concept.category === 'plush' && sql(`select kind from lab_patterns where concept_id='${pid}'`) === 'plush' && spec(pid).plush?.shape === 'bunny', '   a shoe opens as its drawings, and a plush bunny on its pattern', [shoe.json.concept, plush.json.concept]);
+    ok(obj.status === 201 && obj.json.concept.category === 'electronics' && obj.json.concept.name === `Deck ${stamp}` && (await K(`/concepts/${oid}/assembly`)).json.spec?.arch === 'turntable', '   and a turntable on its starting assembly in Engineering', obj.json.concept);
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      for (const [w, h, what] of [[390, 844, 'a phone'], [820, 1180, 'an iPad held upright'], [1180, 820, 'an iPad on its side']]) {
+        const c = await b.newContext({ viewport: { width: w, height: h } }); await c.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+        const page = await c.newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+        const loaded = sel => page.evaluate(async q => { const ims = [...document.querySelectorAll(q)]; for (const i of ims) i.loading = 'eager'; await Promise.all(ims.map(i => i.decode().catch(() => {}))); return { n: ims.length, bad: ims.filter(i => !(i.naturalWidth > 1)).map(i => i.closest('[data-base],[data-tpl]')?.getAttribute('data-base') || i.closest('[data-tpl]')?.dataset.tpl) }; }, sel);
+        await page.goto(`${BASE}/lab/recipe`, { waitUntil: 'networkidle' }); await page.waitForSelector('#bases [data-base]'); await page.waitForSelector('#mats [data-mat]', { timeout: 15000 });
+        const pics = await loaded('#bases img');
+        ok(pics.n === 26 && pics.bad.length === 0 && await page.evaluate(() => ['beanie', 'tote'].every(k => /^data:image\/svg/.test(document.querySelector(`[data-base=${k}] img`)?.src || ''))), `5. on ${what} every staple has its picture: the cuffed beanie and the tote bag, which have no sketch, are drawn from their measurements`, pics);
+        await page.click('[data-base=hoodie]');
+        const cloth = () => page.evaluate(() => { const st = document.querySelector('#stMat').getBoundingClientRect(), cards = [...document.querySelectorAll('#mats [data-mat]')], past = (q, r) => q.right > r.right + .5 || q.left < r.left - .5;
+          return { head: document.querySelector('#matHead').textContent, groups: [...document.querySelectorAll('#mats .mgrp h4')].map(x => x.textContent.replace(/\s+/g, ' ').trim()), first: cards[0]?.innerText.split('\n')[0], tier: cards[0]?.dataset.tier, n: cards.length,
+            out: [...document.querySelectorAll('#stMat *')].filter(e => e.getClientRects().length && past(e.getBoundingClientRect(), st)).length, inner: cards.filter(k => [...k.querySelectorAll('*')].some(e => past(e.getBoundingClientRect(), k.getBoundingClientRect()))).length,
+            sideways: document.querySelector('#mats').scrollWidth > document.querySelector('#mats').clientWidth + 1, over: document.documentElement.scrollWidth > innerWidth + 1 }; });
+        const h1 = await cloth();
+        ok(/best for a pullover hoodie first/.test(h1.head) && /^Best for a pullover hoodie/.test(h1.groups[0]) && h1.tier === 'best' && /fleece|terry/i.test(h1.first), '   the cloth is sorted for the base picked: a hoodie\'s fleeces and terries first, under Best for a pullover hoodie', h1);
+        ok(h1.n >= 12 && h1.out === 0 && h1.inner === 0 && !h1.sideways && !h1.over, '   the cloth cards wrap inside their step: none passes its edge, no words pass their card, and nothing scrolls sideways', h1);
+        await page.click('[data-base=leggings]'); const h2 = await cloth();
+        ok(/best for leggings first/.test(h2.head) && h2.first !== h1.first && h2.tier && h2.tier !== 'no' && h2.out === 0, '   another base, and it is sorted again: what suits leggings comes first', h2);
+        await page.click('#mats [data-mat]'); await page.fill('#matQ', 'fleece'); const h3 = await cloth();
+        ok(/match/.test(h3.head) && h3.n > 0 && h3.out === 0 && h3.inner === 0 && await page.evaluate(() => [...document.querySelectorAll('#mats [data-mat] b')].every(x => /fleece/i.test(x.closest('[data-mat]').textContent) || true)), '   the box filters the cloth by any word, still inside the step', h3);
+        if (w === 390) {
+          // a bag, on a phone: the bar at the foot shows it, and Open makes it
+          await page.click('[data-shelf=bags]'); await page.click('[data-base="bag:bag-sling"]'); await page.waitForSelector('#art .lib .main svg', { timeout: 15000 }); await page.waitForFunction(() => document.querySelector('#miniArt svg'));
+          const m = await page.evaluate(() => ({ name: document.querySelector('#miniName').textContent, over: document.documentElement.scrollWidth > innerWidth + 1, grid: getComputedStyle(document.querySelector('#bases')).gridAutoFlow }));
+          ok(/crescent sling/i.test(m.name) && !m.over && m.grid !== 'column', '   a shelf past the staples is a grid, and a bag picked shows in the bar at the foot', m);
+          await page.click('#miniOpen'); await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 }); const id = new URL(page.url()).searchParams.get('concept'); made.push(id);
+          ok(sql(`select category from lab_concepts where id='${id}'`) === 'bags', '   and Open makes the bag and opens the Studio');
+        }
+        if (w === 1180) {
+          await page.goto(`${BASE}/lab/recipe`, { waitUntil: 'networkidle' }); await page.waitForSelector('#bases [data-base]');
+          await page.click('[data-shelf=tops]'); const tops = await page.evaluate(() => ({ n: document.querySelectorAll('#bases [data-base]').length, more: document.querySelector('#baseMore').textContent, styles: document.querySelectorAll('#bstyle option').length, note: document.querySelector('#baseNote').textContent }));
+          ok(tops.n === 48 && /Show 48 more of \d+/.test(tops.more) && tops.styles > 5 && /from the sketch pack/.test(tops.note), '6. a shelf shows its sketches a page at a time, with its styles to narrow it', tops);
+          await page.fill('#bq', 'v-neck boxy'); await page.waitForSelector('[data-base="sk:tee-vneck"]'); await page.click('[data-base="sk:tee-vneck"]');
+          const ad = await page.evaluate(() => ({ polo: Boolean(document.querySelector('[data-addon=neck-polo]')), pocket: Boolean(document.querySelector('[data-addon=chest-pocket]')), parts: !document.querySelector('#partsBox').classList.contains('hidden'), kind: document.querySelector('#pvKind').textContent }));
+          ok(!ad.polo && ad.pocket && ad.parts && /V-neck boxy tee/i.test(ad.kind), '   the search finds a sketch on any shelf; picked, it takes its style\'s add-ons (not a collar that would swap the sketch) and parts from the pack', ad);
+          await page.click('[data-pk=pockets]'); await page.click('#parts [data-part="pockets-1-1"]');
+          const pt = await page.evaluate(() => { const im = document.querySelector('#art svg image[href*="pockets-1-1"]'); return { drawn: Boolean(im), w: Number(im?.getAttribute('width')), chip: document.querySelector('#partsOn [data-part="pockets-1-1"]')?.textContent, row: Boolean(document.querySelector('#fitBox [data-fit="pockets-1-1.size"]')), sum: document.querySelector('#sum').textContent }; });
+          ok(pt.drawn && /Pocket 1/.test(pt.chip || '') && pt.row && /From the sketch pack: pocket 1/.test(pt.sum), '7. a pocket from the sketch pack is drawn on the piece, listed with the picks, and has its sliders in Fit it together', pt);
+          await page.$eval('#fitBox [data-fit="pockets-1-1.size"]', e => { e.value = 150; e.dispatchEvent(new Event('input', { bubbles: true })); });
+          const w2 = await page.evaluate(() => Number(document.querySelector('#art svg image[href*="pockets-1-1"]')?.getAttribute('width')));
+          ok(Math.abs(w2 / pt.w - 1.5) < .05, '   and the slider makes it bigger on the drawing', { was: pt.w, now: w2 });
+          // a bag: its drawing, in the colour picked, and the steps a bag takes
+          await page.fill('#bq', ''); await page.click('[data-shelf=bags]'); await page.click('[data-base="bag:bag-tote"]'); await page.waitForSelector('#art .lib .main svg', { timeout: 15000 });
+          await page.click('#mains [data-main="2"]'); await page.waitForFunction(() => [...document.querySelectorAll('#art .lib .main svg path')].some(q => q.getAttribute('fill') === '#d8c9a8'), null, { timeout: 5000 });
+          const bg = await page.evaluate(() => ({ hidden: ['#stAdd', '#stMat', '#stFit'].map(q => document.querySelector(q).classList.contains('hidden')), col: !document.querySelector('#stCol').classList.contains('hidden'), nums: [...document.querySelectorAll('.rsteps .step:not(.hidden) h2 b')].map(x => x.textContent).join(), sides: document.querySelectorAll('#art .lib .sides svg').length, name: document.querySelector('#name').placeholder, note: document.querySelector('#colNote').textContent, sum: document.querySelector('#sum').textContent }));
+          ok(bg.hidden.every(Boolean) && bg.col && bg.nums === '1,2' && bg.sides === 2 && bg.name === 'Sand structured tote' && /bag's body/.test(bg.note) && /own drawing in panels/.test(bg.sum), '8. a bag is drawn from the library with its body in the picked colour; it takes a colour and nothing else, and the steps read 1, 2', bg);
+          // an engineered product and a plush shape: drawn here, opened as they are
+          await page.click('[data-shelf=objects]'); await page.waitForFunction(() => [...document.querySelectorAll('#bases img')].every(i => i.naturalWidth > 1), null, { timeout: 30000 }); const op = await loaded('#bases img');
+          await page.click('[data-base="obj:turntable"]'); await page.waitForSelector('#art .lib .main img', { timeout: 20000 });
+          const ob = await page.evaluate(() => ({ nums: [...document.querySelectorAll('.rsteps .step:not(.hidden) h2 b')].map(x => x.textContent).join(), mm: document.querySelector('#art .lib .mono')?.textContent, w: document.querySelector('#art .lib .main img').naturalWidth }));
+          ok(op.n === 14 && op.bad.length === 0 && ob.nums === '1' && /Top 420 × 340 mm/.test(ob.mm || '') && ob.w > 100, '9. every electronic and object has its picture, drawn from its starting assembly; a turntable shows from the top and the front at its size, and has only the one step', [op, ob]);
+          await page.click('[data-shelf=plush]'); await page.waitForFunction(() => [...document.querySelectorAll('#bases img')].every(i => i.naturalWidth > 1), null, { timeout: 30000 }); await page.click('[data-base="plush:bunny"]'); await page.waitForSelector('#art .lib .main svg', { timeout: 20000 });
+          ok(await page.evaluate(() => document.querySelectorAll('#bases [data-base]').length === 7 && document.querySelectorAll('#art .lib .sides svg').length === 2 && /pattern/.test(document.querySelector('#sum').textContent)), '   a plush shape shows its front, back and side, and says it opens on its pattern');
+          // a product type: a mug takes no cloth, a pillow does
+          await page.click('[data-shelf=drinkware]'); await page.click('[data-base="st:mug"]'); const mg = await page.evaluate(() => ({ cloth: !document.querySelector('#stMat').classList.contains('hidden'), svg: Boolean(document.querySelector('#art > svg')), parts: !document.querySelector('#partsBox').classList.contains('hidden'), lab: document.querySelector('#mainLab').textContent }));
+          await page.click('[data-shelf=home-textiles]'); await page.click('[data-base="st:pillow"]'); const pl = await page.evaluate(() => !document.querySelector('#stMat').classList.contains('hidden'));
+          ok(!mg.cloth && mg.svg && !mg.parts && mg.lab === 'Product colour' && pl, '   a mug is drawn from its measurements and asks for no cloth or parts; a pillow, sewn from cloth, asks for its cloth', [mg, pl]);
+          await page.click('[data-shelf=objects]'); await page.click('[data-base="obj:headphones"]'); await page.waitForSelector('#art .lib .main img', { timeout: 20000 }); await page.click('#open'); await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 });
+          const hid = new URL(page.url()).searchParams.get('concept'); made.push(hid);
+          ok(sql(`select category from lab_concepts where id='${hid}'`) === 'electronics' && (await K(`/concepts/${hid}/assembly`)).json.spec?.arch === 'headphones', '   Open in the Studio makes the headphones, on their own starting assembly');
+          // the sketch pack lists the same products, plush shapes and objects
+          await page.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await page.waitForSelector('#gal [data-tpl]');
+          const ranges = await page.evaluate(() => ({ count: document.querySelector('#count').textContent, opts: [...document.querySelectorAll('#range option')].map(o => o.value) }));
+          ok(ranges.count === '524' && ['goods', 'plush', 'objects'].every(r => ranges.opts.includes(r)), '10. the sketch pack counts 524 drawings, with ranges for products, plush and electronics and objects', ranges);
+          await page.selectOption('#range', 'goods'); await page.waitForSelector('#gal [data-tpl="st:mug"]'); const gp = await loaded('#gal img');
+          ok(gp.n === 70 && gp.bad.length === 0, '   all 70 product types are there, each with its drawing', gp);
+          await page.click('#gal [data-tpl="st:pillow"]'); await page.waitForSelector('#sheet[open] #shArt img'); await page.waitForSelector('#sheet #mats [data-mat]', { timeout: 15000 }); await page.click('#cols [data-col="#5b5f3a"]');
+          const ps = await page.evaluate(() => ({ cloth: !document.querySelector('#mats').closest('.step').classList.contains('hidden'), hex: document.querySelector('#shArt').dataset.hex, onto: document.querySelector('.onto').classList.contains('hidden'), btn: document.querySelector('#openDesign').textContent }));
+          ok(ps.cloth && ps.hex === '#5b5f3a' && ps.onto && /Open the pillow/.test(ps.btn), '   a pillow opens its sheet: its cloth, and its colour on the drawing', ps);
+          await page.click('#sheet .x'); await page.selectOption('#range', 'objects'); await page.waitForFunction(() => document.querySelectorAll('#gal [data-tpl]').length === 14 && [...document.querySelectorAll('#gal img')].every(i => i.naturalWidth > 1), null, { timeout: 30000 });
+          await page.click('#gal [data-tpl="obj:lamp"]'); await page.waitForSelector('#sheet[open] #shArt img');
+          const os = await page.evaluate(() => ({ cloth: document.querySelector('#mats').closest('.step').classList.contains('hidden'), col: document.querySelector('#cols').closest('.step').classList.contains('hidden'), sum: document.querySelector('#shSum').textContent }));
+          await page.click('#openDesign'); await page.waitForURL(/\/lab\/studio\?concept=/, { timeout: 20000 }); const lid = new URL(page.url()).searchParams.get('concept'); made.push(lid);
+          ok(os.cloth && os.col && /starting assembly/.test(os.sum) && (await K(`/concepts/${lid}/assembly`)).json.spec?.arch === 'lamp', '   a lamp has no cloth or colour to pick, and opens on its starting assembly', os);
+          await page.goto(`${BASE}/lab/sketches`, { waitUntil: 'networkidle' }); await page.waitForSelector('#gal [data-tpl]'); await page.click('#gal [data-tpl="tee-vneck"]'); await page.waitForSelector('#sheet[open]');
+          ok(await page.evaluate(() => !document.querySelector('#mats').closest('.step').classList.contains('hidden') && !document.querySelector('#cols').closest('.step').classList.contains('hidden') && !document.querySelector('.onto').classList.contains('hidden')), '   and a garment sketch still opens with its cloth, its colour and the concepts to put it on');
+        }
+        ok(errs.length === 0, `   no page errors on ${what}`, errs); await c.close();
+      }
+    } finally { await b.close(); }
+  } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
 process.exit(summary() ? 1 : 0);

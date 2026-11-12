@@ -4,8 +4,11 @@
 //   3. a colour system: a few colours that work together; the first is the garment, the next becomes the stitching, and every one is a colourway
 // cookRecipe() turns the picks into real flats (src/lab-flats.js params, with each add-on as a detail placed where it usually goes), so the
 // piece opens in the studio already measured, drawn and coloured. Shared by the page (/lab/recipe) and the service (POST /v1/lab/concepts/from-recipe).
-import { STYLES, FITS, defaultParams, defaultDetail, defaultTemplate, fitToTemplate, cleanFlat } from './lab-flats.js';
+import { STYLES, FITS, defaultParams, defaultDetail, defaultPart, partOf, defaultTemplate, fitToTemplate, cleanFlat } from './lab-flats.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
+import { BAG_TEMPLATES } from './lab-bag-templates.js';
+import { FOOTWEAR_TEMPLATES } from './lab-footwear-templates.js';
+import { GOODS, goodsTakes } from './lab-goods.js';
 import { necklineMeasures } from './lab-neck.js';
 
 // sketch: the sketch the base is drawn on (the style's usual one when not named): a plain body, so the add-ons are what make it different
@@ -38,8 +41,49 @@ export const RECIPE_BASES = [
   B('beanie', 'Cuffed beanie', 'beanie', 'regular', 'A knit beanie with a cuff.'),
   B('tote', 'Tote bag', 'tote', 'regular', 'A carry-all with two handles.'),
 ].filter(b => STYLES[b.style] && FITS[b.fit] && (!b.sketch || FLAT_TEMPLATES.some(t => t.id === b.sketch && t.style === b.style)));
-// the sketch a base is drawn on before anything is added
-export const baseSketch = b => b.sketch || defaultTemplate(b.style, b.fit) || null;
+// the sketch a base is drawn on before anything is added (none for a style drawn from its measurements, or a base that is not a flat)
+export const baseSketch = b => b.sketch || (b.style ? defaultTemplate(b.style, b.fit) : null) || null;
+
+// ---- every other base: past the staples, the menu offers everything there is a drawing of ----
+//   sk:<sketch id>    any sketch in the sketch pack: the piece is drawn on that sketch and takes the add-ons its style takes, but not the ones
+//                     that would swap the sketch for another (a polo collar on a tee draws the polo sketch): the sketch was the choice
+//   st:<style>        a product type the flats draw from its measurements (a mug, a poster, socks; src/lab-goods.js)
+//   bag:<id>          a bag from the library: it opens as its own drawing in panels, its body in the chosen colour
+//   shoe:<id>         a shoe from the library, the same way
+//   plush:<shape>     a plush shape: it opens on its pattern and its drawings
+//   obj:<kind>        a product that is engineered (electronics, a figure, a tumbler, a case): it opens on its starting assembly
+// The last four are not flats: they have no `style`, take no add-ons, parts or fit here, and cookRecipe answers with how they are started
+// ({ start: { via, body } }), which the service runs (src/lab-concept-routes.js). The plush shapes and the engineered kinds are listed here
+// by name, so the page does not load the pattern and assembly code to show a list (test/lab-recipe.test.js keeps them in step with
+// PLUSH_TYPE in src/lab-pattern.js and ARCHES in src/lab-assembly.js).
+export const RECIPE_PLUSH = { bear: 'Bear', quad: 'Four-legged sitting', elephant: 'Elephant', sea: 'Sea creature', bean: 'Bean character', bunny: 'Bunny', pillow: 'Pillow character' };
+export const RECIPE_OBJECTS = {
+  puck: ['Round device', 'electronics', 'A speaker, hub or puck'], handheld: ['Handheld', 'electronics', 'A remote, power bank or tracker'], desk: ['Desk device with a display', 'electronics', 'A clock or station'],
+  speaker: ['Powered speaker', 'electronics', 'Bookshelf, Bluetooth'], smartspeaker: ['Smart speaker', 'electronics', 'Wi-Fi, mics, light ring'], headphones: ['Over-ear headphones', 'electronics', 'Bluetooth'],
+  turntable: ['Turntable', 'electronics', 'Belt drive, phono out'], cdplayer: ['CD player', 'electronics', 'A hi-fi component'], cassette: ['Cassette player', 'electronics', 'Portable'],
+  powerbank: ['Power bank', 'electronics', '18650 cells, USB-C PD'], lamp: ['Cordless table lamp', 'electronics', 'LED, touch dimmer'],
+  figure: ['Figure', 'toys', 'A vinyl collectible on a base'], tumbler: ['Tumbler or bottle', 'home', 'Cup, lid, gasket, straw'], case: ['Case or box', 'home', 'Base, lid, hinge, latch'],
+};
+// the shelves of the base step, in the order they are shown. A garment sketch is on the shelf of its style's category (swim and underwear on
+// their own); a product type on the shelf of its group (src/lab-goods.js), the one-product groups folded into their nearest neighbour
+const SWIM = ['swimsuit', 'bikini', 'bra'], GROUP_SHELF = { Music: 'Paper and small goods', 'Kids and baby': 'Socks, scarves and sandals', Bags: 'bags' }, slug = s => s.toLowerCase().replace(/[^a-z]+/g, '-');
+const goodsShelf = style => { const g = GROUP_SHELF[GOODS[style]?.group] || GOODS[style]?.group; return g ? slug(g) : null; };
+const GOODS_SHELVES = [...new Set(Object.keys(GOODS).filter(s => STYLES[s] && s !== 'other').map(s => GROUP_SHELF[GOODS[s].group] || GOODS[s].group))].filter(g => g !== 'bags');
+export const RECIPE_SHELVES = [['staples', 'Staples'], ['tops', 'Tops'], ['outerwear', 'Outerwear'], ['bottoms', 'Bottoms'], ['dresses', 'Dresses'], ['swim', 'Swim and underwear'], ['headwear', 'Headwear'], ['bags', 'Bags'], ['footwear', 'Footwear'],
+  ...GOODS_SHELVES.map(g => [slug(g), g === 'Socks, scarves and sandals' ? 'Accessories' : g]), ['plush', 'Plush'], ['objects', 'Electronics and objects']].map(([id, label]) => ({ id, label }));
+const garmentShelf = style => (SWIM.includes(style) ? 'swim' : STYLES[style]?.kind === 'goods' ? goodsShelf(style) : STYLES[style]?.category || null);
+const OTHER = new Map();
+const other = (id, make) => { if (!OTHER.has(id)) OTHER.set(id, make() || null); return OTHER.get(id); };
+function otherBase(id) {
+  const [k, v] = [id.slice(0, id.indexOf(':')), id.slice(id.indexOf(':') + 1)];
+  if (k === 'sk') return other(id, () => { const t = FLAT_TEMPLATES.find(x => x.id === v); return t && STYLES[t.style] && { id, kind: 'sketch', label: t.label, style: t.style, fit: 'regular', note: `${STYLES[t.style].label}, from the sketch pack.`, options: {}, sketch: t.id, shelf: garmentShelf(t.style) }; });
+  if (k === 'st') return other(id, () => STYLES[v]?.kind === 'goods' && v !== 'other' && goodsShelf(v) && { id, kind: 'type', label: STYLES[v].label, style: v, fit: 'regular', note: GOODS[v]?.group ? `${GOODS[v].group}. Drawn from its measurements.` : 'Drawn from its measurements.', options: {}, shelf: goodsShelf(v) });
+  if (k === 'bag') return other(id, () => { const t = BAG_TEMPLATES.find(x => x.id === v); return t && { id, kind: 'bag', label: t.label, note: t.size || 'A bag from the library.', category: 'bags', library: t.id, shelf: 'bags' }; });
+  if (k === 'shoe') return other(id, () => { const t = FOOTWEAR_TEMPLATES.find(x => x.id === v); return t && { id, kind: 'shoe', label: t.label, note: [t.group, t.built].filter(Boolean).join(' · '), category: 'footwear', library: t.id, shelf: 'footwear' }; });
+  if (k === 'plush') return other(id, () => RECIPE_PLUSH[v] && { id, kind: 'plush', label: `Plush ${RECIPE_PLUSH[v].toLowerCase()}`, note: 'A plush shape, with its pattern.', category: 'plush', shape: v, shelf: 'plush' });
+  if (k === 'obj') return other(id, () => RECIPE_OBJECTS[v] && { id, kind: 'object', label: RECIPE_OBJECTS[v][0], note: RECIPE_OBJECTS[v][2] + '.', category: RECIPE_OBJECTS[v][1], arch: v, shelf: 'objects' });
+  return null;
+}
 
 // an add-on: a detail placed on the piece, or an option on its make. `on` says which bases it suits (style keys).
 //   words  steer which sketch from the sketch pack the piece is drawn on (src/lab-flats.js defaultTemplate): "cargo" picks the cargo trousers
@@ -123,9 +167,29 @@ export const COLOUR_SYSTEMS = [
 ];
 const HEX = /^#[0-9a-f]{6}$/i;
 
-export const baseOf = id => RECIPE_BASES.find(b => b.id === id) || null;
-// the sketch an add-on puts the piece on, for this base: [style, sketch id], or null
-export const sketchOf = (a, b) => (a?.sketch && (a.sketch[b.id] || a.sketch[b.style])) || null;
+export const baseOf = id => RECIPE_BASES.find(b => b.id === id) || (typeof id === 'string' && id.includes(':') ? otherBase(id) : null);
+// whether a base is drawn as a flat (the staples, the sketch pack, the product types): those take add-ons, parts, cloth and fit
+export const isFlat = b => Boolean((typeof b === 'string' ? baseOf(b) : b)?.style);
+// the bases on a shelf. A staple with no sketch of its own (the beanie, the tote) is also on the shelf of what it is, with the sketches
+let SHELVED = null;
+export function shelfBases(shelf) {
+  if (!SHELVED) {
+    SHELVED = new Map(RECIPE_SHELVES.map(s => [s.id, []])); const put = b => { if (b && SHELVED.has(b.shelf)) SHELVED.get(b.shelf).push(b); };
+    SHELVED.set('staples', [...RECIPE_BASES]);
+    for (const t of FLAT_TEMPLATES) put(otherBase(`sk:${t.id}`));
+    for (const b of RECIPE_BASES) if (!baseSketch(b) && SHELVED.has(STYLES[b.style].category)) SHELVED.get(STYLES[b.style].category).push(b);
+    for (const s of Object.keys(GOODS)) put(otherBase(`st:${s}`));
+    for (const t of BAG_TEMPLATES) put(otherBase(`bag:${t.id}`));
+    for (const t of FOOTWEAR_TEMPLATES) put(otherBase(`shoe:${t.id}`));
+    for (const k of Object.keys(RECIPE_PLUSH)) put(otherBase(`plush:${k}`));
+    for (const k of Object.keys(RECIPE_OBJECTS)) put(otherBase(`obj:${k}`));
+  }
+  return SHELVED.get(shelf) || [];
+}
+// every base once: the staples, then each shelf in order
+export const allBases = () => { const seen = new Set(); return RECIPE_SHELVES.flatMap(s => shelfBases(s.id)).filter(b => !seen.has(b.id) && seen.add(b.id)); };
+// the sketch an add-on puts the piece on, for this base: [style, sketch id], or null. A base that is a sketch from the pack keeps its sketch
+export const sketchOf = (a, b) => (b.kind !== 'sketch' && a?.sketch && (a.sketch[b.id] || a.sketch[b.style])) || null;
 // whether an add-on, picked on its own, draws the piece on a different sketch than the base (a collar, a cropped body, cargo trousers):
 // two of these cannot both be had, the second would quietly replace the first, so picking one puts the other down
 const RESHAPES = new Map();
@@ -157,7 +221,14 @@ export function drawnOn(base, picks = []) {
 // whether these picks draw no pocket of their own, so contrast (which colours the pockets we draw) has nothing to colour yet
 export const pocketless = (base, picks = []) => !(cookRecipe({ base: typeof base === 'string' ? base : base?.id, addons: picks }).params?.edits || []).some(e => /^pocket/.test(e.kind));
 // the add-ons a base can take
-export const addonsFor = base => { const b = typeof base === 'string' ? baseOf(base) : base; if (!b) return []; const own = RECIPE_ADDONS.filter(a => a.on?.includes(b.style)); return own.some(a => a.detail || a.sketch) ? [...own, ...RECIPE_ADDONS.filter(a => !a.on)] : own; };
+// (a sketch from the pack: not the add-ons that only work by swapping the sketch for another, a collar's or a pleated one's)
+const swapsOnly = a => !a.detail && !a.flex && !a.neckline && Boolean(a.sketch || a.words);
+export const addonsFor = base => { const b = typeof base === 'string' ? baseOf(base) : base; if (!b?.style) return []; const own = RECIPE_ADDONS.filter(a => a.on?.includes(b.style) && !(b.kind === 'sketch' && swapsOnly(a))); return own.some(a => a.detail || a.sketch) ? [...own, ...RECIPE_ADDONS.filter(a => !a.on)] : own; };
+// whether a base takes parts from the sketch pack (pockets, zips, collars, trims, buttons, placed on its flat): what is cut and sewn, not a product type
+export const takesParts = base => { const b = typeof base === 'string' ? baseOf(base) : base; return Boolean(b?.style) && STYLES[b.style].kind !== 'goods'; };
+export const MAX_PARTS = 8;
+// whether a base takes a cloth: every garment, and the product types that are sewn from one (a pillow, a towel, socks; not a mug or a poster)
+export const takesCloth = base => { const b = typeof base === 'string' ? baseOf(base) : base; return Boolean(b?.style) && (STYLES[b.style].kind !== 'goods' || goodsTakes(GOODS[b.style]).cloth); };
 // a colour system by id, or one of our own ({ name, colours: [{name, hex}] }, from a plan's graphic programme or typed in)
 export function systemOf(s) {
   if (typeof s === 'string') return COLOUR_SYSTEMS.find(x => x.id === s) || null;
@@ -176,13 +247,23 @@ export function cleanFit(f = {}) {
   const m = {}, adjust = {};
   for (const k of Object.keys(FIT_LINES)) { const v = num(f.m?.[k], -6, 6); if (v) m[k] = v; }
   for (const [id, a] of Object.entries(f.adjust || {}).slice(0, 20)) {
-    if (!/^[a-z-]{2,30}$/.test(id)) continue; const size = num(a?.size, .5, 1.8, 1, 20), dy = num(a?.dy, -8, 8), dx = num(a?.dx, -6, 6);
+    if (!/^[a-z0-9-]{2,40}$/.test(id)) continue; const size = num(a?.size, .5, 1.8, 1, 20), dy = num(a?.dy, -8, 8), dx = num(a?.dx, -6, 6);
     if (size !== 1 || dy || dx) adjust[id] = { size, dy, dx };
   }
   return { m, adjust };
 }
-export function cookRecipe({ base, addons = [], system = null, colour = 0, name = '', fit = null } = {}) {
+//   parts:  parts from the sketch pack (src/lab-flat-parts.js ids), each placed where that kind of part usually goes; sized and moved by `fit.adjust` under its id
+export function cookRecipe({ base, addons = [], parts = [], system = null, colour = 0, name = '', fit = null } = {}) {
   const b = baseOf(base); if (!b) return { error: 'Choose a base to start from' };
+  if (!b.style) {
+    // not a flat: a library bag or shoe opens as its drawing with its body in the chosen colour, a plush shape on its pattern, an engineered product on its starting assembly
+    const sys = system ? systemOf(system) : null; if (system && !sys) return { error: 'That colour system is not known' };
+    const coloured = b.kind === 'bag' || b.kind === 'shoe', i = Math.min(Math.max(Math.round(Number(colour) || 0), 0), (sys?.colours.length || 1) - 1), main = coloured ? sys?.colours[i] || null : null;
+    const nm = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120) || (main ? `${main.name} ${b.label.toLowerCase()}` : b.label);
+    const start = coloured ? { via: `/v1/lab/concepts/from-library-${b.kind === 'bag' ? 'bag' : 'footwear'}`, body: { template: b.library, name: nm, ...(main ? { colour: { name: main.name, hex: main.hex } } : {}) } }
+      : { via: '/v1/lab/concepts/from-scratch', body: { category: b.category, name: nm, ...(b.kind === 'plush' ? { shape: b.shape } : { arch: b.arch }) } };
+    return { start, kind: b.kind, category: b.category, addons: [], parts: [], name: nm, sketch: b.label, words: `${b.label}.${main ? ` In ${main.name.toLowerCase()}.` : ''}`, colourIndex: i, fit: { m: {}, adjust: {} }, silhouette: b.label, details: [], colourways: [], colour: main };
+  }
   const fits = addonsFor(b), picked = [], seenOne = new Set();
   for (const id of Array.isArray(addons) ? addons : []) {
     const a = fits.find(x => x.id === id); if (!a || picked.includes(a)) continue;
@@ -219,12 +300,17 @@ export function cookRecipe({ base, addons = [], system = null, colour = 0, name 
     // a pair: its twin mirrored across the centre (left and right front pockets, both back welts)
     if (a.detail.pair && Math.abs(one.x) > .01) edits.push({ ...one, id: `r-${a.id}-2`, x: -one.x, flip: !one.flip });
   }
+  // parts from the sketch pack, each where that kind of part usually goes on this piece (src/lab-flats.js defaultPart), then sized and moved by hand
+  const placedParts = [];
+  for (const id of takesParts(b) ? [...new Set((Array.isArray(parts) ? parts : []).map(String))].filter(x => partOf(x)).slice(0, MAX_PARTS) : []) {
+    const d = defaultPart(id, p, 'front'); if (!d) continue; edits.push(fitted({ ...d, id: `r-part-${id}` }, id)); placedParts.push(partOf(id));
+  }
   const f = cleanFlat({ ...p, template, color: main?.hex || '', edits, ...(wash ? { wash } : {}), ...(distress ? { distress } : {}), ...(neckline ? { neckline } : {}) }); if (f.error) return { error: f.error };
   const labels = picked.map(a => a.label), pockets = picked.filter(a => a.detail).map(a => a.label), kind = (cut ? 'Cropped ' : '') + (neck ? (cut ? (sketch || b.label).toLowerCase() : (sketch || b.label)) : (cut ? b.label.toLowerCase() : b.label)); // a collar names the piece by its sketch: a tee with a polo collar is a classic polo
   return {
-    params: f.params, placements: f.placements, style, template: f.params.template || null, category: STYLES[style].category, addons: picked.map(a => a.id),
+    params: f.params, placements: f.placements, style, template: f.params.template || null, category: STYLES[style].category, addons: picked.map(a => a.id), parts: placedParts.map(q => q.id),
     name: String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120) || (main ? `${main.name} ${kind.toLowerCase()}` : kind) + (pockets.length ? ` with ${pockets.slice(0, 2).join(' and ').toLowerCase()}` : ''), sketch,
-    words: `${b.label}${labels.length ? ': ' + labels.join(', ').toLowerCase() : ''}.${sys ? ` In the ${sys.name} colours.` : ''}`,
-    colourIndex: i, fit: F, silhouette: kind, details: labels, colourways: sys ? [...sys.colours.slice(i), ...sys.colours.slice(0, i)].map(c => ({ name: c.name, hex: c.hex })) : [], colour: main,
+    words: `${b.label}${labels.length ? ': ' + labels.join(', ').toLowerCase() : ''}.${placedParts.length ? ` From the sketch pack: ${placedParts.map(q => q.label.toLowerCase()).join(', ')}.` : ''}${sys ? ` In the ${sys.name} colours.` : ''}`,
+    colourIndex: i, fit: F, silhouette: kind, details: [...labels, ...placedParts.map(q => q.label)], colourways: sys ? [...sys.colours.slice(i), ...sys.colours.slice(0, i)].map(c => ({ name: c.name, hex: c.hex })) : [], colour: main,
   };
 }
