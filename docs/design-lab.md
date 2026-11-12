@@ -2139,6 +2139,18 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
     bought at 456 mm (stretched 4.9%), wrapping 165° of the pulley. In the files: the belt is a part with its own closed solid in the
     assembly STL and exact faces in the STEP (arcs on the two parts, flat runs between). It is drawn in place, stretched; the bought
     length is on the finding, not in the solid.
+  - **An opening of a part's own, and a cover that slides over it** (`holes`, `slides`, kind `opening`). A part can carry openings that
+    nothing passes through (`holes: [{ at, size, axis, round }]`: a sip opening, a vent), cut with the same machinery as the openings for
+    parts that pass through; one that cannot be cut where it is asked (off the part, within 0.3 mm of its edge, on another opening) is
+    fix before tooling, not dropped. A cover says what it slides on and how far (`slides: { over, by }`); the check measures that, shut,
+    it covers the opening with 0.5 mm or more round it; that, slid, none of the opening is still under it; that the slid cover meets no
+    other part; and that it stays on the part it slides on. The tumbler's lid has its sip opening (12 × 8 mm, 12 × 4.5 mm at the
+    smallest size) under the slider, which slides 10 mm (6.5 mm) toward the straw and stops 0.5 mm or more short of it.
+    In the files: the opening is in the lid's solid, in its STL and as a hole in each face of its top in the STEP, and in the 3D view.
+    The slider is drawn shut; the track that holds it on the lid is not drawn.
+  What is not in the files, in short: the thread's turns (the two walls stand at its roots); a snap hook for the handheld, the round
+  device and the power bank at their default sizes, and for parts that snap on without being a housing half; the slider's track.
+  Lips, hooks, catches and knuckles are separate closed bodies that overlap what they stand on by 0.3 mm, to be joined by a union.
 - **An assembly saved before these rules** (it carries no `v`; a starting point or a design from a concept made now carries `v: 2`) is read as
   it was meant when it is opened: a part that plainly goes through a wall (in on one side and out on the other or flush with the far
   face, much narrower than the wall, and not a part that sits inside that housing) gets its opening, worked out each time and never written

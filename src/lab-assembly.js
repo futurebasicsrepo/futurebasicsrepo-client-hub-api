@@ -378,6 +378,10 @@ export function cleanPart(q = {}, i = 0) {
   if ((shape === 'shell' || shape === 'cup') && q.knuckles && ID.test(String(q.knuckles.pin || '')) && Array.isArray(q.knuckles.at) && q.knuckles.at.length) p.knuckles = { pin: q.knuckles.pin, len: r1(num(q.knuckles.len, 1, 400, 8)), d: r1(num(q.knuckles.d, 2, 40, 7)), at: q.knuckles.at.slice(0, 12).map(v => r2(num(v, -2000, 2000, 0))) };
   // a belt: the two round parts it runs round, and the length it is bought at (its inside, lying slack); its outline is worked out from the two
   if (shape === 'ring' && Array.isArray(q.around) && q.around.length === 2 && q.around.every(x => ID.test(String(x))) && q.around[0] !== q.around[1]) { p.around = q.around.map(String); if (Number(q.len) > 0) p.len = r1(num(q.len, 5, 5000, 100)); }
+  // openings of its own, that nothing passes through (a sip opening, a vent): where from its centre, how large, along which axis, round or square;
+  // and for a cover that slides over one: the part the opening is in, and how far the cover moves to open it
+  if (Array.isArray(q.holes)) { const hs = q.holes.slice(0, 8).map(c => ({ at: v3(c?.at, -3000, 3000, 0), size: v3(c?.size, .2, 3000, 1), axis: AXN.includes(c?.axis) ? c.axis : 'z', ...(c?.round ? { round: true } : {}) })); if (hs.length) p.holes = hs; }
+  if (q.slides && ID.test(String(q.slides.over || ''))) p.slides = { over: q.slides.over, by: v3(q.slides.by, -500, 500, 0) };
   if (Array.isArray(q.through)) { const t = [...new Set(q.through.map(String).filter(x => ID.test(x)))].slice(0, 4); if (t.length) p.through = t; }
   if (Array.isArray(q.spots) && p.qty > 1) { const sp = q.spots.slice(0, p.qty - 1).map(a => v3(a, -3000, 3000, 0)); if (sp.length) p.spots = sp; }
   if (Array.isArray(q.cuts)) { const cs = q.cuts.slice(0, 40).map(c => ({ at: v3(c?.at, -3000, 3000, 0), size: v3(c?.size, .2, 3000, 1), axis: AXN.includes(c?.axis) ? c.axis : 'z', ...(c?.round ? { round: true } : {}), ...(ID.test(String(c?.for || '')) ? { for: c.for } : {}) })); if (cs.length) p.cuts = cs; }
@@ -399,6 +403,7 @@ export function cleanAssembly(s = {}) {
   for (const p of parts) if (p.thread && (!seen.has(p.thread.onto) || p.thread.onto === p.id)) delete p.thread;
   for (const p of parts) if (p.knuckles && (!seen.has(p.knuckles.pin) || p.knuckles.pin === p.id)) delete p.knuckles;
   for (const p of parts) if (p.around && p.around.some(id => !seen.has(id) || id === p.id)) { delete p.around; delete p.len; }
+  for (const p of parts) if (p.slides && (!seen.has(p.slides.over) || p.slides.over === p.id)) delete p.slides;
   moulded(parts); belted(parts);
   const v = Number(s.v) >= 2 ? 2 : 1; // 2: made since parts say what they pass through; 1 (nothing saved): made before
   openings(parts, v < 2);
@@ -438,7 +443,7 @@ function plainlyThrough(h, q, o) {
   return [0, 1, 2].some(k => k !== ax && ((spans(k, hhi[k] - t, hhi[k]) && qlo[k] > hlo[k] + t) || (spans(k, hlo[k], hlo[k] + t) && qhi[k] < hhi[k] - t)) && [0, 1, 2].filter(i => i !== k).every(i => q.size[i] <= h.size[i] * .8));
 }
 function openings(parts, before = false) {
-  const byId = Object.fromEntries(parts.map(p => [p.id, p])); for (const p of parts) delete p.cuts;
+  const byId = Object.fromEntries(parts.map(p => [p.id, p])); for (const p of parts) { delete p.cuts; if (p.holes) p.cuts = p.holes.map(c => ({ ...c, at: [...c.at], size: [...c.size] })); } // its own openings first
   const add = (h, q) => { for (const o of [[0, 0, 0], ...(q.spots || [])]) for (const ho of [[0, 0, 0], ...(h.spots || [])]) for (const c of cutFor(h, q, o.map((v, k) => v - ho[k]))) if ((h.cuts ||= []).length < 40 && !h.cuts.some(x => x.axis === c.axis && x.at.every((v, k) => Math.abs(v - c.at[k]) < .01))) h.cuts.push(c); };
   for (const q of parts) { for (const id of q.through || []) add(byId[id], q);
     // a socket reaches through the housing wall it sits at, and a clear part set into a housing wall is a window: both get their opening
@@ -881,13 +886,14 @@ export function archetype(arch, dims = {}, { mah = null, radio = null, display =
     screw('screws-shade', 'Screw, M3 × 6 countersunk (shade)', 3, 6, 'z', [[-12, 0, H - 3], [12, 0, H - 3]], { through: ['shade'], lvl: 3.8 });
   } else if (arch === 'tumbler') {
     // a tumbler: the cup on its base pad, a lid whose skirt screws down over the cup's rim (1.5 turns of a 4 mm thread) with the seal squeezed
-    // between the rim and the lid, the straw through the lid, a slider over the sip opening. The width asked is the lid's, the height is to the straw's tip
-    const D = num(dims.w, 50, 160, 88), H = num(dims.h, 80, 400, 180), w = 2.2, lh = 18, Db = e2(D - 6.8), lt = H - 20, bt = lt - 4; // the cup is 2.8 mm inside the lid's bore all round: 2.4 mm of thread and 0.4 mm clear on the diameter
+    // between the rim and the lid, the straw through the lid, and the sip opening through the lid under a slider that slides
+    // toward the straw to open it (the opening is sized so the slider stops short of the straw). The width asked is the lid's, the height is to the straw's tip
+    const D = num(dims.w, 50, 160, 88), H = num(dims.h, 80, 400, 180), w = 2.2, lh = 18, Db = e2(D - 6.8), lt = H - 20, bt = lt - 4, sl = Math.min(22, D * .3), ol = r1(Math.min(8, D * .37 - sl / 2 - 6.5)), oy = r1(D * .22 + sl / 2 - 1.5 - ol / 2); // the cup is 2.8 mm inside the lid's bore all round: 2.4 mm of thread and 0.4 mm clear on the diameter
     made = [D, D, H];
     add({ id: 'body', name: 'Cup body', shape: 'cup', size: [Db, Db, bt - 2], at: [0, 0, 2 + (bt - 2) / 2], wall: w, open: '+', resin: 'Tritan', finish: 'SPI A-2 (high gloss)', draft: 1, fix: 'place', order: 1, lvl: 0, food: true, main: true });
     add({ id: 'gasket', name: 'Lid seal', shape: 'ring', size: [Db, Db, 2], at: [0, 0, bt + 1], wall: w + 1, resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'press', order: 2, lvl: 1.5, food: true });
-    add({ id: 'lid', name: 'Lid', shape: 'cup', size: [D, D, lh], at: [0, 0, lt - lh / 2], wall: 2, open: '-', resin: 'PP', finish: 'SPI C-1 (matte)', draft: 1.5, undercuts: 1, fix: 'thread', thread: { onto: 'body', pitch: 4, turns: 1.5, depth: 1.2 }, order: 3, lvl: 2.5, food: true, main: true });
-    add({ id: 'slider', name: 'Sip slider', shape: 'box', size: [16, Math.min(22, D * .3), 3], r: 3, at: [0, D * .22, lt + 1.5], resin: 'PP', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'snap', order: 4, lvl: 3.4, food: true });
+    add({ id: 'lid', name: 'Lid', shape: 'cup', size: [D, D, lh], at: [0, 0, lt - lh / 2], wall: 2, open: '-', resin: 'PP', finish: 'SPI C-1 (matte)', draft: 1.5, undercuts: 1, fix: 'thread', thread: { onto: 'body', pitch: 4, turns: 1.5, depth: 1.2 }, holes: [{ at: [0, oy, lh / 2 - 1], size: [12, ol, 2], axis: 'z', round: true }], order: 3, lvl: 2.5, food: true, main: true });
+    add({ id: 'slider', name: 'Sip slider', shape: 'box', size: [16, sl, 3], r: 3, at: [0, D * .22, lt + 1.5], slides: { over: 'lid', by: [0, -r1(ol + 2), 0] }, resin: 'PP', finish: 'SPI C-1 (matte)', draft: 1, undercuts: 1, fix: 'snap', order: 4, lvl: 3.4, food: true });
     add({ id: 'straw', name: 'Straw', shape: 'ring', size: [8, 8, H - 2 - w - 1], at: [0, -D * .15, (H + 2 + w + 1) / 2], wall: .9, resin: 'Tritan', process: 'injection moulding', finish: 'SPI A-2 (high gloss)', draft: .5, through: ['lid'], fix: 'place', order: 5, lvl: 4.4, food: true });
     add({ id: 'base', name: 'Base pad', shape: 'cyl', size: [Db - 8, Db - 8, 2], at: [0, 0, 1], resin: 'silicone (LSR)', process: 'LSR moulding', fix: 'press', order: 6, dir: [0, 0, -1], lvl: 1.2 });
   } else if (arch === 'case') {
@@ -1128,7 +1134,7 @@ const boxOf = p => { const os = [[0, 0, 0], ...(p.spots || [])], bs = [...(p.bos
 // everything the fit checks measure, by kind: { contact, clash, fasteners, size }, each a list of { id, level, kind, text, ... }
 export function fitOf(s) {
   const parts = s.parts, n = parts.length, F = parts.map(featuresOf), B = parts.map(boxOf), S = new Array(n), smp = i => S[i] || (S[i] = samplesOf(parts[i], F[i])), name = p => p.name, low = p => p.name.toLowerCase();
-  const out = { contact: [], clash: [], fasteners: [], size: [], lip: [], snap: [], thread: [], hinge: [], belt: [] }, say = (kind, id, level, text, more = {}) => out[kind].push({ id, level, kind, text, ...more });
+  const out = { contact: [], clash: [], fasteners: [], size: [], lip: [], snap: [], thread: [], hinge: [], belt: [], opening: [] }, say = (kind, id, level, text, more = {}) => out[kind].push({ id, level, kind, text, ...more });
   const gap = (i, j) => Math.max(...[0, 1, 2].map(k => Math.max(B[j].lo[k] - B[i].hi[k], B[i].lo[k] - B[j].hi[k])));
   // ---- clash: one part's material in another's, deeper than a rounding ----
   const hard = [];
@@ -1264,6 +1270,31 @@ export function fitOf(s) {
     else { const notes = [(stretch < 3 || stretch > 10) && `bought at ${p.len} mm it is stretched ${stretch}% (3 to 10% drives without slipping or loading the bearings; ${r0(G.path / 1.05)} mm is 5%)`, wrap < 120 && `it wraps only ${wrap}° of ${low(G.P2)} (120° or more grips)`, G.s2.r < 4 * p.wall && `${low(G.P2)} is ⌀${r1(2 * G.s2.r)} mm for a belt ${p.wall} mm thick (8 times the thickness or more lets it bend round)`].filter(Boolean);
       if (notes.length) say('belt', p.id, 'warn', `${what}: ${notes.join('; ')}.`, more);
       else say('belt', p.id, 'ok', `${what}. Bought at ${p.len} mm round the inside, it is stretched ${stretch}%, wraps ${wrap}° of ${low(G.P2)} and lies level on both.`, more); } }
+  // ---- a part's own openings: each one really cut; and a cover that slides over one: it covers it shut, clears it open, stays on and meets nothing ----
+  const holeAt = (h, Fh, o) => { const l = toLocal(h, o.at), ax = axisOf(h), k = AXN.indexOf(o.axis); if (k === ax) l[2] = Fh.shell && Fh.floor ? Fh.sgn * (Fh.u0 + Fh.uf) / 2 : 0; return toWorld(h, l).map((v, i) => v + h.at[i]); }; // its middle, in the floor or the wall it goes through
+  const sizeOf = o => [0, 1, 2].filter(i => i !== AXN.indexOf(o.axis)).map(i => o.size[i]).join(' × ');
+  for (const h of parts) { if (!h.holes) continue; const ih = parts.indexOf(h), lost = h.holes.filter(o => { const w = holeAt(h, F[ih], o); return inPart(h, F[ih], w) || !inPart(h, F[ih], w, true); });
+    for (const o of lost) say('opening', h.id, 'bad', `${name(h)}: the ${sizeOf(o)} mm opening asked for ${r1(Math.hypot(...o.at))} mm from its middle cannot be cut there: it is off the part, within 0.3 mm of its edge, or on another opening. Move it in.`, { at: o.at });
+    if (!lost.length && !parts.some(q => q.slides?.over === h.id)) say('opening', h.id, 'ok', `${name(h)}: ${h.holes.length === 1 ? `its ${sizeOf(h.holes[0])} mm opening is` : `its ${h.holes.length} openings are`} cut through it.`, { openings: h.holes.length }); }
+  for (const sl of parts) { if (!sl.slides) continue; const h = parts.find(p => p.id === sl.slides.over), isl = parts.indexOf(sl), ih = parts.indexOf(h), ax = axisOf(h), cr = [0, 1, 2].filter(k => k !== ax), by = sl.slides.by, far = r1(Math.hypot(...by));
+    const under = (w, off) => { const q = w.map((v, k) => v - off[k]); q[ax] = sl.at[ax]; return inPart(sl, F[isl], q); }, mine = (h.holes || []).filter(o => AXN.indexOf(o.axis) === ax && under(holeAt(h, F[ih], o), [0, 0, 0]));
+    if (!mine.length) { say('opening', sl.id, 'bad', `${name(sl)} slides on ${low(h)}, and there is no opening in ${low(h)} under it. Give ${low(h)} its opening where the slider sits.`, { with: h.id }); continue; }
+    for (const o of mine) { const c = holeAt(h, F[ih], o), hw = o.size[cr[0]] / 2, hd = o.size[cr[1]] / 2, rim = m => Array.from({ length: 24 }, (_, i) => { const a = i / 24 * 2 * Math.PI, e = o.round ? [Math.cos(a), Math.sin(a)] : [Math.max(-1, Math.min(1, 1.5 * Math.cos(a))), Math.max(-1, Math.min(1, 1.5 * Math.sin(a)))], w = [...c]; w[cr[0]] += e[0] * (hw + m); w[cr[1]] += e[1] * (hd + m); return w; });
+      // shut: how much of the slider lies round the opening; open: is any of the opening still under it
+      let cover = 0; for (const m of [.5, 1, 1.5, 2, 3]) { if (!rim(m).every(w => under(w, [0, 0, 0]))) break; cover = m; }
+      const still = [c, ...rim(0)].filter(w => under(w, by)).length, more = { with: h.id, opening: [2 * hw, 2 * hd], cover, travel: far };
+      const what = `${name(sl)} over the ${sizeOf(o)} mm opening in ${low(h)}`;
+      if (cover < .5) { say('opening', sl.id, 'bad', `${what}: shut, it does not cover the opening with 0.5 mm to spare all round, so it leaks. Make the slider larger or the opening smaller.`, more); continue; }
+      if (still) { say('opening', sl.id, 'bad', `${what}: slid ${far} mm it still covers part of the opening. Let it slide further, or move the opening toward the end it leaves.`, more); continue; }
+      // slid open: nothing in its way, and still on the part it slides on
+      // (the same two-way test as the clash check: the moved cover's surface and inside in each part, and each part's in the moved cover)
+      const mv = { ...sl, at: sl.at.map((v, k) => v + by[k]) }, Bm = boxOf(mv), Sm = smp(isl).map(w => w.map((v, k) => v + by[k])); let hit = null;
+      for (let j = 0; j < n && !hit; j++) { if (j === isl) continue; const lo = [0, 1, 2].map(k => Math.max(Bm.lo[k], B[j].lo[k])), hi = [0, 1, 2].map(k => Math.min(Bm.hi[k], B[j].hi[k])); if (lo.some((v, k) => hi[k] - v < CLASH)) continue; const inBox = w => w.every((v, k) => v >= lo[k] - EPS && v <= hi[k] + EPS);
+        if ([...Sm.filter(inBox), ...coreOf(mv, F[isl], lo, hi)].some(w => inPart(parts[j], F[j], w) && depthIn(parts[j], F[j], w) >= CLASH) || [...smp(j).filter(inBox), ...coreOf(parts[j], F[j], lo, hi)].some(w => inPart(mv, F[isl], w) && depthIn(mv, F[isl], w) >= CLASH)) hit = parts[j]; }
+      const sg = sl.at[ax] > h.at[ax] ? 1 : -1, lvl = h.at[ax] + sg * (h.size[ax] / 2 - .3), foot = [[0, 0], [.45, 0], [-.45, 0], [0, .45], [0, -.45], [.4, .4], [.4, -.4], [-.4, .4], [-.4, -.4]].map(([a, b]) => { const w = sl.at.map((v, k) => v + by[k]); w[cr[0]] += a * sl.size[cr[0]]; w[cr[1]] += b * sl.size[cr[1]]; w[ax] = lvl; return w; }), offEdge = foot.some(w => !inPart(h, F[ih], w, true));
+      if (hit) say('opening', sl.id, 'bad', `${what}: slid ${far} mm to open, it runs into ${low(hit)}. Slide it the other way, or less far with a smaller opening.`, { ...more, into: hit.id });
+      else if (offEdge) say('opening', sl.id, 'warn', `${what}: slid ${far} mm to open, it hangs over the edge of ${low(h)}. Keep it on the part.`, more);
+      else say('opening', sl.id, 'ok', `${what}: shut, it covers the opening with ${cover} mm or more round it; slid ${far} mm it clears it, stays on ${low(h)} and meets nothing.`, more); } }
   return out;
 }
 // the moulding and fit checks: [{ id, level: 'bad'|'warn'|'ok', text }]
@@ -1308,7 +1339,7 @@ export function dfm(s) {
     if (d[0] <= SMALL.d && d[1] <= SMALL.d && d[2] <= SMALL.h) say(p.id, s.age === '0+' ? 'bad' : 'warn', s.age === '0+' ? `${p.name}: fits the small-parts cylinder (${SMALL.d} × ${SMALL.h} mm): not allowed for under-3s if it can come off (16 CFR 1501, EN 71-1). Make it larger or fix it so it passes the torque and tension tests.` : `${p.name}: a small part; label "Choking hazard: small parts. Not for children under 3 years" (16 CFR 1500.19).`);
   }
   // do the parts go together: clash by outline, contact, fasteners and size, measured off the parts as built (fitOf)
-  const fit = fitOf(s); out.push(...fit.clash, ...fit.contact, ...fit.fasteners, ...fit.size, ...fit.lip, ...fit.snap, ...fit.thread, ...fit.hinge, ...fit.belt);
+  const fit = fitOf(s); out.push(...fit.clash, ...fit.contact, ...fit.fasteners, ...fit.size, ...fit.lip, ...fit.snap, ...fit.thread, ...fit.hinge, ...fit.belt, ...fit.opening);
   if (s.kind === 'electronics') out.push(...elecChecks(s));
   return out;
 }
