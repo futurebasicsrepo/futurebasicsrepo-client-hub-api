@@ -2073,11 +2073,84 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   with its body, and its screws go through the flange into the baffle. A housing carries screw `bosses` on its
   floor. Screws are parts: one line a kind, every position listed, lying through the part held and into the part that takes the thread.
   On the page, the chosen part's editor has **Passes through** (up to three parts), the places of its other pieces when its quantity is
-  over one, and for a housing its screw bosses (**Add a screw boss**: x, y, z of the free end from the part's centre, and the screw's
-  diameter); it also says which openings are cut in the part and for what.
+  over one (every piece has its fields, in a list that scrolls), and for a housing its screw bosses (**Add a screw boss**: x, y, z of the free end from the part's centre, and the screw's
+  diameter); for a round solid part, its flange (off, or at the near or far end, with the body's diameter behind it and the flange's
+  thickness); it also says which openings are cut in the part and for what.
   Openings and bosses are in the part's solid: its STL, and its STEP as exact faces (holes through a floor or a solid part, bosses, and
   windows in a housing's side walls with their sides, sill and head, a notch where one reaches the rim). The 3D view shows them too: a
   housing with a window in a side wall is drawn from its solid.
+- **How the halves and the moving parts join.** These are drawn at their real size, in the part's solid where the solids can carry them, and
+  each has its own finding in `fitOf` and `dfm`, with the numbers it was measured at. They are set on the part in the saved assembly; the
+  page shows their findings but has no fields for them yet.
+  - **Lip and groove** (`lip`, kind `lip`). A housing half says its lip goes into the other half (`lip: { into, h, t }`: 1.2 mm tall and
+    45% of the wall thick unless given). The lip stands on the inner side of its rim; the other half gets the groove that takes it, cut
+    back from the inside of its wall, 0.1 mm clear of the lip at the side and 0.3 mm at its top, worked out each time so it follows the two
+    parts. The check measures round the lip, off the two parts: how far it stands into the groove (0.8 mm or more locates), the
+    clearance at its tightest and loosest (none left, or the halves not closing rim to rim, is fix before tooling; over 0.35 mm is watch),
+    the wall left outside it (0.6 mm or more), how much of its way round it finds the groove, and the step between the two outsides at
+    the seam. Six starting assemblies close this way: handheld, desk device, cassette player, smart speaker (base and grille), power
+    bank and case. Where an opening comes up through the rim (the handheld's USB-C port) the lip and the groove stop with the wall.
+    In the files: the groove is in the half's solid, in its STL and as exact faces in its STEP (its wall, its floor, the thinner rim).
+    The lip is a closed body of its own in the same STL and a second solid in the STEP, named for its part, starting 0.3 mm inside
+    the rim it stands on; it is not fused into the half's skin, so a toolmaker joins the two with one union.
+  - **Snap hooks** (`snaps`, kind `snap`). A part says which part its hooks catch on, their size and where each leaves it
+    (`snaps: { into, len, t, w, y, hooks: [{ at, along, out }] }`: beam length, thickness, width, how far the head stands out; `along` and
+    `out` are a direction each, such as `-z` and `+x`). Each hook is three bodies on its part (a foot on the wall, the beam, the head) and
+    the other part gets a catch for it: a ledge on its wall behind the head, 0.1 mm from it, the beam 0.2 mm clear. The check measures
+    each hook off the two parts: that its root is joined to its part, that there is a wall to catch on and how far away it is, how far
+    the head catches under the catch (0.4 mm or more), how much the beam bends as it is pushed home (1.5 × thickness × catch ÷ length²)
+    against what the resin takes once, and that nothing is behind the beam where it has to bend. The strain figures are guide values for
+    a first design, to be confirmed on the resin's datasheet: PC 4%, PP and POM 4%, Tritan 3%, PC/ABS and PETG 2.5%, ABS 2%, HIPS,
+    PMMA and glass-filled PA66 1.5%. A starting assembly's cover gets its hooks where they measure clear (the middle of each wall is
+    tried first): the desk device's front (4), the cassette player's front (2) and the smart speaker's grille (4) have them, each
+    catching 0.8 mm and bending 0.77%. The handheld's, the round device's and the power bank's covers have none drawn at their default
+    sizes: the board, the light ring or the cells are within 1.5 mm of the wall, and a hook needs 2.2 mm; their fix still says snap, and
+    no finding is made for a hook that is not there. Parts that snap on without being a housing half (a slider, a latch, ear pads, a
+    cassette door) have no hooks drawn either. In the files: hooks and catches are closed bodies of their own in their part's STL and
+    solids in the STEP, named for their part, each starting 0.3 mm inside what it stands on; they are not fused into the part's skin.
+  - **A thread** (`thread`, kind `thread`; fixed by **thread** on the parts list, "Screw on" in the assembly steps). A round part says
+    what it screws onto, the pitch, how many turns hold it and how deep the thread form is (`thread: { onto, pitch, turns, depth }`). The
+    two diameters are the two parts' own: the inner part's outside with the thread standing on it, and the outer part's bore. The check
+    measures them off the two parts: the thread's crests inside the bore with 0.2 to 0.8 mm clear on the diameter (larger than the bore
+    is fix before tooling), the flanks catching 60% of their depth or more (not reaching each other is fix before tooling), the two on
+    one axis, and the turns fitting in the length the two overlap with 1 mm to run out. The tumbler's lid screws onto the cup: ⌀83.6 mm
+    over the thread in a ⌀84 mm bore at the default size, 4 mm pitch, 1.2 mm deep, 1.5 turns over 6 mm of a 14 mm overlap.
+    In the files: the STL and STEP show the cup and the lid's bore at the thread's roots, with the room for the thread between them. The
+    turns themselves are not drawn: the solids have no helical faces, so the toolmaker cuts the thread from the numbers in the finding.
+  - **A hinge** (`knuckles`, kind `hinge`). A housing says which pin its knuckles turn on, where each is along the pin, how long and how
+    wide across (`knuckles: { pin, at, len, d }`). Each knuckle is a ring round the pin, bored 0.2 mm over the pin, and a lug that joins it
+    to the housing's nearest wall on the housing's own side of the pin. The check goes along the pin: two parts have knuckles on it, the
+    pin reaches through every one, each is joined to its housing and none sits in a wall, no two are in the same place and the moving
+    half cannot slide more than 1 mm between the other's. Then the half that goes on later is turned about the pin in 5° steps, both
+    ways, and every point of it is tested against the other half: how far it opens before the two meet (under 45° is fix before tooling,
+    under 90° is watch). The case has five knuckles 7 mm across on a ⌀3 mm pin, three on the base and two on the lid, 0.4 mm apart;
+    the pin lies 3.7 mm behind the back walls at the height where they meet, and the lid opens right over (180°). The case's shells are
+    4 mm shallower than before to keep the knuckles inside the depth asked.
+    In the files: rings and lugs are closed bodies in their housing's STL and solids in its STEP, starting 0.3 mm inside the wall; not
+    fused into the housing's skin. The pin is a part, as it was.
+  - **A belt** (`around`, `len`, kind `belt`). A ring that says which two round parts it runs round (`around: [a, b]`) is drawn round
+    them, at the height it is set at: its outline, place and size across are worked out each time from the two, so it follows them. A
+    part with a flange carries the belt on the flange. `len` is the length the belt is bought at, round its inside, lying slack. The
+    check measures off the two parts: the path (two straight runs and the wrap on each), the stretch of the bought length over it (3 to
+    10% drives without slipping or loading the bearings; slack, or over 15%, is fix before tooling), the wrap on the smaller part (120°
+    or more), the belt level on both running surfaces (off the edge of one is fix before tooling), and the smaller part at least 8 times
+    the belt's thickness across. The turntable now has the motor's pulley on its shaft, up through the plinth (⌀12 mm, on the parts
+    list), and a flat 3 × 0.8 mm belt round it and the ⌀60 mm sub-platter under the platter: a 478.5 mm path at the default size,
+    bought at 456 mm (stretched 4.9%), wrapping 165° of the pulley. In the files: the belt is a part with its own closed solid in the
+    assembly STL and exact faces in the STEP (arcs on the two parts, flat runs between). It is drawn in place, stretched; the bought
+    length is on the finding, not in the solid.
+  - **An opening of a part's own, and a cover that slides over it** (`holes`, `slides`, kind `opening`). A part can carry openings that
+    nothing passes through (`holes: [{ at, size, axis, round }]`: a sip opening, a vent), cut with the same machinery as the openings for
+    parts that pass through; one that cannot be cut where it is asked (off the part, within 0.3 mm of its edge, on another opening) is
+    fix before tooling, not dropped. A cover says what it slides on and how far (`slides: { over, by }`); the check measures that, shut,
+    it covers the opening with 0.5 mm or more round it; that, slid, none of the opening is still under it; that the slid cover meets no
+    other part; and that it stays on the part it slides on. The tumbler's lid has its sip opening (12 × 8 mm, 12 × 4.5 mm at the
+    smallest size) under the slider, which slides 10 mm (6.5 mm) toward the straw and stops 0.5 mm or more short of it.
+    In the files: the opening is in the lid's solid, in its STL and as a hole in each face of its top in the STEP, and in the 3D view.
+    The slider is drawn shut; the track that holds it on the lid is not drawn.
+  What is not in the files, in short: the thread's turns (the two walls stand at its roots); a snap hook for the handheld, the round
+  device and the power bank at their default sizes, and for parts that snap on without being a housing half; the slider's track.
+  Lips, hooks, catches and knuckles are separate closed bodies that overlap what they stand on by 0.3 mm, to be joined by a union.
 - **An assembly saved before these rules** (it carries no `v`; a starting point or a design from a concept made now carries `v: 2`) is read as
   it was meant when it is opened: a part that plainly goes through a wall (in on one side and out on the other or flush with the far
   face, much narrower than the wall, and not a part that sits inside that housing) gets its opening, worked out each time and never written

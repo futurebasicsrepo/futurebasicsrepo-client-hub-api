@@ -186,5 +186,6 @@ test('STEP for CAD: every part an exact solid (planes, and cylinders for rounded
   const one = stepOf(s, { only: 'cover' }); assert.equal((one.match(/MANIFOLD_SOLID_BREP/g) || []).length, 1);
   // every id is defined once and every reference points at a defined id
   const ids = new Set([...txt.matchAll(/^#(\d+)=/gm)].map(m => m[1])); for (const m of txt.matchAll(/#(\d+)(?!=)/g)) assert.ok(ids.has(m[1]), `#${m[1]} is defined`);
-  for (const a of Object.keys(ARCHES)) assert.equal((stepOf(archetype(a)).match(/MANIFOLD_SOLID_BREP/g) || []).length, cleanAssembly(archetype(a)).parts.length, a);
+  // one solid a part, and one more for each body moulded on a part (a lip standing on a housing's rim)
+  for (const a of Object.keys(ARCHES)) { const c = cleanAssembly(archetype(a)); assert.equal((stepOf(archetype(a)).match(/MANIFOLD_SOLID_BREP/g) || []).length, c.parts.length + c.parts.reduce((t, p) => t + (p.adds || []).length, 0), a); }
 });
