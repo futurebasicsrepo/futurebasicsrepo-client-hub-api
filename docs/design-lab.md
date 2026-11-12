@@ -2112,12 +2112,15 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
       check takes 70% for both. Tritan 4.2% (Eastman Tritan TX1001: 6% at yield, ASTM D638), PETG 2.8% (Eastman Eastar 6763: 4% at
       yield, on film, ASTM D882), PP 7% (LyondellBasell Moplen HP500N: 10% at yield, ISO 527), HIPS 1% (INEOS Styrolution PS 495F:
       1.5% at yield, ISO 527).
-    - **Acrylic is held at 1.5%, with no source of its own.** It has no yield point and no maker's table lists it. The guides' rule
-      for a material with no yield point is half the strain at break, which would be 2.7% (Plexiglas 8N breaks at 5.5%, ISO 527);
-      acrylic crazes and is notch-sensitive, so the lower figure stays until a moulder says otherwise.
+    - **Acrylic 2%, from a design guide, not a resin maker's table.** No maker's table lists acrylic and it has no yield point.
+      Clive Maier's design guides for *Plastics & Rubber Weekly* (sponsored by Distrupol) give 2% for PMMA in "Typical data for
+      snap-fits", for a snap-fit used a few times. The guide says its figures may be doubled for a snap-fit used once; that is not
+      done here, because 4% is most of the 5.5% Plexiglas 8N breaks at (ISO 527), and acrylic crazes and is notch-sensitive. 2% is
+      also under half the strain at break, the rule Bayer's guides give for a material with no yield point. The guide calls its
+      table approximate and says to get the grade's own figure from its supplier.
 
     These replaced guide values on 12 November 2026: ABS came down from 2%, HIPS from 1.5% and glass-filled PA66 from 1.5%; acetal
-    went up from 4%, PP from 4%, Tritan from 3% and PETG from 2.5%. A starting assembly's cover gets its hooks where they measure clear (the middle of each wall is
+    went up from 4%, PP from 4%, Tritan from 3%, PETG from 2.5% and acrylic from 1.5%. A starting assembly's cover gets its hooks where they measure clear (the middle of each wall is
     tried first): the desk device's front (4), the cassette player's front (2) and the smart speaker's grille (4) have them, each
     catching 0.8 mm and bending 0.77%. The handheld's, the round device's and the power bank's covers have none drawn at their default
     sizes: the board, the light ring or the cells are within 1.5 mm of the wall, and a hook needs 2.2 mm; their fix still says snap, and
@@ -2147,18 +2150,21 @@ screen, the drawing and the files agree. Routes: `src/lab-assembly-routes.js`; s
   - **A belt** (`around`, `len`, kind `belt`). A ring that says which two round parts it runs round (`around: [a, b]`) is drawn round
     them, at the height it is set at: its outline, place and size across are worked out each time from the two, so it follows them. A
     part with a flange carries the belt on the flange. `len` is the length the belt is bought at, round its inside, lying slack. The
-    check measures off the two parts: the path (two straight runs and the wrap on each), the stretch of the bought length over it (slack, or over 15%, is fix before
-    tooling; outside 3 to 10% is a warning), the wrap on the smaller part (120°
+    check measures off the two parts: the path (two straight runs and the wrap on each), how far under it the belt is bought (slack, or stretched over 15%, is fix
+    before tooling; outside 5 to 10% under is a warning), the wrap on the smaller part (120°
     or more), the belt level on both running surfaces (off the edge of one is fix before tooling), and the smaller part at least 8 times
     the belt's thickness across. The turntable now has the motor's pulley on its shaft, up through the plinth (⌀12 mm, on the parts
     list), and a flat 3 × 0.8 mm belt round it and the ⌀60 mm sub-platter under the platter: a 478.5 mm path at the default size,
-    bought at 456 mm (stretched 4.9%), wrapping 165° of the pulley. In the files: the belt is a part with its own closed solid in the
+    bought at 454 mm (5.1% under, stretched 5.4%), wrapping 165° of the pulley. In the files: the belt is a part with its own closed solid in the
     assembly STL and exact faces in the STEP (arcs on the two parts, flat runs between). It is drawn in place, stretched; the bought
-    length is on the finding, not in the solid. Where the 5% comes from: it is how flat rubber phono belts are sized in the trade, not
-    a belt maker's datasheet figure. V-M Audio Enthusiasts' belt measuring help takes 5% off a worn belt's measured length
-    ("multiply by .95 to compensate for belt stretch"), and repairers take about 5% off a string run round the belt's path. No maker's
-    figure was found for how far such a belt may be stretched, so the 3 to 10% that passes without a warning, and the 15% that fails,
-    are this check's own allowance either side of 5%; the finding says so, and the belt's maker has the last word.
+    length is on the finding, not in the solid. Where 5 to 10% comes from: it is how the belts' suppliers size a replacement. PRB Line's
+    catalogue (Russell Industries) says to measure the old belt's inside circumference and "deduct 5%-10% from that measurement",
+    which "allows for possible stretch of an old belt and assures a snug fit of the new belt"; V-M Audio Enthusiasts' belt measuring
+    help says "multiply by .95 to compensate for belt stretch"; repairers take about 5% off a string run round the path. A starting
+    assembly's belt is bought 5% under its path, and 5 to 10% under passes (in whole percents, as the figures are given). Two things
+    this is not. The suppliers take their percentage off a worn belt's length, and the check takes it off the path: a worn belt lies
+    at or under its path, so the check is on the slack side of them if anything. And it is a sizing rule, not a figure for how far
+    the rubber may be stretched: none was found, so failing a belt stretched over 15% is this check's own limit.
   - **An opening of a part's own, and a cover that slides over it** (`holes`, `slides`, kind `opening`). A part can carry openings that
     nothing passes through (`holes: [{ at, size, axis, round }]`: a sip opening, a vent), cut with the same machinery as the openings for
     parts that pass through; one that cannot be cut where it is asked (off the part, within 0.3 mm of its edge, on another opening) is
