@@ -6685,9 +6685,8 @@ jobEvery('Spec checks', 5 * 60 * 1000, runSpecCheckRecovery, { delay: 50 * 1000 
 jobEvery('3D models', 5 * 60 * 1000, runModelRecovery, { delay: 55 * 1000 });
 // Design Lab: a concept card shows its flat when that was saved after the picture, or when there is no picture; concepts without a flat thumbnail yet get one here (a few at a time)
 jobEvery('Flat thumbnails', 30 * 60 * 1000, async()=>{const ids=(await pool.query('select id from lab_concepts where flat_thumb is null order by updated_at desc limit 40')).rows;let n=0;for(const r of ids){try{if(await labFlats.flatThumb(r.id))n++}catch(e){app.log.warn({err:e.message,concept:r.id},'flat thumbnail not made');await pool.query('update lab_concepts set flat_thumb=$2 where id=$1',[r.id,Buffer.alloc(0)]).catch(()=>{})}}return n}, { delay: 30 * 1000 });
-// AI_AUTO_RETRY=off: the re-runs start only when asked (POST /v1/admin/ai/auto-retry). The journeys set it on every server: they share one
-// database, and a server's own timer that fired between the journey failing three packs and asking for them took them first, so the journey's
-// own call found nothing to start ("idle", started 0: J52 on PR #551).
+// AI_AUTO_RETRY=off: packs are re-run only when asked (POST /v1/admin/ai/auto-retry). The journeys set it on every server: they share one
+// database, and a server whose own timer fired between J52 failing three packs and asking for the retry took them first, so the journey's call found none.
 if (process.env.AI_AUTO_RETRY === 'off') declareJob('Assistant re-runs after an outage', 5 * 60 * 1000, 'the test rig runs them on request'); else jobEvery('Assistant re-runs after an outage', 5 * 60 * 1000, () => runAiAutoRetry().then(r => r.started), { delay: 40 * 1000 });
 if (shopifyConfigured()) jobEvery('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, runPaymentSync, { delay: 25 * 1000 }); else declareJob('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, 'Shopify is not connected');
 // One time: cards of tech packs that already exist take their material, decoration, colourways and size run from the pack. Does nothing after the first full pass.
