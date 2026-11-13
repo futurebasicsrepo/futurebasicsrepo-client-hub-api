@@ -32,7 +32,7 @@ import { traceVector } from './lab-vector.js';
 import { shoeSvg, withArt, SHOE_VIEWS, BAG_VIEWS } from './lab-shoe-draw.js';
 import { BAG_TYPES } from './lab-bags.js';
 import { ensureBranding } from './lab-concepts.js';
-import { STYLES, FITS, SIZES, DETAILS, ALLOVER_BASES, templateOf, fitToTemplate, detectStyle, defaultTemplate, looksLikeFootwear, defaultParams, defaultPlacement, fitTall, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm, drawingOf } from './lab-flats.js';
+import { STYLES, FITS, SIZES, DETAILS, ALLOVER_BASES, templateOf, fitToTemplate, detectStyle, defaultTemplate, looksLikeFootwear, defaultParams, defaultPlacement, fitTall, cleanFlat, cleanEdits, describeEdit, placementChecks, overlapChecks, boxesMeet, describe, renderSvg, pomTable, measurementsFor, fmt, fmtCm, drawingOf, viewBoxOf } from './lab-flats.js';
 import { packRows, cleanColourways, costOf, FREIGHT_DUTY_PCT } from './lab-materials.js';
 import { artColours } from './art.js';
 import './pantone-c.js';
@@ -44,7 +44,7 @@ import { callJsonSchema, nearestName } from './studio.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 import { rankTemplates, candidateTemplates, tagMarks, viewsOf, viewLabel, sideOf, wrapStyle, upgradePlacements, techniqueFits, surfaceOf } from './lab-flats.js';
 import { tagFaceSvg } from './lab-tags.js';
-import { washWords, washPrompt, cleanWash, washShrink } from './lab-wash.js';
+import { washWords, washPrompt, cleanWash, washShrink, washSoft } from './lab-wash.js';
 import { necklineWords, necklineOf } from './lab-neck.js';
 import { flatDetails, pictureFromFlatsPrompt, auditOf, auditResult, BUILD_SCHEMA, BUILD_SYSTEM, LOOK_SCHEMA, buildAsk, buildEdits, applyLook } from './lab-trip.js';
 import { cleanConstruction, constructionOf, constructionWords } from './lab-construction.js';
@@ -128,6 +128,24 @@ export const flatEditPrompt = prompt => [
   `Redraw only the transparent area of the mask: ${prompt}`,
   'Match the drawing exactly: the same line weight, the same flat-sketch style, white fill, black lines, dashed lines for stitching. No colour, no shading, no texture, no text, no logos, no people. The change joins the lines around it seamlessly, and everything outside the area stays exactly as it is.'
 ].join('\n');
+
+// a picture of each view's wash and distressing, for the pictures made of the flats (renderSvg washHref; the SVG a browser opens keeps the
+// filters). Drawn by librsvg the wash's filters and the garment's mask take seconds a view, and longer again in the sheet, where libvips
+// draws the page in tiles and each tile draws all of it: made once, shared by the sheet and the flat pictures. A soft wash is drawn at half
+// the flats' resolution and past its box, then laid in at the full, cut at the box, under the distressing, and all of it is cut to the
+// garment. Each is drawn as a flat picture is (flatPng: sharp draws it straight at FLAT_PX across), on the very same pixels, so the
+// garment's edges, the hem and the holes are as sharp as before, and the wash's noise, which librsvg draws on its device pixels, falls
+// where it did. `o`: renderSvg's options for the drawing (templateSvg, partHref, maskHref, editHrefs). → { view: { washHref, washAt } }
+export const FLAT_PX = 1800, FLAT_SCALE = 60;
+const dataPng = b => `data:image/png;base64,${b.toString('base64')}`;
+export const flatPng = (svg, width = FLAT_PX) => sharp(Buffer.from(svg), { density: 150 }).resize({ width });
+const drawWash = async (svg, width) => { const { data, info } = await flatPng(svg, width).png().toBuffer({ resolveWithObject: true }); return { washHref: dataPng(data), washAt: { w: info.width, h: info.height }, png: data }; };
+export const washPictures = async (p, views, o = {}, width = FLAT_PX) => Object.fromEntries((await Promise.all(views.map(async v => {
+  const svg = (washOnly, more = {}) => renderSvg(p, v, { ...o, washOnly, raster: true, scale: FLAT_SCALE, ...more }), wash = svg('wash');
+  const under = wash ? await drawWash(wash, washSoft(p) ? width / 2 : width) : null, wear = svg('wear', under ? { washHref: under.washHref, washAt: under.washAt } : {}); if (!wear) return null;
+  const [layer, mask] = await Promise.all([drawWash(wear, width), drawWash(svg('mask'), width)]);
+  return [v, { washHref: dataPng(await sharp(layer.png).composite([{ input: mask.png, blend: 'dest-in' }]).png().toBuffer()), washAt: layer.washAt }];
+}))).filter(Boolean));
 
 export function registerLabFlatsRoutes(app, d) {
   const { pool, authenticate, adminOnly, attachArtwork, applyHandoff, log = console, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit , pickImpl = callJsonSchema, lab = null } = d;
@@ -428,7 +446,7 @@ export function registerLabFlatsRoutes(app, d) {
     for (const view of ['front', 'back']) {
       if (!drawingOf(plainP, view)) continue;
       const b = drawingOf(plainP, view).box, w = b.x1 - b.x0, h = b.y1 - b.y0, side = Math.max(w, h), cx0 = (b.x0 + b.x1) / 2 - side / 2, cy0 = (b.y0 + b.y1) / 2 - side / 2;
-      const svg = renderSvg(plainP, view, { plain: true, scale: 0, templateSvg, partHref, background: true }).replace(/^<svg ([^>]*?)viewBox="[^"]*"/, `<svg $1viewBox="${cx0} ${cy0} ${side} ${side}" width="${N}" height="${N}"`);
+      const svg = renderSvg(plainP, view, { plain: true, scale: 0, templateSvg, partHref, background: true, raster: true }).replace(/^<svg ([^>]*?)viewBox="[^"]*"/, `<svg $1viewBox="${cx0} ${cy0} ${side} ${side}" width="${N}" height="${N}"`);
       const sketch = await sharp(Buffer.from(svg)).flatten({ background: '#ffffff' }).png().toBuffer();
       const prompt = [`Image 1 is a technical flat sketch of a ${STYLES[style].label.toLowerCase()}, ${view} view.`, `Redraw it as the professional technical flat of this piece, ${view} view, the way a factory tech pack shows it: ${label}${words ? `. ${words}` : ''}.`,
         'Keep the canvas, the scale, the pose and the centre line of image 1, and the neck where image 1 has it, so the drawing still measures in the same inches; draw the shoulders, sleeves, length, hem and silhouette as the piece described has them.',
@@ -508,7 +526,7 @@ export function registerLabFlatsRoutes(app, d) {
     // around it so the model sees how the change joins the rest
     const N = 1024, side = Math.max(box.w, box.h) * 2.2, cx0 = box.x - side / 2, cy0 = box.y - side / 2;
     const plainP = { ...t.params, color: '', edits: t.params.edits.filter(e => e.type !== 'block') }, hrefs = await editHrefsOf(plainP);
-    const frame = background => Buffer.from(renderSvg(plainP, view, { plain: true, scale: 0, templateSvg, partHref, editHrefs: hrefs, background }).replace(/^<svg ([^>]*?)viewBox="[^"]*"/, `<svg $1viewBox="${cx0} ${cy0} ${side} ${side}" width="${N}" height="${N}"`));
+    const frame = background => Buffer.from(renderSvg(plainP, view, { plain: true, scale: 0, templateSvg, partHref, editHrefs: hrefs, background, raster: true }).replace(/^<svg ([^>]*?)viewBox="[^"]*"/, `<svg $1viewBox="${cx0} ${cy0} ${side} ${side}" width="${N}" height="${N}"`));
     const before = await sharp(frame(true)).flatten({ background: '#ffffff' }).png().toBuffer();
     const cloth = await sharp(frame(false)).ensureAlpha().extractChannel('alpha').raw().toBuffer();
     const px = v => Math.round(v / side * N), bx = px(box.x - box.w / 2 - cx0), by = px(box.y - box.h / 2 - cy0), bw = Math.max(1, Math.min(N - bx, px(box.w))), bh = Math.max(1, Math.min(N - by, px(box.h)));
@@ -544,7 +562,7 @@ export function registerLabFlatsRoutes(app, d) {
     try { await charge(req, { kind: 'flat', conceptId: c.id }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
     const p = row.params; await prepMasks(p);
     // the front flat, and the back flat beside it: the model sees every detail the flats draw, back pockets and back yokes included
-    const flatPng = async v => sharp(Buffer.from(renderSvg(p, v, { plain: true, scale: 40, templateSvg, partHref, maskHref, editHrefs: await editHrefsOf(p), alloverHref: await alloverHrefOf(p) })), { density: 150 })
+    const flatPng = async v => sharp(Buffer.from(renderSvg(p, v, { plain: true, scale: 40, templateSvg, partHref, maskHref, editHrefs: await editHrefsOf(p), alloverHref: await alloverHrefOf(p), raster: true })), { density: 150 })
       .resize({ width: 1024, height: 1024, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer();
     const flat = await flatPng('front'), back = viewsOf(p.style).includes('back') && drawingOf(p, 'back') ? await flatPng('back') : null;
     const fab = (Array.isArray(c.spec?.materials) ? c.spec.materials : []).find(m => m.kind === 'fabric' && m.role === 'main'), cw = (c.spec?.colourways || [])[0];
@@ -618,7 +636,7 @@ export function registerLabFlatsRoutes(app, d) {
     const plainP = { ...t.params, color: '', drawn: undefined, edits: [] }, N = 1024, drawn = { template: t.params.template };
     for (const view of views) {
       const b = drawingOf(plainP, view).box, w = b.x1 - b.x0, h = b.y1 - b.y0, side = Math.max(w, h), cx0 = (b.x0 + b.x1) / 2 - side / 2, cy0 = (b.y0 + b.y1) / 2 - side / 2;
-      const svg = renderSvg(plainP, view, { plain: true, scale: 0, templateSvg, partHref, background: true }).replace(/^<svg ([^>]*?)viewBox="[^"]*"/, `<svg $1viewBox="${cx0} ${cy0} ${side} ${side}" width="${N}" height="${N}"`);
+      const svg = renderSvg(plainP, view, { plain: true, scale: 0, templateSvg, partHref, background: true, raster: true }).replace(/^<svg ([^>]*?)viewBox="[^"]*"/, `<svg $1viewBox="${cx0} ${cy0} ${side} ${side}" width="${N}" height="${N}"`);
       const sketch = await sharp(Buffer.from(svg)).flatten({ background: '#ffffff' }).png().toBuffer();
       let out;
       try {
@@ -653,7 +671,7 @@ export function registerLabFlatsRoutes(app, d) {
       return { id: m.id, name: m.name, spec, fill, href: face ? `data:image/png;base64,${face.toString('base64')}` : `data:image/svg+xml;base64,${Buffer.from(tagFaceSvg(spec, { pxPerMm: 6, fill, brand: c.brand || '' })).toString('base64')}` };
     }));
   };
-  async function sheet(c, { size } = {}) {
+  async function sheet(c, { size, raster = false } = {}) { // raster: for a picture of the sheet (the tech pack's files), not the SVG a browser opens
     const r = (await pool.query('select params, placements, check_result from lab_flats where concept_id=$1', [c.id])).rows[0]; if (!r) return null;
     const p = { ...r.params, size: SIZES.includes(size) ? size : r.params.size || 'M' }, pl = upgradePlacements(r.params, r.placements), list = await techniques(c.client_id), hrefs = {};
     for (const q of pl) { const b = await pngOf(q); if (b) hrefs[q.id] = `data:image/png;base64,${(await sharp(b).resize({ width: 600, height: 600, fit: 'inside', withoutEnlargement: true }).png().toBuffer()).toString('base64')}`; }
@@ -661,7 +679,7 @@ export function registerLabFlatsRoutes(app, d) {
     const views = viewsOf(p.style);
     await prepMasks(p);
     const tags = tagMarks(p, await labelsOf(c));
-    const editHrefs = await editHrefsOf(p), alloverHref = await alloverHrefOf(p), svgs = views.map(v => renderSvg(p, v, { maskHref, placements: pl, hrefs, findings: ck.findings, showPom: true, scale: 0, templateHref, partHref, editHrefs, alloverHref, tags }));
+    const editHrefs = await editHrefsOf(p), alloverHref = await alloverHrefOf(p), washHrefs = raster ? await washPictures(p, views, { maskHref, templateSvg, partHref, editHrefs }) : {}, svgs = views.map(v => renderSvg(p, v, { maskHref, placements: pl, hrefs, findings: ck.findings, showPom: true, scale: 0, templateHref, partHref, editHrefs, alloverHref, tags, raster, ...washHrefs[v] }));
     // one page, 17 × 11 in at 100 units an inch: the flats across the top, the placements and the measurements under them
     const W = 1700, T = (x, y, s, t, o = {}) => `<text x="${x}" y="${y}" font-size="${s}" font-family="Space Grotesk, Helvetica, Arial, sans-serif" font-weight="${o.w || 400}" fill="${o.c || '#141416'}"${o.a ? ` text-anchor="${o.a}"` : ''}>${esc(t)}</text>`;
     const colW = (W - 120) / svgs.length; let y = 150;
@@ -683,7 +701,7 @@ export function registerLabFlatsRoutes(app, d) {
     for (const row of pom) { py += 22; body += T(cx, py, 12, `${row.code} ${row.name}`.slice(0, 48)) + row.values.map((v, i) => T(cx + 330 + i * 52, py, 12, String(v.value), { a: 'end', w: v.size === 'M' ? 600 : 400 })).join('') + T(cx + 330 + cols.length * 52 + 20, py, 12, String(row.tolerance), { a: 'end', c: '#727278' }); }
     const head = `${T(60, 62, 30, c.name, { w: 600 })}${T(60, 92, 15, `${STYLES[p.style].label}${STYLES[p.style].kind === 'goods' ? '' : ` · ${FITS[p.fit] || p.fit} fit`} · Future Basics Design Lab · ${new Date().toISOString().slice(0, 10)}`, { c: '#727278' })}${T(1640, 62, 15, ck.summary.fail ? `${ck.summary.fail} problem${ck.summary.fail === 1 ? '' : 's'} to fix before it can be made` : ck.summary.warn ? `${ck.summary.warn} thing${ck.summary.warn === 1 ? '' : 's'} to check` : 'Ready to make', { a: 'end', w: 600, c: ck.summary.fail ? '#a02a20' : ck.summary.warn ? '#8a5a00' : '#17603a' })}`;
     const H = Math.max(y, py) + 60;
-    return { editHrefs, alloverHref, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#ffffff"/><rect x="0" y="0" width="${W}" height="6" fill="#4bff9a"/>${head}${body}</svg>`, p, pl, hrefs, svgs, views, tags };
+    return { editHrefs, alloverHref, washHrefs, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#ffffff"/><rect x="0" y="0" width="${W}" height="6" fill="#4bff9a"/>${head}${body}</svg>`, p, pl, hrefs, svgs, views, tags };
   }
   app.get('/v1/lab/concepts/:id/flats/sheet.svg', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
@@ -710,7 +728,7 @@ export function registerLabFlatsRoutes(app, d) {
       // the artwork, and the flat with the placement on it
       const art = s.hrefs[q.id] ? Buffer.from(s.hrefs[q.id].split(',')[1], 'base64') : null, bw = CW * .48, bh = 140; // low enough that a placement with several threads and a check still fits its one page
       doc.rect(L, y, bw, bh).fill('#f3f2ee'); if (art) { try { doc.image(art, L + 10, y + 10, { fit: [bw - 20, bh - 20], align: 'center', valign: 'center' }); } catch { /* left blank */ } } doc.rect(L, y, bw, bh).lineWidth(.6).strokeColor(LINE).stroke();
-      try { const flat = await sharp(Buffer.from(renderSvg(s.p, q.view, { maskHref, placements: s.pl, hrefs: s.hrefs, selected: q.id, scale: 40, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref }))).resize({ width: 900, height: 900, fit: 'inside' }).flatten({ background: '#ffffff' }).png().toBuffer();
+      try { const flat = await sharp(Buffer.from(renderSvg(s.p, q.view, { maskHref, placements: s.pl, hrefs: s.hrefs, selected: q.id, scale: 40, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, raster: true }))).resize({ width: 900, height: 900, fit: 'inside' }).flatten({ background: '#ffffff' }).png().toBuffer();
         doc.image(flat, L + bw + 12, y, { fit: [CW - bw - 12, bh], align: 'center', valign: 'center' }); } catch { /* no flat picture */ }
       y += bh + 14;
       doc.fillColor(INK).font('SG-B').fontSize(11).text('Where it goes', L, y); doc.fillColor(INK).font('SG').fontSize(10).text(safe(describe(q, s.p)), L, doc.y + 3, { width: CW }); y = doc.y + 12;
@@ -736,7 +754,7 @@ export function registerLabFlatsRoutes(app, d) {
       const bw = CW * .48, bh = 220, tile = s.alloverHref ? Buffer.from(s.alloverHref.split(',')[1], 'base64') : null;
       doc.rect(L, y, bw, bh).fill('#f3f2ee'); if (tile) { try { const t3 = await sharp({ create: { width: 900, height: 900, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: await sharp(tile).resize(300, 300, { fit: 'fill' }).png().toBuffer(), tile: true, left: 0, top: 0 }]).png().toBuffer(); doc.image(t3, L + 10, y + 10, { fit: [bw - 20, bh - 20], align: 'center', valign: 'center' }); } catch { /* left blank */ } }
       doc.rect(L, y, bw, bh).lineWidth(.6).strokeColor(LINE).stroke();
-      try { const flat = await sharp(Buffer.from(renderSvg(s.p, 'front', { maskHref, scale: 40, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref }))).resize({ width: 900, height: 900, fit: 'inside' }).flatten({ background: '#ffffff' }).png().toBuffer(); doc.image(flat, L + bw + 12, y, { fit: [CW - bw - 12, bh], align: 'center', valign: 'center' }); } catch { /* no flat picture */ }
+      try { const flat = await sharp(Buffer.from(renderSvg(s.p, 'front', { maskHref, scale: 40, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, raster: true }))).resize({ width: 900, height: 900, fit: 'inside' }).flatten({ background: '#ffffff' }).png().toBuffer(); doc.image(flat, L + bw + 12, y, { fit: [CW - bw - 12, bh], align: 'center', valign: 'center' }); } catch { /* no flat picture */ }
       y += bh + 14;
       if (cols.length) { doc.fillColor(INK).font('SG-B').fontSize(11).text('Colours', L, y); table(b, [{ h: '#', w: .08, mono: true }, { h: 'Pantone C', w: .52, mono: true }, { h: 'Share', w: .4, align: 'right', mono: true }], cols.map((x, k) => [String(k + 1), { t: x.pantone || x.name, swatch: x.hex }, `${Math.round(x.share * 100)} %`]), { y: doc.y + 6, fontSize: 9.5 }); y = doc.y + 12; }
       table(b, [{ h: 'Item', w: .22, mono: true }, { h: '', w: .78 }], [['How it is made', ao.base], ['The repeat', `${ao.type}, ${fmtCm(ao.w)} across, ${fmtCm(ao.h)} down; the tile file repeats without a seam`], ['Before cutting', 'Print the panels before they are cut and sewn; line the repeat up at the centre front and keep its direction on every panel.'], ...(dd && !factory ? [['Cost', `$${(dd.perPieceCents / 100).toFixed(2)} a piece${dd.basis ? ` (${dd.basis})` : ''}; before the factory's quote`]] : [])], { y, fontSize: 9.5, head: false });
@@ -751,17 +769,17 @@ export function registerLabFlatsRoutes(app, d) {
   });
   // the files that go on a tech pack: the spec sheet and each flat, as pictures
   async function files(c) {
-    const s = await sheet(c); if (!s) return [];
-    const out = [{ name: 'Spec sheet · flats, placements and measurements', image: await png(s.svg, 2400) }];
-    const flat = (v, o = {}) => png(renderSvg(s.p, v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, tags: s.tags, ...o }), 1800);
+    const s = await sheet(c, { raster: true }); if (!s) return [];
+    const flat = (v, o = {}) => png(renderSvg(s.p, v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: FLAT_SCALE, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, tags: s.tags, raster: true, ...s.washHrefs[v], ...o }), FLAT_PX);
     // a cup (src/lab-goods.js): each side as its own picture, with what the wrap puts on it, and the wrap laid flat, named as what it is
-    if (wrapStyle(s.p.style)) { const two = STYLES[s.p.style].goods.sides === 2;
-      out.push({ name: 'Technical flat · front', image: await flat('front', { side: 'front' }) }); if (two) out.push({ name: 'Technical flat · back', image: await flat('front', { side: 'back' }) });
-      out.push({ name: 'Technical flat · wrap, laid flat', image: await flat('back'), wrap: true }); return out; }
-    for (const v of s.views) out.push({ name: `Technical flat · ${v}`, image: await flat(v) });
-    return out;
+    const two = wrapStyle(s.p.style) && STYLES[s.p.style].goods.sides === 2;
+    const pics = wrapStyle(s.p.style) ? [{ name: 'Technical flat · front', v: 'front', o: { side: 'front' } }, ...(two ? [{ name: 'Technical flat · back', v: 'front', o: { side: 'back' } }] : []), { name: 'Technical flat · wrap, laid flat', v: 'back', wrap: true }]
+      : s.views.map(v => ({ name: `Technical flat · ${v}`, v }));
+    // the sheet and the flats are drawn at once (each is its own picture; sharp draws them side by side)
+    const [sheetPng, ...flats] = await Promise.all([png(s.svg, 2400), ...pics.map(q => flat(q.v, q.o))]);
+    return [{ name: 'Spec sheet · flats, placements and measurements', image: sheetPng }, ...pics.map((q, i) => ({ name: q.name, image: flats[i], ...(q.wrap ? { wrap: true } : {}) }))];
   }
-  const png = async (svg, width) => `data:image/png;base64,${(await sharp(Buffer.from(svg), { density: 150 }).resize({ width }).flatten({ background: '#ffffff' }).png().toBuffer()).toString('base64')}`;
+  const png = async (svg, width) => dataPng(await flatPng(svg, width).flatten({ background: '#ffffff' }).png().toBuffer());
   // everything the tech pack takes from the flats (src/lab-handoff.js lays it into the pack)
   async function handoff(c) {
     const items = await files(c);
@@ -983,7 +1001,7 @@ export function registerLabFlatsRoutes(app, d) {
     if (!p || !STYLES[p.style]) { await pool.query('update lab_concepts set flat_thumb=$2 where id=$1', [c.id, Buffer.alloc(0)]); return null; }
     p.size = p.size || 'M'; const hrefs = {}; for (const q of pl) { const b = await pngOf(q).catch(() => null); if (b) hrefs[q.id] = `data:image/png;base64,${(await sharp(b).resize({ width: 600, height: 600, fit: 'inside', withoutEnlargement: true }).png().toBuffer()).toString('base64')}`; }
     await prepMasks(p);
-    const svg = renderSvg(p, 'front', { maskHref, placements: pl, hrefs, scale: 45, templateSvg, partHref, editHrefs: await editHrefsOf(p), alloverHref: await alloverHrefOf(p), tags: tagMarks(p, await labelsOf(c)), showDims: false, plain: true, ...(wrapStyle(p.style) ? { side: 'front' } : {}) }); // a cup's card is its front, as every card is
+    const svg = renderSvg(p, 'front', { maskHref, placements: pl, hrefs, scale: 45, templateSvg, partHref, editHrefs: await editHrefsOf(p), alloverHref: await alloverHrefOf(p), tags: tagMarks(p, await labelsOf(c)), showDims: false, plain: true, raster: true, ...(wrapStyle(p.style) ? { side: 'front' } : {}) }); // a cup's card is its front, as every card is
     const thumb = await sharp(Buffer.from(svg), { density: 96 }).resize({ width: 720, height: 720, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).jpeg({ quality: 76 }).toBuffer();
     await pool.query('update lab_concepts set flat_thumb=$2 where id=$1', [c.id, thumb]); return thumb;
   }
@@ -996,7 +1014,7 @@ export function registerLabFlatsRoutes(app, d) {
     const s = await sheet(c); if (!s) return null; const out = {};
     // a cup's two pictures are its two sides, each with what the wrap puts on it (its second view is the wrap laid flat, not a side to turn)
     const cupS = wrapStyle(s.p.style), has = v => (cupS ? v === 'front' || STYLES[s.p.style].goods.sides === 2 : s.views.includes(v));
-    for (const v of ['front', 'back']) { if (!has(v)) continue; out[v] = await sharp(Buffer.from(renderSvg(s.p, cupS ? 'front' : v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: 60, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, tags: s.tags, showDims: false, plain: true, ...(cupS ? { side: v } : {}) })), { density: 150 }).resize({ width: 1024, height: 1024, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer(); }
+    for (const v of ['front', 'back']) { if (!has(v)) continue; out[v] = await sharp(Buffer.from(renderSvg(s.p, cupS ? 'front' : v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: FLAT_SCALE, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, tags: s.tags, showDims: false, plain: true, raster: true, ...(cupS ? { side: v } : {}) })), { density: 150 }).resize({ width: 1024, height: 1024, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer(); }
     if (!out.front) return null;
     // each placed graphic, its art on the garment colour (so white art still shows) and where it goes, so no turn leaves one out
     const list = await techniques(c.client_id), ground = /^#[0-9a-f]{6}$/i.test(String(s.p.color || '')) ? s.p.color : '#c8c8c8';
