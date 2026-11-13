@@ -128,7 +128,7 @@ export function registerLabRangeRoutes(app, d) {
       if (out.error) { skipped.push({ id: r.id, name: r.name, why: out.error }); continue; }
       // the picture shows it straight away; the flats and the tech pack take it from the concept's words
       if (r.image) { const img = await layOn(r.image, a.png, spot, r.category), thumb = await sharp(img).resize({ width: 420, height: 420, fit: 'inside' }).jpeg({ quality: 72 }).toBuffer();
-        await pool.query('update lab_concepts set image=$2, thumb=$3, updated_at=now() where id=$1', [r.id, img, thumb]); await pool.query('delete from lab_concept_views where concept_id=$1', [r.id]).catch(() => {}); }
+        await pool.query(`update lab_concepts set image=$2, thumb=$3, image_note='', updated_at=now() where id=$1`, [r.id, img, thumb]); await pool.query('delete from lab_concept_views where concept_id=$1', [r.id]).catch(() => {}); }
       applied.push({ id: r.id, name: r.name, spot, status: out.concept.status });
     }
     return { applied, skipped };

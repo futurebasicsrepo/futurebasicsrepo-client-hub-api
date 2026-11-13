@@ -46,6 +46,8 @@ import { rankTemplates, candidateTemplates, tagMarks, viewsOf, viewLabel, sideOf
 import { tagFaceSvg } from './lab-tags.js';
 import { washWords, washPrompt, cleanWash, washShrink } from './lab-wash.js';
 import { necklineWords, necklineOf } from './lab-neck.js';
+import { flatDetails, pictureFromFlatsPrompt, auditOf, auditResult, BUILD_SCHEMA, BUILD_SYSTEM, LOOK_SCHEMA, buildAsk, buildEdits, applyLook } from './lab-trip.js';
+import { cleanConstruction, constructionOf, constructionWords } from './lab-construction.js';
 import { brandHits } from './lab-concepts.js';
 import { readiness } from './lab-ready.js';
 
@@ -179,20 +181,26 @@ export function registerLabFlatsRoutes(app, d) {
   // drawn from this, so a trucker jacket in the picture is never drawn as the sweatshirt its line's category suggests. FLAT_READ_FIXTURE (JSON)
   // stands in for the model where the assistant runs on fixtures.
   const reads = new Map();
+  // FLAT_TRIP_FIXTURE (tests): a JSON file of stand-ins for the vision model, by a word in the concept's name: { "<name>": { read: what
+  // readPicture answers, build: what readBuild answers, missing: the detail keys checkPicture finds left out } }
+  const tripFixture = c => { if (!env.FLAT_TRIP_FIXTURE) return null; try { const all = JSON.parse(readFileSync(env.FLAT_TRIP_FIXTURE, 'utf8')); return Object.entries(all).find(([k]) => String(c?.name || '').includes(k))?.[1] || null; } catch { return null; } };
   async function readPicture(c) {
     const img = (await pool.query('select image from lab_concepts where id=$1', [c.id])).rows[0]?.image; if (!img) return null;
     const key = createHash('sha1').update(img).digest('hex'); if (reads.has(key)) return reads.get(key);
     let out = null;
-    if (env.AI_FIXTURE || !env.ANTHROPIC_API_KEY) { try { out = env.FLAT_READ_FIXTURE ? JSON.parse(env.FLAT_READ_FIXTURE) : null; } catch { out = null; } }
+    if (env.AI_FIXTURE || !env.ANTHROPIC_API_KEY) { try { out = tripFixture(c)?.read || (env.FLAT_READ_FIXTURE ? JSON.parse(env.FLAT_READ_FIXTURE) : null); } catch { out = null; } }
     else {
       try {
         const jpeg = await sharp(img).resize({ width: 900, height: 900, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer(), styles = Object.keys(STYLES).filter(k => STYLES[k].kind !== 'goods'); // the picture is read for a garment; a product type is chosen, not read
         out = await pickImpl('You are a garment technologist. Say which garment a product picture shows, so its technical flat is drawn from the right sketch: the garment type, its fit, and the colour of its main cloth.',
-          [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpeg.toString('base64') } }, { type: 'text', text: `The garment types:\n${styles.map(k => `- "${k}": ${STYLES[k].label}`).join('\n')}\n- "other": none of these (footwear, accessories, anything else)\nThe concept is called "${clip(c.name, 80)}". If the picture shows several views of one garment, judge that garment.` }],
-          { type: 'object', additionalProperties: false, required: ['style', 'fit', 'color', 'why'], properties: { style: { type: 'string', enum: [...styles, 'other'] }, fit: { type: 'string', enum: Object.keys(FITS) }, color: { type: 'string', description: 'the main cloth colour as #rrggbb' }, why: { type: 'string' } } }, { maxTokens: 300 });
+          [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpeg.toString('base64') } }, { type: 'text', text: `The garment types:\n${styles.map(k => `- "${k}": ${STYLES[k].label}`).join('\n')}\n- "other": none of these (footwear, accessories, anything else)\nThe concept is called "${clip(c.name, 80)}". If the picture shows several views of one garment, judge that garment. Then say how it is built, from what the picture shows (not what such a garment usually has): its sleeves, collar, opening, pockets (each one you see), waist, panels and the rest; and how it is finished: its neckline, wash, wear, whether it is cropped, and the colour of contrast pockets and trims.` }],
+          { type: 'object', additionalProperties: false, required: ['style', 'fit', 'color', 'why', 'build', 'look'], properties: { style: { type: 'string', enum: [...styles, 'other'] }, fit: { type: 'string', enum: Object.keys(FITS) }, color: { type: 'string', description: 'the main cloth colour as #rrggbb' }, why: { type: 'string' }, build: BUILD_SCHEMA, look: LOOK_SCHEMA } }, { maxTokens: 1100 });
       } catch (e) { log.warn?.({ err: e.message }, 'flats picture read failed'); return null; }
     }
-    const r = out && STYLES[out.style] ? { style: out.style, fit: FITS[out.fit] ? out.fit : null, color: /^#[0-9a-f]{6}$/i.test(String(out.color || '')) ? String(out.color).toLowerCase() : null } : null;
+    // how it is built, as the picture shows it: the flats keep it (the pattern drafts it and the tech pack lists it), so a pocket or a zip in the
+    // picture is not only drawn but made
+    const build = out?.build ? cleanConstruction(out.build) : null;
+    const r = out && STYLES[out.style] ? { style: out.style, fit: FITS[out.fit] ? out.fit : null, color: /^#[0-9a-f]{6}$/i.test(String(out.color || '')) ? String(out.color).toLowerCase() : null, ...(build && Object.keys(build).length ? { build } : {}), ...(out.look && typeof out.look === 'object' ? { look: out.look } : {}) } : null;
     if (reads.size > 500) reads.clear(); reads.set(key, r); return r;
   }
   const rgb = h => [1, 3, 5].map(i => parseInt(String(h).slice(i, i + 2), 16)), far = (a, b) => { const [x, y] = [rgb(a), rgb(b)]; return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) > 70; };
@@ -235,6 +243,15 @@ export function registerLabFlatsRoutes(app, d) {
     // a piece started from a grown library sketch (picked for its picture, or chosen in the sketch pack) starts as that sketch: its frame,
     // its drawings and what it is built with; no AI
     const ds = c.spec?.drawnStart; if (ds?.front && ds.style === params.style) params = { ...fitToTemplate({ ...params, template: ds.template }), drawn: { template: ds.template, front: ds.front, ...(ds.back ? { back: ds.back } : {}) }, options: { ...(params.options || {}), construction: { ...(ds.construction || {}), ...(params.options?.construction || {}) } } };
+    // the picture says how the piece is built: the flats keep it (it wins over the sketch's own and the words), and a detail the stock sketch
+    // does not draw (a chest pocket on a plain tee, a zip on a crew) is drawn on it, where that detail usually goes, until the flat is drawn
+    // from the picture itself
+    if (read?.build && read.style === params.style && ['top', 'bottom'].includes(STYLES[params.style]?.kind)) {
+      const add = params.drawn?.front ? [] : buildEdits(read.build, params);
+      params = { ...params, options: { ...(params.options || {}), construction: { ...(params.options?.construction || {}), ...read.build } }, edits: [...(params.edits || []), ...add] };
+    }
+    // and how it is finished: the neckline, the wash and wear, cropped, contrast pockets
+    if (read?.look && read.style === params.style) params = applyLook(params, read.look);
     const logo = spec.branding?.logo || {};
     if (logo.mark && logo.mark !== 'none') { const mark = logo.mark === 'cue' ? 'mark' : logo.mark, base = LOGO_BASE[logo.technique] || 'embroidery', aspect = await aspectOf({ mark }); const t = techFor(list, { technique: base }, params.style);
       placements.push({ id: 'logo', name: 'Future Basics logo', source: 'logo', mark, technique: base, techniqueId: t.id, ...defaultPlacement('logo', params, { aspect, label: logo.placement || '' }) }); }
@@ -519,19 +536,25 @@ export function registerLabFlatsRoutes(app, d) {
   app.post('/v1/lab/concepts/:id/flats/picture', { preHandler: pre }, async (req, reply) => {
     const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
     if (c.status === 'tech_pack') return bad(reply, 'This concept is already a tech pack', 409);
-    const row = (await pool.query('select params, (select image is not null from lab_concepts where id=$1) has_image from lab_flats where concept_id=$1', [c.id])).rows[0];
+    const row = (await pool.query('select params, placements, (select image is not null from lab_concepts where id=$1) has_image from lab_flats where concept_id=$1', [c.id])).rows[0];
     if (!row) return bad(reply, 'Save the flats first: the picture is drawn from them', 409);
     if (row.has_image && !req.body?.replace) return bad(reply, 'This concept already has a picture. Send replace to draw a new one from the flats.', 409);
     const cfg = imageCfg(); if (!cfg.configured) return bad(reply, 'No image model is connected', 503);
     if ((redraws.get(dayOf()) || 0) >= redrawCap()) return bad(reply, `The daily limit of ${redrawCap()} AI drawings from flats is reached. Raise LAB_DAILY_FLAT_AI.`, 429);
     try { await charge(req, { kind: 'flat', conceptId: c.id }); } catch (e) { return bad(reply, e.message, e.status || 500, e.meter ? { code: e.code, meter: e.meter } : {}); }
     const p = row.params; await prepMasks(p);
-    const flat = await sharp(Buffer.from(renderSvg(p, 'front', { plain: true, scale: 40, templateSvg, partHref, maskHref, editHrefs: await editHrefsOf(p), alloverHref: await alloverHrefOf(p) })), { density: 150 })
+    // the front flat, and the back flat beside it: the model sees every detail the flats draw, back pockets and back yokes included
+    const flatPng = async v => sharp(Buffer.from(renderSvg(p, v, { plain: true, scale: 40, templateSvg, partHref, maskHref, editHrefs: await editHrefsOf(p), alloverHref: await alloverHrefOf(p) })), { density: 150 })
       .resize({ width: 1024, height: 1024, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer();
+    const flat = await flatPng('front'), back = viewsOf(p.style).includes('back') && drawingOf(p, 'back') ? await flatPng('back') : null;
     const fab = (Array.isArray(c.spec?.materials) ? c.spec.materials : []).find(m => m.kind === 'fabric' && m.role === 'main'), cw = (c.spec?.colourways || [])[0];
-    const words = [fab ? `in ${[fab.spec?.weightGsm ? fab.spec.weightGsm + ' gsm' : '', fab.spec?.construction || fab.name].filter(Boolean).join(' ')}` : '', cw?.name ? `colour ${cw.name}` : '', necklineWords(p) ? `with a ${necklineOf(p.neckline).label.toLowerCase()}` : '', washPrompt(p)].filter(Boolean).join(', ');
-    const prompt = `Turn this technical flat drawing into a photorealistic product photograph of the same garment${words ? `, ${words}` : ''}: front view, on an invisible mannequin, on a plain light grey studio background, soft even light. Keep the cut, proportions and every detail exactly where the flat draws it: pockets, collar, closures, seams, stitching and trims, and the colours of each part. No person, no logos and no words unless they are drawn.`;
-    let out; try { out = cfg.provider === 'fixture' ? await sharp(flat).flatten({ background: '#e9e9e6' }).png().toBuffer() : await editImpl({ images: [flat], prompt, cfg: { ...cfg, size: '1024x1024' } }); }
+    const cloth = fab ? [fab.spec?.weightGsm ? fab.spec.weightGsm + ' gsm' : '', fab.spec?.construction || fab.name].filter(Boolean).join(' ') : '';
+    const words = [cloth ? `in ${cloth}` : '', cw?.name ? `colour ${cw.name}` : '', necklineWords(p) ? `with a ${necklineOf(p.neckline).label.toLowerCase()}` : '', washPrompt(p)].filter(Boolean).join(', ');
+    // every detail of the flats in words (src/lab-trip.js), and, when it is drawn again, the ones the last picture left out
+    const details = flatDetails(p, { placements: upgradePlacements(p, row.placements), fabric: cloth, colourName: cw?.hex === p.color ? cw.name : '' });
+    const insist = Array.isArray(req.body?.insist) ? req.body.insist.map(String).slice(0, 40) : [];
+    const prompt = pictureFromFlatsPrompt({ details, words, back: Boolean(back), insist });
+    let out; try { out = cfg.provider === 'fixture' ? await sharp(flat).flatten({ background: '#e9e9e6' }).png().toBuffer() : await editImpl({ images: back ? [flat, back] : [flat], prompt, cfg: { ...cfg, size: '1024x1024' } }); }
     catch (e) { return bad(reply, `The image model could not draw it: ${clip(e.message, 200)}`, 502); }
     redraws.set(dayOf(), (redraws.get(dayOf()) || 0) + 1);
     const image = await sharp(out).flatten({ background: '#ffffff' }).resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
@@ -539,14 +562,35 @@ export function registerLabFlatsRoutes(app, d) {
     // the picture before, if any, is kept once so it can be put back from the studio
     await pool.query(`insert into lab_studio_docs(concept_id, doc, original, applied_at, updated_by) select id, '{}'::jsonb, image, now(), $2 from lab_concepts where id=$1 and image is not null
       on conflict(concept_id) do update set original=coalesce(lab_studio_docs.original, (select image from lab_concepts where id=$1))`, [c.id, actorOf(req)]);
-    await pool.query(`update lab_concepts set image=$2, thumb=$3, raw=null, image_note='Drawn from the flats', updated_at=now() where id=$1`, [c.id, image, thumb]);
+    // the picture is checked against the flats: each detail that can be seen from the front, kept or missing (one vision call; none without one)
+    const check = await checkPicture(c, image, details);
+    await pool.query(`update lab_concepts set image=$2, thumb=$3, raw=null, image_note='Drawn from the flats', spec = coalesce(spec,'{}'::jsonb) || jsonb_build_object('pictureCheck', $4::jsonb), updated_at=now() where id=$1`, [c.id, image, thumb, JSON.stringify(check ? { ...check, at: new Date().toISOString() } : null)]);
     await pool.query('delete from lab_concept_views where concept_id=$1', [c.id]); // views drawn from an older picture
     // the Studio opens its saved layers before the concept's picture: the old base (often a blank page) comes off them, so the new picture is the
     // base and what was laid over it (a logo, type, graphics from the flats) stays on top
     await pool.query(`update lab_studio_docs set doc = jsonb_set(doc, '{layers}', coalesce((select jsonb_agg(l) from jsonb_array_elements(doc->'layers') l where l->>'kind' is distinct from 'base'), '[]'::jsonb))
       where concept_id=$1 and jsonb_typeof(doc->'layers')='array'`, [c.id]);
-    return { ok: true, left: Math.max(0, redrawCap() - (redraws.get(dayOf()) || 0)) };
+    return { ok: true, left: Math.max(0, redrawCap() - (redraws.get(dayOf()) || 0)), check, details: details.map(d => ({ key: d.key, view: d.view, label: d.label, layer: Boolean(d.layer) })) };
   });
+  // the picture drawn from the flats, checked: a yes or no for each detail that shows from the front (FLAT_TRIP_FIXTURE stands in for it in tests)
+  async function checkPicture(c, image, details) {
+    const a = auditOf(details); if (!a.checked.length) return null;
+    if (env.AI_FIXTURE || !env.ANTHROPIC_API_KEY) { const f = tripFixture(c); if (!f?.missing) return null; return auditResult(Object.fromEntries(a.checked.map((d, i) => [`d${i}`, f.missing.some(k => d.key.startsWith(k)) ? 'no' : 'yes'])), a.checked); }
+    try { const jpeg = await sharp(image).resize({ width: 1024, height: 1024, fit: 'inside' }).jpeg({ quality: 85 }).toBuffer();
+      return auditResult(await pickImpl(a.system, [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpeg.toString('base64') } }, { type: 'text', text: a.text }], a.schema, { maxTokens: 900 }), a.checked); }
+    catch (e) { log.warn?.({ err: e.message }, 'picture check failed'); return null; }
+  }
+  // how a piece is built and finished, read from its picture and its drawn flats (one vision call; FLAT_TRIP_FIXTURE stands in for it in tests)
+  async function readBuild(c, drawn, style) {
+    if (env.AI_FIXTURE || !env.ANTHROPIC_API_KEY) { const f = tripFixture(c)?.build; return f ? { build: cleanConstruction(f.build || {}), look: f.look || null } : null; }
+    const imgs = [], pic = (await pool.query('select image from lab_concepts where id=$1', [c.id])).rows[0]?.image; if (pic) imgs.push(['The picture of the piece', pic]);
+    for (const v of ['front', 'back']) { const r = drawn?.[v] ? (await pool.query('select png from lab_art where id=$1', [drawn[v]])).rows[0] : null; if (r?.png) imgs.push([`Its technical flat, ${v}`, r.png]); }
+    if (!imgs.length) return null; const content = [];
+    for (const [label, b] of imgs.slice(0, 3)) content.push({ type: 'text', text: label }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: (await sharp(b).resize({ width: 1100, height: 1100, fit: 'inside' }).flatten({ background: '#ffffff' }).jpeg({ quality: 82 }).toBuffer()).toString('base64') } });
+    content.push({ type: 'text', text: `${buildAsk(style)} Then say how it is finished: its neckline, wash, wear, whether it is cropped, and the colour of contrast pockets and trims.` });
+    try { const out = await pickImpl(BUILD_SYSTEM, content, { type: 'object', additionalProperties: false, required: ['build', 'look'], properties: { build: BUILD_SCHEMA, look: LOOK_SCHEMA } }, { maxTokens: 1000 }); return { build: cleanConstruction(out?.build), look: out?.look || null }; }
+    catch (e) { log.warn?.({ err: e.message }, 'flats build read failed'); return null; }
+  }
   // ---- the flat drawn from the picture ----
   // Each view: the sketch as it stands (framed square on its own box) and the concept's picture go to the image model, which draws the flat
   // of the garment in the picture on the sketch's frame and in its colours. The result replaces the sketch inside the same box, so every
@@ -589,7 +633,13 @@ export function registerLabFlatsRoutes(app, d) {
       const png = await sharp(clearBackground(rgb, bw, bh), { raw: { width: bw, height: bh, channels: 4 } }).png().toBuffer(), thumb = await sharp(png).resize({ width: 256, height: 256, fit: 'inside' }).png().toBuffer();
       drawn[view] = (await pool.query(`insert into lab_art(concept_id,name,png,thumb,prompt,model,source,in_library,created_by) values($1,$2,$3,$4,$5,$6,'flat',false,$7) returning id`, [t.c.id, clip(`Flat ${view}: drawn from the picture`, 80), png, thumb, 'flat from the picture', cfg.model || cfg.provider, actorOf(req)])).rows[0].id;
     }
-    return { drawn, left: Math.max(0, redrawCap() - (redraws.get(dayOf()) || 0)) };
+    // the drawing shows how the piece is built; the flats keep it in words too (the page puts it on the flats it saves), so the pattern drafts
+    // what the picture has and the tech pack lists it
+    const got = ['top', 'bottom'].includes(STYLES[t.params.style]?.kind) ? await readBuild(t.c, drawn, t.params.style) : null, build = got?.build;
+    // the look as flat fields the page sets (only what the read found)
+    const lk = got?.look ? applyLook({ ...t.params, edits: [], neckline: null, wash: null, distress: null, options: { ...(t.params.options || {}), cropped: false } }, got.look) : null;
+    const look = lk ? { ...(lk.neckline ? { neckline: lk.neckline } : {}), ...(lk.wash ? { wash: lk.wash } : {}), ...(lk.distress ? { distress: lk.distress } : {}), ...(lk.options.cropped ? { cropped: true } : {}) } : null;
+    return { drawn, left: Math.max(0, redrawCap() - (redraws.get(dayOf()) || 0)), ...(build && Object.keys(build).length ? { construction: build, words: constructionWords(constructionOf({ ...t.params, edits: [], options: { ...(t.params.options || {}), construction: build } })) } : {}), ...(look && Object.keys(look).length ? { look } : {}) };
   });
   const gradeWords = q => (q.grade || []).map(g => `${g.sizes[0]}${g.sizes.length > 1 ? '–' + g.sizes[g.sizes.length - 1] : ''} ${fmt(g.w)} × ${fmt(g.h)}`).join(' · ');
   // the labels chosen on the concept (its materials), each with its face drawn at size, for tagMarks
@@ -737,7 +787,11 @@ export function registerLabFlatsRoutes(app, d) {
     const S = STYLES[p.style], tpl = templateOf(p), edits = p.edits || [];
     const pom = pomTable(p).map(row => ({ code: row.code, name: row.name, how: washShrink(p) ? `From the flats; finished, after the wash (allow ${washShrink(p)}% shrinkage)` : 'From the flats', tolerance: String(row.tolerance), values: Object.fromEntries(row.values.map(v => [v.size, String(v.value)])) }));
     const goods = S.kind === 'goods'; // a product type has no fit and one size, and is not cut from cloth: the pack does not say it is
+    // how it is built (src/lab-construction.js): as set on the Pattern page, else as the flats say (the picture's read, the sketch, the details added)
+    const set = ['top', 'bottom'].includes(S.kind) ? (await pool.query(`select spec->'construction' k from lab_patterns where concept_id=$1 and kind='garment'`, [c.id]).catch(() => ({ rows: [] }))).rows[0]?.k : null;
+    const built = ['top', 'bottom'].includes(S.kind) ? constructionWords(constructionOf(set && typeof set === 'object' ? { ...p, options: { ...(p.options || {}), construction: set } } : p)) : [];
     const construction = [{ area: 'Drawing', detail: goods ? `${S.label}, drawn from its measurements; one size.` : `${FITS[p.fit] || p.fit} fit ${S.label.toLowerCase()}, drawn from the ${tpl ? `"${tpl.label}" flat sketch` : 'measurements'}; sample size M.` },
+      ...(built.length ? [{ area: 'How it is built', detail: `${built.join('; ')}.` }] : []),
       ...pl.map(q => ({ area: `${sideOf(q, p)} · ${q.name}`, detail: `${techFor(list, q, p.style).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.${q.grade ? ` Artwork by size: ${gradeWords(q)}.` : ''}` })),
       ...pl.filter(q => q.inks).map(q => ({ area: `Inks by colourway · ${q.name}`, detail: Object.entries(q.inks).map(([cw, m]) => `on ${(cleanColourways(c.spec?.colourways).find(x => x.hex === cw)?.name) || cw}: ${Object.entries(m).filter(([a, b2]) => a !== b2).map(([a, b2]) => `${pantoneOf(a)} changed to ${pantoneOf(b2)}`).join(', ') || 'as drawn'}`).join('; ') })),
       ...(p.crop ? [{ area: 'Cropped body', detail: `Cropped ${fmtCm(p.crop)} shorter than the sketch's body, taken out above the hem band so the band and hem finish stay as drawn; the sleeves keep their length. Body length (sample M) ${fmtCm(p.m.length)}.` }] : []),

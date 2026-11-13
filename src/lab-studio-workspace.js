@@ -38,7 +38,9 @@ function adoptFlats(list,{saved=true}={}){FLATS={saved,placements:list||[]};if(G
   paintLayers();
   // a logo or graphic added on the flats comes onto the picture by itself (the front only: the picture shows the front). What came with the
   // concept is already drawn in its picture, so that waits for Put on the picture.
-  if(saved)linkFromFlats(FLATS.placements.filter(q=>q.source!=='studio'&&q.view==='front'&&(q.added||/^p[a-z0-9]{6}$/.test(q.id))&&(q.art||q.mark)))}
+  // A picture drawn from the flats has no graphic in it (the image model is told to leave them off, src/lab-trip.js), so every front graphic,
+  // the concept's own logo included, goes on it as a layer at its size
+  if(saved)linkFromFlats(FLATS.placements.filter(q=>q.source!=='studio'&&q.view==='front'&&(D?.concept?.fromFlats||q.added||/^p[a-z0-9]{6}$/.test(q.id))&&(q.art||q.mark)))}
 const LINKING=new Set();
 // where a placement sits on the picture: the garment's top and centre in the picture, then the placement's inches at the picture's scale
 function garmentBox(){const b=LAYERS.find(l=>l.kind==='base');if(!b||!b.raster)return null;const k=Math.min(1,256/b.raster.width),w=Math.max(1,Math.round(b.raster.width*k)),h=Math.max(1,Math.round(b.raster.height*k)),c=canvas(w,h),x=c.getContext('2d',{willReadFrequently:true});x.drawImage(b.raster,0,0,w,h);
@@ -83,7 +85,15 @@ $$('#levelSeg [data-level]').forEach(b=>b.onclick=()=>setLevel(b.dataset.level))
 let READY=null;
 async function loadReady(){if(GMODE||!CID)return;try{READY=await api(`/v1/lab/concepts/${CID}/ready`)}catch{return}paintReady()}
 // a piece with flats but no picture (from the recipe menu or a sketch): draw the picture from the flats in one go
-function paintFlatPic(){const show=Boolean(CID&&!GMODE&&D?.concept&&!D.concept.hasImage&&D.concept.hasFlats&&!D.concept.locked&&D.ai?.connected);$('#flatPicBar').classList.toggle('hidden',!show);dockFlatPic()}
+// The bar offers the picture drawn from the flats when there is none; and when the one drawn from them was checked and left a detail out
+// (src/lab-flats-routes.js checkPicture), it says which and offers to draw it again with those insisted on
+let PICMISS=[];
+function paintFlatPic(){const c=D?.concept,can=Boolean(CID&&!GMODE&&c&&c.hasFlats&&!c.locked&&D.ai?.connected),chk=c?.fromFlats&&c.hasImage?c.pictureCheck:null;
+  PICMISS=chk?.missing||[];const redo=Boolean(can&&PICMISS.length),bar=$('#flatPicBar'),txt=bar.querySelector('span');bar.dataset.mode=redo?'redo':'new';
+  if(redo){const names=PICMISS.map(k=>chk.labels?.[k]||k);const said=names.length===1?names[0].toLowerCase():`${names.length} details: ${names.slice(0,2).join('; ').toLowerCase()}${names.length>2?` and ${names.length-2} more`:''}`;
+    txt.innerHTML=`<b>The picture left out ${esc(said)}.</b><i class="more" style="font-style:normal"> Each detail of the flats was checked in it.</i>`;txt.title=names.join('\n');bar.setAttribute('aria-label','The picture left details out');$('#flatPicGo').textContent='Draw it again, showing them'}
+  else{txt.innerHTML='<b>No picture yet.</b><i class="more" style="font-style:normal"> Draw it from the flats (one AI generation).</i>';bar.setAttribute('aria-label','No picture yet');$('#flatPicGo').textContent='Draw the picture from the flats'}
+  bar.classList.toggle('hidden',!(redo||(can&&!c.hasImage)));dockFlatPic()}
 $('#flatPicX').onclick=()=>$('#flatPicBar').classList.add('hidden');
 // On a wide screen the prompt takes a place in the bar when the bar has the room on the rows it already has, so it never sits on the foot
 // of the drawing. Where it would cost the work a row (the Picture view on a laptop, an iPad), in Focus and on a narrow screen it floats
@@ -96,7 +106,10 @@ FPQ.addEventListener('change',dockFlatPic);{const mo=new MutationObserver(dockFl
 $('#flatPicGo').onclick=async()=>{const b=$('#flatPicGo');if(HOLD)return;
   // what is open is saved first, and nothing saves while the model draws: a save landing after the picture would put the old base back
   if(!(await saveAll()))return;HOLD=true;busy('Drawing the picture from the flats. About a minute…');
-  try{await FBN.run(b,()=>api(`/v1/lab/concepts/${CID}/flats/picture`,{body:{}}),{done:'The picture is drawn: it is the concept picture now.'});DIRTY=false;clearTimeout(AUTO);location.href=`/lab/studio?concept=${CID}&view=picture`}catch{HOLD=false}finally{busy()}};
+  const redo=$('#flatPicBar').dataset.mode==='redo',body=redo?{replace:true,insist:PICMISS}:{};
+  try{const r=await FBN.run(b,()=>api(`/v1/lab/concepts/${CID}/flats/picture`,{body}),{done:'The picture is drawn: it is the concept picture now.'});DIRTY=false;clearTimeout(AUTO);
+    // what the check of the new picture found goes with the page that opens next
+    try{sessionStorage.setItem('fb.picCheck.'+CID,JSON.stringify(r?.check||null))}catch{}location.href=`/lab/studio?concept=${CID}&view=picture`}catch{HOLD=false}finally{busy()}};
 function paintReady(){const b=$('#readyBtn');if(!READY){b.textContent='Checklist';return}
   b.textContent=READY.isPack?'Tech pack ✓':`Checklist ${READY.done}/${READY.total}`;b.classList.toggle('ok',READY.ready);
   $('#readyList').innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:14px">${READY.isPack?'It is a tech pack':READY.ready?'Ready for the tech pack':'Before the tech pack'}</b>${READY.next?`<a class="btn sm go" href="${esc(READY.next.href)}" data-readynext>${esc(READY.next.label)}</a>`:''}</div>`

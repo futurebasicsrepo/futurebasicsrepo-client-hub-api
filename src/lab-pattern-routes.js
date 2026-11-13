@@ -12,6 +12,7 @@
 import { STYLES, SIZES, FITS, defaultParams, detectStyle, fitToTemplate, measurementsFor } from './lab-flats.js';
 import { constructionCheck } from './lab-pattern-check.js';
 import { proofCard, proofPage, proveSizes } from './lab-pattern-proof.js';
+import { BUILD_SCHEMA, BUILD_SYSTEM, buildAsk } from './lab-trip.js';
 import { cleanConstruction, constructionWords, SLEEVES, COLLARS, OPENINGS, POCKETS, WAISTS, LEGS, PANELS } from './lab-construction.js';
 import { PLUSH_TYPE, PLUSH_SNOUTS, PLUSH_HORNS, PLUSH_MANES, PLUSH_TAILS, PLUSH_PARTS, garmentPattern, bagPattern, BAG_KINDS, applyEdits, cutWords, cleanPatternEdits, patternDxfAama, plushPattern, cleanPlush, plushDefaults, patternSvg, patternDxf, yardage, fillGrams, PLUSH_SHAPES, PLUSH_EARS, PLUSH_FABRICS, PLUSH_EYES, PLUSH_AGES } from './lab-pattern.js';
 import { CATEGORIES, planLineOf, putOnLine } from './lab.js';
@@ -132,14 +133,9 @@ export function registerLabPatternRoutes(app, d) {
     for (const v of ['front', 'back']) { const art = L.flat?.drawn?.[v]; if (art) { const r = (await pool.query('select png from lab_art where id=$1', [art])).rows[0]; if (r?.png) imgs.push([`The flat, ${v}`, r.png]); } }
     if (!imgs.length) return reply.code(409).send({ error: 'There is no drawing to read yet: draw the flats or the picture first' });
     const content = []; for (const [label, b] of imgs.slice(0, 3)) { content.push({ type: 'text', text: label }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: (await sharp(b).resize({ width: 1100, height: 1100, fit: 'inside' }).flatten({ background: '#ffffff' }).jpeg({ quality: 82 }).toBuffer()).toString('base64') } }); }
-    content.push({ type: 'text', text: `The piece is a ${STYLES[L.flat.style]?.label || L.flat.style}. Say how it is built, from what the drawing shows (not what such a garment usually has). Pockets: list each one you see (two chest pockets are two entries).` });
-    const schema = { type: 'object', additionalProperties: false, required: ['sleeve', 'hood', 'collar', 'opening', 'pockets', 'panels'], properties: {
-      sleeve: { type: 'string', enum: SLEEVES }, hood: { type: 'boolean' }, collar: { type: 'string', enum: COLLARS }, opening: { type: 'string', enum: OPENINGS },
-      yoke: { type: 'object', additionalProperties: false, required: ['front', 'back'], properties: { front: { type: 'boolean' }, back: { type: 'boolean' } } },
-      pockets: { type: 'array', items: { type: 'string', enum: POCKETS } }, waist: { type: 'string', enum: WAISTS }, knee: { type: 'string', enum: ['single', 'double'] }, leg: { type: 'string', enum: LEGS },
-      pleats: { type: 'integer' }, panels: { type: 'string', enum: PANELS }, quilted: { type: 'boolean' }, belt: { type: 'boolean' }, lined: { type: 'boolean' },
-      breasted: { type: 'string', enum: ['single', 'double'], description: 'with a lapel collar: one row of buttons or a wide overlap with two rows' }, lapel: { type: 'string', enum: ['notch', 'peak'], description: 'with a lapel collar: a notch (a step down at the collar) or a peak (the lapel points up past the collar)' } } };
-    try { const out = await askImpl('You are a pattern maker reading a designer\'s flat sketch to draft its pattern. Report only construction you can see in the drawing.', content, schema, { maxTokens: 600 });
+    // the same read the flats make of a picture (src/lab-trip.js), so both say a piece is built the same way
+    content.push({ type: 'text', text: buildAsk(L.flat.style) });
+    try { const out = await askImpl(BUILD_SYSTEM, content, BUILD_SCHEMA, { maxTokens: 700 });
       const k = cleanConstruction(out); return { construction: k, words: constructionWords(k) }; }
     catch (e) { log.warn?.({ err: e.message }, 'construction read failed'); return reply.code(502).send({ error: `The drawing could not be read: ${String(e.message).slice(0, 160)}` }); }
   });
