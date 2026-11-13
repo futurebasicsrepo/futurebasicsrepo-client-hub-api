@@ -32,7 +32,9 @@ for port in 3123 3124 3125 3126 3127 3128 3129 3130 3131 3132 3133 3135; do for 
 # processing a run on its own timer held the email back six hours just before the journey asked for it (J119).
 # AI_AUTO_RETRY=off: no server re-runs failed tech packs by itself. J52 fails three packs and then asks for the retry; a server whose own
 # timer fired in between took the packs first, and the journey's call found nothing to start ({status:'idle',started:0}).
-COMMON=(DATABASE_URL="$DATABASE_URL" SITE_PEEK=off SITES_AUTO=off SALES_AUTO=off AI_AUTO_RETRY=off LAB_DAILY_ART=5000 FACTORY_ACTIONS=on JWT_SECRET=smoke-secret STAFF_ACCESS_DEFAULT=all LAB_AUTO=off UPLOAD_DIR="$T/uploads" FOLLOWUPS_DISABLED=true VENDOR_DATA_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff VENDOR_REVEAL_EMAILS=@chaos.test)
+# FLAT_TRIP_FIXTURE: stand-ins for the vision model that reads a picture into flats and checks a picture drawn from them, only for concepts
+# whose name has one of its keys (J313), so no other journey sees them
+COMMON=(DATABASE_URL="$DATABASE_URL" FLAT_TRIP_FIXTURE=scripts/journeys/fixtures/flat-trip.json SITE_PEEK=off SITES_AUTO=off SALES_AUTO=off AI_AUTO_RETRY=off LAB_DAILY_ART=5000 FACTORY_ACTIONS=on JWT_SECRET=smoke-secret STAFF_ACCESS_DEFAULT=all LAB_AUTO=off UPLOAD_DIR="$T/uploads" FOLLOWUPS_DISABLED=true VENDOR_DATA_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff VENDOR_REVEAL_EMAILS=@chaos.test)
 FIX=scripts/journeys/fixtures/ai-runner.json
 # Servers with the payment gate off do not run the locked-pack sweep (PAYMENT_SWEEP=off): they share this database, and would start the
 # packs that the gated servers' journeys expect to stay locked.

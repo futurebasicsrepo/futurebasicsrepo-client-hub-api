@@ -221,7 +221,7 @@ A client can open the Design Lab on their own room, from the hub, for a fixed pr
 
 Routes: `GET /v1/client/lab`, `POST /v1/client/lab/checkout`, `POST /v1/client/lab/landed`, `POST /v1/client/lab/invoices/:id/landed`, `GET /v1/client/lab/usage`; `GET /v1/products/:id/make`, `POST /v1/products/:id/make-request`, `POST|DELETE /v1/products/:id/quote-links[/:sid]`; staff `GET|PATCH /v1/admin/clients/:id/lab` (`comp`, `end`, `bill`), `POST /v1/admin/lab/invoices/:id/paid`, `GET|PATCH /v1/admin/make-requests[/:id]`. Tables: `lab_access`, `lab_ai_usage`, `lab_ai_invoices`, `make_requests`. Tests: `test/lab-access.test.js`, journey J232.
 
-**The flat follows the picture.** A concept's flat is drawn as the garment its picture shows: the vision model reads the picture (cached per picture) for the garment type, its fit and the colour of its main cloth, and the picture wins over the line's category, so a trucker jacket in a Tops line is drawn from a jacket sketch in its denim colour, not as a sweatshirt. The words still decide when there is no picture, and a jacket is a jacket in any line (trucker, bomber, chore coat, shacket, anorak…). A flat saved before as another garment says so above the drawing (**The picture shows a … ; this flat is drawn as a …**) with **Redraw from the picture**: the garment, fit and colour come from the picture, the graphics come along, and nothing is kept until Save. `GET /v1/lab/concepts/:id/flats/from-picture`.
+**The flat follows the picture.** A concept's flat is drawn as the garment its picture shows: the vision model reads the picture (cached per picture) for the garment type, its fit and the colour of its main cloth, and the picture wins over the line's category, so a trucker jacket in a Tops line is drawn from a jacket sketch in its denim colour, not as a sweatshirt. The same read says how the piece is built and finished, and the flats keep it (see *The flats and the picture, both ways*). The words still decide when there is no picture, and a jacket is a jacket in any line (trucker, bomber, chore coat, shacket, anorak…). A flat saved before as another garment says so above the drawing (**The picture shows a … ; this flat is drawn as a …**) with **Redraw from the picture**: the garment, fit and colour come from the picture, the graphics come along, and nothing is kept until Save. `GET /v1/lab/concepts/:id/flats/from-picture`.
 
 **Removing a graphic from the flat** takes it off the garment on the picture too (one record): it stays a layer on the picture, and the next save no longer puts it back on the flats.
 
@@ -883,7 +883,40 @@ The concept keeps `spec.recipe` (base, add-ons, parts, colour system, which colo
 
 **Edit recipe.** In the Studio a piece made from the menu has **Edit recipe** in its header. It opens the menu on the piece's own picks and how it was fitted together; change any of them and press **Save the changes**. The flats are cooked again from the new picks, and its colourways follow. Graphics placed on the flats and details added by hand stay. A tech pack cannot be changed this way. Routes: `GET|PUT /v1/lab/concepts/:id/recipe`.
 
-**The picture from the flats.** A piece made from the menu (or a sketch) has flats but no picture. The Studio shows a bar, **Draw the picture from the flats**, and the checklist's picture item says the same. One press sends the front flat, in its colour and with its details, to the image model as the reference for a product photograph. The answer becomes the concept picture. It is one AI generation, counted with the flats' AI redraws (`LAB_DAILY_FLAT_AI`). It is refused when the piece already has a picture unless you ask to replace it, and the picture before is kept so the Studio can put it back. Route: `POST /v1/lab/concepts/:id/flats/picture {replace?}`. No AI is used, so nothing is charged.
+**The picture from the flats.** A piece made from the menu (or a sketch) has flats but no picture. The Studio shows a bar, **Draw the picture from the flats**, and the checklist's picture item says the same. One press sends the front flat and the back flat, in their colours and with their details, to the image model as the reference for a product photograph, with every detail in words (see *The flats and the picture, both ways* below). The answer becomes the concept picture. It is one AI generation, counted and charged with the flats' AI redraws (`LAB_DAILY_FLAT_AI`), and one vision call checks it. It is refused when the piece already has a picture unless you ask to replace it, and the picture before is kept so the Studio can put it back. Route: `POST /v1/lab/concepts/:id/flats/picture {replace?, insist?}` → `{ check, details }`.
+
+## The flats and the picture, both ways
+
+Every detail of a piece follows it from its flats to its picture and from a picture back to its flats (`src/lab-trip.js`).
+
+**One list of details.** `flatDetails` lists everything the flats say about the product:
+- what it is: the style, the sketch and the fit; the main colour; the cloth;
+- how it is built, as the sketch draws it (`constructionOf`): sleeves, hood, collar, opening, yokes, pockets, waist, knee, leg, pleats, panels, quilting, belt, hem, ankle, lapels, back pockets, belt loops;
+- every detail added on the flats, with its size and place (a pocket, a zip, a placket, a drawcord, a part from the sketch pack, a stitch line, a coloured panel). A detail and the construction it accounts for are one item, listed once;
+- how it is finished: cropped, the neckline, the wash and the wear;
+- the graphics and the all-over print.
+
+**Flats to picture.** The image model gets the front flat and the back flat, and the list in words: what must show from the front, and what the back flat has (it does not show in a front view, but the garment is the one that has it). It is told to add nothing the flats do not draw. Graphics are not drawn by the image model: a picture drawn from the flats takes every front graphic as a layer at its size in the Studio, the concept's own logo included.
+
+**The check.** One vision call asks of the new picture, for each detail that can be seen from the front, whether it shows (yes, no, unsure). The concept keeps the answer (`spec.pictureCheck`). When something was left out, the Studio's bar says what (**The picture left out medium stone wash**) and **Draw it again, showing them** draws the picture again, telling the model what the last one missed (`insist`). After a new picture the Studio says how many of the details it shows.
+
+**Picture to flats.** The vision model that reads which garment a picture shows (style, fit, colour) now also reads how it is built (`BUILD_SCHEMA`, the same read as the Pattern page's **Read the drawing**) and how it is finished (`LOOK_SCHEMA`: neckline, wash and strength, wear and where, cropped, the colour of contrast pockets and trims). The flats keep both:
+- how it is built goes on the flats (`options.construction`), so the pattern drafts what the picture shows and the tech pack lists it;
+- a detail the stock sketch does not draw (a chest pocket on a plain tee sketch, a quarter zip on a crew) is drawn on it where that detail usually goes, in the contrast colour when there is one (`buildEdits`, ids `pic-…`);
+- the neckline (with its measurements), the wash and the wear are set.
+**Draw from the picture** then draws the flats from the picture itself: the stand-ins come off, and the drawing and the picture are read once more for how it is built and finished, which the flats keep when saved (`POST /flats/draw` → `{ drawn, construction, words, look }`).
+
+**Details added on the flats are drafted.** A pocket, a zip, a placket, a drawcord or pleats drawn on the flats (from the recipe menu, the Parts or by hand) is part of how the piece is built (`fromEdits` in `src/lab-construction.js`): a patch pocket up on the chest is a chest pocket, below the waist a hip pocket; a pair of cargo pockets on trousers is the cargo pockets; a welt on the back is a back pocket; a long zip is a full zip, a short one a half or quarter zip. The pattern drafts them, in addition to what the sketch has, unless how it is built was set by hand on the Pattern page. Every recipe piece with a detail added still passes the construction check at every size.
+
+**The tech pack says how it is built.** Its construction has a row **How it is built**: the construction words, as set on the Pattern page or else as the flats say.
+
+**Not carried by a picture, by design.** These stay on the flats: the exact line of a stitch, a part's own drawing from the sketch pack, a zip pocket or a dress's side pockets (drawn and listed, not yet drafted, so not read back), the buttons on a button-down collar, a skirt's zip, a redrawn area, the colour of one panel. A picture read back draws the flats anew, so the battle test lists them apart from real losses.
+
+**The battle test.** `node scripts/flats-roundtrip.mjs` runs pieces full of details (recipe pieces and library sketches) through the round trip and writes `roundtrip-out/report.html` and `summary.json`:
+- without keys, the code: the prompt names every detail, a picture read back perfectly loses and adds nothing, and the flats it makes still pass the construction check;
+- with `--live` (`ANTHROPIC_API_KEY` and `OPENAI_API_KEY` or `GEMINI_API_KEY` inline), the models: the picture is drawn and checked, read back, and what it lost is listed piece by piece, with the flat, the picture and the flat read back side by side. About one image generation and two vision calls a piece;
+- `--fixture` runs the live steps with stand-ins, to test the code.
+It exits non-zero when anything is lost. `test/lab-trip.test.js` runs the structural round trip on every recipe piece (each base with each add-on) and every library sketch of a top or a bottom: 684 pieces. Journey J313 covers the routes and the Studio, with stand-ins for the vision model (`FLAT_TRIP_FIXTURE`, a file of answers by concept name).
 
 Routes:
 - `GET /v1/lab/recipe` returns the menu.

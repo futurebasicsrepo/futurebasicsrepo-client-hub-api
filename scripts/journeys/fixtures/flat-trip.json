@@ -1,0 +1,10 @@
+{
+  "Trip hoodie": { "missing": ["wash"] },
+  "Trip read tee": {
+    "read": { "style": "tee", "fit": "regular", "color": "#2e3f5c", "why": "a navy tee with a mock neck, a quarter zip and a red chest pocket",
+      "build": { "sleeve": "set", "hood": false, "collar": "rib", "opening": "quarter-zip", "pockets": ["chest"], "panels": "none" },
+      "look": { "neckline": "mock", "wash": "garment-dye", "washStrength": "medium", "distress": "none", "distressFocus": "all", "cropped": false, "contrast": "#d23a2a" } },
+    "build": { "build": { "sleeve": "set", "hood": false, "collar": "rib", "opening": "quarter-zip", "pockets": ["chest", "chest"], "panels": "none" },
+      "look": { "neckline": "mock", "wash": "garment-dye", "washStrength": "heavy", "distress": "light", "distressFocus": "edges", "cropped": false, "contrast": "" } }
+  }
+}

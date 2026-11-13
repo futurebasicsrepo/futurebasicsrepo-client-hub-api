@@ -2,14 +2,15 @@
 // the yokes, the pockets, the waist, the knees, the leg, the pleats, the panels and stripes, the quilting, the belt and the lining.
 //
 // Where it comes from, in order:
-//   1. what was set on the piece (`options.construction`): by the designer in the pattern panel, or read from a freehand drawing by the vision
-//      model (src/lab-flats-routes.js, readConstruction), so a drawing with no name drafts as what it shows;
+//   1. what was set on the piece (`options.construction`): by the designer in the pattern panel, or read from the concept's picture and the
+//      flats drawn from it by the vision model (src/lab-flats-routes.js readPicture and readBuild, src/lab-trip.js), so a piece drafts as its
+//      picture shows it; the details added on the flats (a chest pocket, a zip, a drawcord) add to it (fromEdits);
 //   2. what the library sketch shows, read once from its front and back by two vision models and kept where they agree
 //      (src/lab-template-construction.js, made by scripts/pattern-read-sketches.mjs);
 //   3. what the library sketch's name says (a "cargo bomber", "double-knee work pants", a "raglan boxy tee");
 //   4. the style's own defaults (a hoodie has a hood and a kangaroo pocket; a zip hoodie a split one; a jacket a zip and welt pockets).
 // Each source fills only what the one before left unset. Pure: no I/O.
-import { STYLES } from './lab-flats.js';
+import { STYLES, measurementsFor, partOf } from './lab-flats.js';
 import { FLAT_TEMPLATES } from './lab-flat-templates.js';
 import { TEMPLATE_CONSTRUCTION } from './lab-template-construction.js';
 
@@ -118,12 +119,55 @@ export function cleanConstruction(c) {
   return out;
 }
 
-// the description a piece is drafted from: set, then named, then the style's own
+// What the details added on the flats say about how the piece is built (a chest pocket, a zip, a placket, a drawcord waist, pleats), so a
+// detail drawn on the flats is drafted and listed too, not only drawn. Each detail counts once; a pair (left and right, mirrored: the recipe
+// menu's `r-…-2`, or a part flipped) is one pocket on a bottom (its pockets are pairs) and two on a top (each chest pocket is its own).
+const POCKET_OF = { 'pocket-kangaroo': 'kangaroo', 'pocket-cargo': 'cargo', 'pocket-jean': 'five-pocket', 'pocket-slant': 'slash' };
+export function fromEdits(p) {
+  const S = STYLES[p?.style] || {}, top = S.kind === 'top', bottom = S.kind === 'bottom', out = {}, pk = [];
+  const edits = (Array.isArray(p?.edits) ? p.edits : []).filter(e => e && (e.type === 'detail' || e.type === 'part'));
+  if ((!top && !bottom) || !edits.length) return out;
+  let m = {}; try { m = measurementsFor(p, 'M') || {}; } catch { m = {}; }
+  const L = m.length || 26;
+  const kindOf = e => (e.type === 'part' ? ({ pockets: 'pocket-patch', zips: 'zip' }[partOf(e.part)?.kind] || null) : e.kind);
+  for (const e of edits) {
+    const k = kindOf(e), back = e.view === 'back'; if (!k) continue;
+    if (bottom) {
+      if (back && /^pocket-(welt|zip)$/.test(k)) { out.backPockets = true; out.backPocket = 'welt'; continue; }
+      if (back && /^pocket-(patch|flap|jean)$/.test(k)) { out.backPockets = true; out.backPocket = out.backPocket || (k === 'pocket-jean' ? 'jeans' : 'square'); continue; }
+      if (back) continue;
+      if (POCKET_OF[k] && !pk.includes(POCKET_OF[k])) pk.push(POCKET_OF[k]);
+      else if (k === 'pocket-patch' || k === 'pocket-flap') { if (!pk.includes('cargo') && e.y > (m.rise || 11)) pk.push('cargo'); }
+      if (k === 'drawcord') out.waist = 'drawcord';
+      if (k === 'pleat') out.pleats = Math.min(Math.max(Math.round(Number(e.count) || 1), 1), 3);
+      continue;
+    }
+    if (back) continue;
+    const chest = e.y < L * .5;
+    if (k === 'pocket-patch') pk.push(chest ? 'chest' : 'patch-hip');
+    else if (k === 'pocket-flap') pk.push(chest ? 'chest-flap' : 'flap-welt');
+    else if (k === 'pocket-welt') pk.push('welt'); // (a zip pocket is drawn and listed, not drafted: the pattern has no zip pocket yet)
+    else if (POCKET_OF[k] && POCKET_OF[k] !== 'five-pocket' && POCKET_OF[k] !== 'slash') pk.push(POCKET_OF[k]);
+    else if (k === 'zip') out.opening = e.h >= L * .6 ? 'zip' : e.h >= 9 ? 'half-zip' : 'quarter-zip';
+    else if (k === 'placket') out.opening = out.opening || 'placket';
+  }
+  // a top's pocket that comes in a pair counts once per side; a kangaroo is one however it is drawn
+  if (pk.length) out.pockets = top ? pk.filter((x, i) => x !== 'kangaroo' || pk.indexOf(x) === i) : pk;
+  return out;
+}
+// at least as many of each pocket as `add` has, keeping the order of `have`
+const unionPockets = (have = [], add = []) => { const out = [...have]; for (const k of new Set(add)) { const need = add.filter(x => x === k).length - out.filter(x => x === k).length; for (let i = 0; i < need; i++) out.push(k); } return out; };
+// the description a piece is drafted from: set, then named, then the style's own; the details added on the flats on top of what the sketch has
 export function constructionOf(p) {
   const t = p.template && p.template !== 'none' ? FLAT_TEMPLATES.find(x => x.id === p.template) : null;
   const set = cleanConstruction(p.options?.construction), named = t ? cleanConstruction(fromName(`${t.id} ${t.label}`, p.style)) : {}, base = styleDefaults(p.style, p.options || {});
   const seen = t ? cleanConstruction(TEMPLATE_CONSTRUCTION[t.id]) : {};
-  const out = { ...base, ...named, ...seen, ...set };
+  const out = { ...base, ...named, ...seen, ...set }, ed = cleanConstruction(fromEdits(p));
+  // a detail on the flats adds to the sketch's own (a chest pocket on a plain tee is drafted); what was set by hand on the Pattern page stays as set
+  if (ed.pockets && !set.pockets) out.pockets = unionPockets(out.pockets, ed.pockets);
+  for (const k of ['opening', 'waist']) if (ed[k] && !set[k] && (!out[k] || out[k] === 'none' || out[k] === 'fixed')) out[k] = ed[k];
+  if (ed.pleats && !('pleats' in set) && !out.pleats) out.pleats = ed.pleats;
+  if (ed.backPockets && !('backPockets' in set)) { out.backPockets = true; if (!set.backPocket) out.backPocket = ed.backPocket; }
   // what follows from the rest: a hood takes the place of a collar (but an outer piece keeps a stand or a funnel the hood is set inside, as a
   // puffer's is); a collar the place of a neck rib
   if (out.hood && out.collar && out.collar !== 'shearling' && !(['stand', 'funnel'].includes(out.collar) && ['jacket', 'coat', 'vest'].includes(p.style))) delete out.collar;
@@ -139,7 +183,7 @@ export function constructionWords(c) {
   if (c.opening && c.opening !== 'none') w.push({ zip: 'Full zip', 'half-zip': 'Half zip', 'quarter-zip': 'Quarter zip', buttons: 'Button front', snaps: 'Snap front', placket: 'Button placket' }[c.opening]);
   if (c.yoke?.front || c.yoke?.back) w.push(`${[c.yoke.front && 'front', c.yoke.back && 'back'].filter(Boolean).join(' and ')} yoke`.replace(/^./, s => s.toUpperCase()));
   const pk = {}; for (const x of c.pockets || []) pk[x] = (pk[x] || 0) + 1;
-  for (const [k, n] of Object.entries(pk)) w.push(`${n > 1 ? `${n} ` : ''}${{ kangaroo: 'kangaroo pocket', 'split-kangaroo': 'split kangaroo pocket', welt: 'welt pockets', 'flap-welt': 'flap pockets', chest: 'chest pocket', 'chest-flap': 'flap chest pocket', 'patch-hip': 'patch hip pocket', cargo: 'cargo pockets', 'five-pocket': 'five-pocket', slash: 'slash pockets' }[k]}${n > 1 && !/s$/.test(k) ? 's' : ''}`.replace(/^./, s => s.toUpperCase()));
+  for (const [k, n] of Object.entries(pk)) { const nm = { kangaroo: 'kangaroo pocket', 'split-kangaroo': 'split kangaroo pocket', welt: 'welt pockets', 'flap-welt': 'flap pockets', chest: 'chest pocket', 'chest-flap': 'flap chest pocket', 'patch-hip': 'patch hip pocket', cargo: 'cargo pockets', 'five-pocket': 'five-pocket', slash: 'slash pockets' }[k]; w.push(`${n > 1 ? `${n} ` : ''}${n > 1 && !/s$/.test(nm) ? nm + 's' : nm}`.replace(/^./, s => s.toUpperCase())); }
   if (c.waist && c.waist !== 'fixed') w.push(c.waist === 'drawcord' ? 'Elastic waist with drawcord' : 'Elastic waist');
   if (c.backPockets === false) w.push('No back pockets');
   if (c.beltLoops) w.push('Belt loops');

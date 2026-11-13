@@ -73,7 +73,9 @@ async function boot(){
   if(QS.get('tryon')==='1')tryOpen().catch(()=>{});
   setInterval(()=>{if(DIRTY&&!DRAG&&!HOLD)save()},90000); // the safety net under autosave: a quiet save every minute and a half while there are changes
   (D.doc?.linked||[]).forEach(id=>LINKING.add(id));setVMode(QS.get('view')||(!D.concept.hasImage&&!LAYERS_DRAWN()&&!D.concept.scratch&&QS.get('scratch')!=='1'&&D.concept.hasFlats&&!ENGD()?'front':'picture')).then(()=>{if(SCRATCH_HINT&&VMODE==='picture')toast(GUIDE_PPI?'Draw over the outline with the Pencil or the brush. It is a guide, at real size and locked; hide it in Layers when you are done.':'A blank page: draw with the Pencil or the brush. The guide is locked; hide it in Layers when you are done.')}).catch(()=>{});loadFlatsRecord();loadReady();
-  if(D.concept.recipe&&!D.concept.locked){$('#recipeBtn').href=`/lab/recipe?concept=${CID}`;$('#recipeBtn').classList.remove('hidden')}paintFlatPic(); // a piece from the recipe menu: change its recipe; no picture yet: draw it from the flats
+  if(D.concept.recipe&&!D.concept.locked){$('#recipeBtn').href=`/lab/recipe?concept=${CID}`;$('#recipeBtn').classList.remove('hidden')}paintFlatPic();
+  // a picture just drawn from the flats: what its check found, once
+  {let k=null;try{k=JSON.parse(sessionStorage.getItem('fb.picCheck.'+CID)||'null');sessionStorage.removeItem('fb.picCheck.'+CID)}catch{}if(k&&(k.kept?.length||k.missing?.length))toast(k.missing?.length?`The picture shows ${k.kept.length} of ${k.kept.length+k.missing.length} details the flats have. It left out ${k.missing.map(x=>k.labels?.[x]||x).slice(0,2).join(' and ')}${k.missing.length>2?' and more':''}: draw it again from the bar.`:`The picture shows all ${k.kept.length} details of the flats that can be seen from the front.`)} // a piece from the recipe menu: change its recipe; no picture yet: draw it from the flats
 }
 // a graphic for the library: a clear canvas, or the graphic's picture as a layer over one, with the layers it was built from when it has them
 async function bootGraphic(){

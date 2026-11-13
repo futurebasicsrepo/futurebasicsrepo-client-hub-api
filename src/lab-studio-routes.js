@@ -134,7 +134,7 @@ export function registerLabStudioRoutes(app, d) {
   const note = async (id, req, body) => pool.query(`insert into lab_concept_comments(concept_id,user_id,name,body) values($1,$2,$3,$4)`, [id, actorOf(req), await nameOf(req), clip(body, 1000)]);
   const concept = async (req, reply) => {
     if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404), null;
-    const r = (await pool.query('select id, name, category, status, spec, plan_id, product_id, (raw is not null) has_plain, (image is not null) has_image, exists(select 1 from lab_flats f where f.concept_id=lab_concepts.id) has_flats, (select style from lab_flats f where f.concept_id=lab_concepts.id) flat_style from lab_concepts where id=$1', [req.params.id])).rows[0];
+    const r = (await pool.query('select id, name, category, status, spec, plan_id, product_id, (raw is not null) has_plain, (image is not null) has_image, exists(select 1 from lab_flats f where f.concept_id=lab_concepts.id) has_flats, (select style from lab_flats f where f.concept_id=lab_concepts.id) flat_style, image_note from lab_concepts where id=$1', [req.params.id])).rows[0];
     if (!r) return bad(reply, 'Not found', 404), null; return r;
   };
   // the flat style a concept is drawn as: its saved flat's, or the one a catalogue product names; none known, a garment (cloth)
@@ -152,6 +152,8 @@ export function registerLabStudioRoutes(app, d) {
     const cfg = imageCfg();
     return {
       concept: { id: c.id, name: c.name, category: c.category, status: c.status, hasImage: c.has_image, hasPlain: c.has_plain, hasFlats: c.has_flats, recipe: Boolean(c.spec?.recipe), locked: lockedOf(c), colors: c.spec?.colors || [], scratch: Boolean(c.spec?.scratch),
+        // a picture drawn from the flats has no graphics in it (they are laid on as layers), and what its check found the picture left out
+        fromFlats: c.image_note === 'Drawn from the flats', pictureCheck: c.image_note === 'Drawn from the flats' ? c.spec?.pictureCheck || null : null,
         planId: c.plan_id || null, planName: plan?.name || '', productId: c.product_id || null, productUrl: c.product_id ? `/tech-packs/${c.product_id}` : '' }, // for the piece's step bar
       doc: s?.doc || null, savedAt: s?.updated_at || null, savedBy: s?.by_name || '', appliedAt: s?.applied_at || null, canRestore: Boolean(s?.has_original),
       marks: [{ id: 'mark', label: 'Cue mark', svg: logoSvg('mark') }, { id: 'word', label: 'Wordmark', svg: logoSvg('word') }, { id: 'lockup', label: 'Wordmark and cue mark', svg: logoSvg('lockup') }],
@@ -403,7 +405,7 @@ export function registerLabStudioRoutes(app, d) {
     if (lockedOf(c)) return bad(reply, 'This concept is already a tech pack', 409);
     const s = (await pool.query('select original from lab_studio_docs where concept_id=$1', [c.id])).rows[0]; if (!s?.original) return bad(reply, 'The picture has not been changed in the studio', 409);
     const thumb = await sharp(s.original).resize({ width: 420, height: 420, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
-    await pool.query(`update lab_concepts set image=$2, thumb=$3, updated_at=now() where id=$1`, [c.id, s.original, thumb]);
+    await pool.query(`update lab_concepts set image=$2, thumb=$3, image_note='', updated_at=now() where id=$1`, [c.id, s.original, thumb]);
     await pool.query(`update lab_studio_docs set original=null, applied_at=null where concept_id=$1`, [c.id]);
     await pool.query('delete from lab_concept_views where concept_id=$1', [c.id]);
     await note(c.id, req, 'The picture from before the studio was put back.');

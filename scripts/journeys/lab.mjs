@@ -5533,4 +5533,54 @@ await journey('J312', 'The recipe menu offers everything there is a drawing of, 
   } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
+await journey('J313', 'The flats and the picture carry the product both ways: the picture drawn from the flats is given the front and the back with every detail in words, and is checked for each; what it left out is said in the Studio with a press to draw it again, and the logo goes on it as a layer; a picture read into flats keeps how the piece is built and finished (the pockets and the zip it shows, the neckline, the wash, the contrast colour), drawn on the stock sketch until the flats are drawn from the picture; and the tech pack says how it is built', async () => {
+  const made = [];
+  try {
+    // flats to picture: a hoodie with a chest pocket, a zip pocket and a stone wash, and a logo on the flats
+    const h = await K('/concepts/from-recipe', { body: { base: 'hoodie', addons: ['chest-pocket', 'zip-pocket', 'wash-vintage'], system: 'earth', name: `Trip hoodie ${stamp}` } }), hid = h.json.concept?.id; made.push(hid);
+    const f0 = (await K(`/concepts/${hid}/flats`)).json.flat;
+    const put = await K(`/concepts/${hid}/flats`, { method: 'PUT', body: { ...f0, placements: [{ id: 'logo', name: 'Logo', source: 'logo', mark: 'mark', technique: 'embroidery', view: 'front', x: 4.5, y: 6, w: 3, h: 1 }] } });
+    ok(put.status === 200, '0. a recipe hoodie with its details, and a logo on its flats', put.json?.error);
+    const pic = await K(`/concepts/${hid}/flats/picture`, { body: {} }), ck = pic.json.check || {}, keys = (pic.json.details || []).map(d => d.key);
+    ok(pic.status === 200 && ['kind', 'hood', 'pocket:kangaroo', 'wash', 'edit:r-chest-pocket', 'edit:r-zip-pocket', 'place:logo'].every(k => keys.includes(k)) && pic.json.details.find(d => d.key === 'place:logo').layer, '1. the picture is drawn from the flats\' details: the build, the details added on them, the wash, and the logo as a layer', keys);
+    ok(ck.missing?.join() === 'wash' && ck.kept.includes('pocket:kangaroo') && ck.kept.includes('edit:r-chest-pocket') && !ck.kept.includes('place:logo') && /stone wash/i.test(ck.labels.wash), '   it is checked detail by detail: here the check found the wash left out, and the graphics are not asked of it', ck);
+    const st = (await K(`/concepts/${hid}/studio`)).json.concept;
+    ok(st.fromFlats === true && st.pictureCheck?.missing?.join() === 'wash', '   the Studio knows the picture came from the flats and what it left out', [st.fromFlats, st.pictureCheck]);
+    // the tech pack says how it is built (an unwashed hoodie: a washed one's pack takes far longer to draw)
+    const hp = await K('/concepts/from-recipe', { body: { base: 'hoodie', addons: ['chest-pocket'], system: 'earth', name: `Trip pack hoodie ${stamp}` } }), pid = hp.json.concept?.id; made.push(pid);
+    await K(`/concepts/${pid}`, { method: 'PUT', body: { twist: 'A chest pocket on a heavyweight hoodie' } });
+    const apv = await K(`/concepts/${pid}/approve`, { body: { overrideReason: 'journey: round trip of the flats and the picture' } }); ok(apv.status === 200, '   (approved, to make its tech pack)', apv.json?.error);
+    const tp = await K(`/concepts/${pid}/tech-pack`, { body: {}, timeout: 90000 }), built = tp.json.productId ? sql(`select r->>'detail' from tech_packs, jsonb_array_elements(data->'construction') r where product_id='${tp.json.productId}' and r->>'area' like '%How it is built'`) : '';
+    ok(tp.status === 201 && /Hood/.test(built) && /Kangaroo pocket/.test(built) && /Chest pocket/.test(built), '2. the tech pack says how it is built, the chest pocket added on the flats included (it is drafted, not only drawn)', [tp.status, built]);
+    // picture to flats: a tee sketch whose picture shows a quarter zip, a red chest pocket, a mock neck and a garment dye
+    const t = await K('/concepts/from-sketch', { body: { template: 'tee-classic', name: `Trip read tee ${stamp}` } }), tid = t.json.concept?.id; made.push(tid);
+    sql(`update lab_concepts set image=decode('${jpeg().split(',')[1]}','base64') where id='${tid}'`);
+    const fl = (await K(`/concepts/${tid}/flats`)).json.flat, ed = fl.edits || [], k = fl.options?.construction || {};
+    ok(k.opening === 'quarter-zip' && k.pockets?.join() === 'chest' && fl.color === '#2e3f5c', '3. read from its picture, the flats keep how it is built: the quarter zip and the chest pocket, in the picture\'s colour', [k, fl.color]);
+    ok(ed.some(e => e.id?.startsWith('pic-pocket-patch') && e.color === '#d23a2a') && ed.some(e => e.id?.startsWith('pic-zip') && e.h === 7) && fl.neckline === 'mock' && fl.wash?.type === 'garment-dye', '   and how it is finished: the plain tee sketch draws the pocket in its contrast red and the quarter zip, with the mock neck and the garment dye', { edits: ed.map(e => [e.id, e.kind, e.color]), neck: fl.neckline, wash: fl.wash });
+    const dr = await K(`/concepts/${tid}/flats/draw`, { body: { ...fl, placements: [], views: ['front', 'back'] } });
+    ok(dr.status === 200 && dr.json.drawn?.front && dr.json.construction?.pockets?.join() === 'chest,chest' && dr.json.words.includes('2 chest pockets') && dr.json.look?.wash?.strength === 'heavy' && dr.json.look?.distress?.focus === 'edges', '4. drawn from the picture, the drawing is read too: what it shows is how the flats are built and finished', dr.json.construction && [dr.json.words, dr.json.look]);
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const page = await (await b.newContext({ viewport: { width: 1180, height: 820 } })).newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.addInitScript(tk => { try { localStorage.setItem('fb.admin.token', tk); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+      // the hoodie's tech pack is made, so a second one is drawn for the Studio: a fresh recipe hoodie with the logo and its checked picture
+      const h2 = await K('/concepts/from-recipe', { body: { base: 'hoodie', addons: ['chest-pocket', 'wash-vintage'], system: 'earth', name: `Trip hoodie two ${stamp}` } }), h2id = h2.json.concept?.id; made.push(h2id);
+      const g0 = (await K(`/concepts/${h2id}/flats`)).json.flat; await K(`/concepts/${h2id}/flats`, { method: 'PUT', body: { ...g0, placements: [{ id: 'logo', name: 'Logo', source: 'logo', mark: 'mark', technique: 'embroidery', view: 'front', x: 4.5, y: 6, w: 3, h: 1 }] } });
+      await K(`/concepts/${h2id}/flats/picture`, { body: {} });
+      await page.goto(`${BASE}/lab/studio?concept=${h2id}&view=picture`, { waitUntil: 'networkidle' }); await page.waitForSelector('#flatPicBar:not(.hidden)', { timeout: 20000 });
+      await page.waitForFunction(() => LAYERS.some(l => l.fromFlat === 'logo'), null, { timeout: 15000 });
+      const bar = await page.evaluate(() => ({ mode: document.querySelector('#flatPicBar').dataset.mode, text: document.querySelector('#flatPicBar').innerText.replace(/\s+/g, ' '), go: document.querySelector('#flatPicGo').textContent }));
+      ok(bar.mode === 'redo' && /The picture left out medium stone wash/.test(bar.text) && /Draw it again/.test(bar.go), '5. in the Studio the bar says the picture left out the wash, with a press to draw it again', bar);
+      ok(await page.evaluate(() => LAYERS.some(l => l.fromFlat === 'logo' && l.placement)), '   and the logo, which the picture drawn from the flats does not have, is on it as a layer at its size');
+      const sent = page.waitForRequest(r => /\/flats\/picture$/.test(r.url()) && r.method() === 'POST', { timeout: 20000 });
+      await page.click('#flatPicGo'); const body = JSON.parse((await sent).postData() || '{}');
+      ok(body.replace === true && body.insist?.join() === 'wash', '   pressed, it draws the picture again insisting on what was left out', body);
+      await page.waitForURL(/view=picture/, { timeout: 30000 }); await page.waitForSelector('#flatPicBar:not(.hidden)', { timeout: 20000 });
+      ok(errs.length === 0, '   no page errors', errs);
+    } finally { await b.close(); }
+  } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
+});
+
 process.exit(summary() ? 1 : 0);
