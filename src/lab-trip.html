@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Flats and picture</title>
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="stylesheet" href="/cue.css">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--warn:#8a5a00}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,select{font:inherit;color:inherit}.hidden{display:none!important}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--ink);background:#fff;border-radius:999px;padding:6px 14px;cursor:pointer;font-weight:600;min-height:34px;font-size:13px}
+.btn.go{background:var(--cue);border-color:var(--cue)}.btn[disabled]{opacity:.45;pointer-events:none}
+.mono{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+main{max-width:1100px;margin:0 auto;padding:22px clamp(16px,3vw,32px) 60px;display:grid;gap:18px}main>*{min-width:0}
+body>header{height:72px;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;z-index:20}
+.wordmark{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+.pagehead{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}.pagehead h1{margin:0;font-size:26px;letter-spacing:-.01em;text-wrap:balance}.pagehead p{margin:4px 0 0;color:var(--dim);max-width:64ch}
+.pagehead .act{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}select{border:1px solid var(--line);border-radius:999px;padding:6px 10px;background:#fff;min-height:34px}
+.panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.tile b{display:block;font-size:28px;font-variant-numeric:tabular-nums;line-height:1.1}.tile span{color:var(--dim);font-size:12.5px}
+.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th{text-align:left;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}td small{display:block;color:var(--dim);font-size:11.5px}
+.pill{display:inline-block;border-radius:999px;padding:1px 8px;font-size:12px;font-weight:600;border:1px solid var(--line)}
+.pill.ok{color:var(--ok);border-color:rgba(23,96,58,.35);background:rgba(23,96,58,.06)}.pill.warn{color:var(--warn);border-color:rgba(138,90,0,.35);background:rgba(138,90,0,.06)}.pill.bad{color:var(--bad);border-color:rgba(160,42,32,.35);background:rgba(160,42,32,.06)}
+.status{color:var(--dim);font-size:13px}.err{color:var(--bad)}
+.bar{display:inline-block;width:64px;height:6px;border-radius:3px;background:var(--line);vertical-align:middle;margin-left:6px;overflow:hidden}.bar i{display:block;height:100%;border-radius:3px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}.chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:12px;background:var(--fog)}
+.miss{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px;align-items:start;padding:12px 0;border-bottom:1px solid var(--line)}.miss:last-child{border-bottom:0}
+.miss a{color:inherit;font-weight:600}.miss small{color:var(--dim);font-size:12px}.miss .what{grid-column:1/-1}
+.empty{color:var(--dim);margin:0}h2{margin:0 0 10px;font-size:16px}
+.ratchet{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}.ratchet p{margin:6px 0 0;color:var(--dim);font-size:13px}
+code{font:12px 'IBM Plex Mono',monospace;background:var(--fog);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<header><a class="wordmark" href="/home" aria-label="My day"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Sites &amp; health</span></a></header>
+<main>
+  <div class="pagehead">
+    <div><span class="mono">Design Lab · Flats ↔ picture</span><h1>Flats and picture, both ways</h1>
+      <p>What each picture drawn from the flats left out, what Draw it again put back, and what a picture read into flats got wrong and was taken off by hand. These are the checks the app already makes, so this page costs no AI. Save a real miss as a test case, and it is tested on every change from then on.</p></div>
+    <div class="act"><select id="days" aria-label="Period"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last year</option></select></div>
+  </div>
+  <div class="status" id="status" role="status">Loading…</div>
+  <section class="panel hidden" id="sum"></section>
+  <section class="panel hidden" id="details"></section>
+  <section class="panel hidden" id="styles"></section>
+  <section class="panel hidden" id="recent"></section>
+  <section class="panel hidden" id="ratchet"></section>
+</main>
+<script>
+const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function api(path){const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Something went wrong');return j}
+const pct=v=>v==null?'–':Math.round(v*100)+'%',tone=r=>r==null?'':r<.1?'ok':r<.25?'warn':'bad',col={ok:'var(--ok)',warn:'#d7a43a',bad:'var(--bad)'};
+const bar=r=>r==null?'':`<span class="bar" aria-hidden="true"><i style="width:${Math.max(4,Math.round(r*100))}%;background:${col[tone(r)]}"></i></span>`;
+const when=t=>{const d=new Date(t),m=Math.round((Date.now()-d)/60000);return m<60?`${m||1} min ago`:m<1440?`${Math.round(m/60)} h ago`:d.toLocaleDateString()};
+function tiles(t){
+  return `<div class="tiles">
+  <div class="tile"><b>${t.checks}</b><span>Pictures drawn from the flats and checked · ${t.clean} with nothing left out</span></div>
+  <div class="tile"><b>${pct(t.keptRate)}</b><span>Details the pictures kept · ${t.kept} kept, ${t.missing} left out${t.unsure?`, ${t.unsure} could not be seen`:''}</span></div>
+  <div class="tile"><b>${t.asked?pct(t.fixedRate):'–'}</b><span>Put back by Draw it again · ${t.redos} redraw${t.redos===1?'':'s'} asked for ${t.asked} detail${t.asked===1?'':'s'}, ${t.fixed} came back</span></div>
+  <div class="tile"><b>${t.reads}</b><span>Pictures read into flats · ${t.corrected} corrected by hand (${t.removed} detail${t.removed===1?'':'s'} taken off)</span></div></div>`}
+function detailTable(ds){
+  return `<h2>By detail</h2><div class="scroll"><table><thead><tr><th>Detail</th><th>Checked</th><th>Left out</th><th>Miss rate</th><th>Draw it again put back</th><th>Read from a picture</th><th>Taken off by hand</th></tr></thead><tbody>${ds.map(d=>`<tr>
+    <td><b>${esc(d.family)}</b></td><td>${d.checked||'–'}${d.unsure?`<small>${d.unsure} not visible</small>`:''}</td><td>${d.missing||'–'}</td>
+    <td>${d.missRate==null?'–':`<span class="pill ${tone(d.missRate)}">${pct(d.missRate)}</span>${bar(d.missRate)}`}</td>
+    <td>${d.asked?`${d.fixed} of ${d.asked}`:'–'}</td><td>${d.read||'–'}</td><td>${d.removed?`<span class="pill ${tone(d.removedRate)}">${d.removed}</span>${d.removedRate!=null?`<small>${pct(d.removedRate)} of reads</small>`:''}`:'–'}</td></tr>`).join('')}</tbody></table></div>`}
+function styleTable(ss){
+  return `<h2>By garment</h2><div class="scroll"><table><thead><tr><th>Garment</th><th>Pictures</th><th>Details left out</th><th>Miss rate</th></tr></thead><tbody>${ss.map(s=>`<tr><td><b>${esc(s.label)}</b></td><td>${s.checks}</td><td>${s.missing||'–'}</td><td>${s.missRate==null?'–':`<span class="pill ${tone(s.missRate)}">${pct(s.missRate)}</span>${bar(s.missRate)}`}</td></tr>`).join('')}</tbody></table></div>`}
+function recentList(rs){
+  return `<h2>Latest misses</h2>${rs.length?rs.map(r=>`<div class="miss" data-miss="${esc(r.conceptId||'')}">
+    <div>${r.conceptId?`<a href="/lab/studio?concept=${encodeURIComponent(r.conceptId)}&view=picture">${esc(r.concept)}</a>`:esc(r.concept)}<br><small>${esc(r.style)}${r.sketch?` · ${esc(r.sketch)}`:''} · ${r.kind==='check'?(r.redo?'redrawn picture left out':'picture left out'):'read from the picture, then taken off by hand'} · ${when(r.at)}</small></div>
+    ${r.conceptId?`<button type="button" class="btn" data-case="${esc(r.conceptId)}">Save as a test case</button>`:'<span></span>'}
+    <div class="what chips">${r.missing.map(m=>`<span class="chip">${esc(m)}</span>`).join('')}</div></div>`).join(''):'<p class="empty">Nothing left out or taken off in this period.</p>'}`}
+function ratchet(b){if(!b)return '';const g=Object.entries(b.gaps||{}),l=b.live;
+  return `<h2>The ratchet</h2><div class="ratchet"><div><span class="mono">Known gaps · may only shrink</span><div class="chips" style="margin-top:6px">${g.length?g.map(([k,n])=>`<span class="chip">${esc(k)} × ${n}</span>`).join(''):'<span class="chip">None</span>'}</div>
+    <p>Details the flats draw that a picture cannot carry back yet. The tests fail if one is new or grows.</p></div>
+    <div><span class="mono">Live score · may only rise</span><div style="margin-top:6px">${l?`<b style="font-size:22px">${pct(l.kept/l.checked)}</b> <small class="status">of ${l.checked} checked details kept, ${esc(l.pieces||'')} pieces, ${esc(String(l.at||'').slice(0,10))}</small>`:'<span class="chip">No live run kept yet</span>'}</div>
+    <p>${l?'A live run fails if the pictures keep fewer details than this.':'The first live run sets it:'} <code>node scripts/flats-roundtrip.mjs --live --update-baseline</code>, with the keys inline.</p></div></div>`}
+async function load(){
+  let d;try{d=await api('/v1/lab/trip/stats?days='+$('#days').value)}catch(e){$('#status').innerHTML=`<span class="err">${esc(e.message)}</span>`;return}
+  const t=d.totals,any=t.checks||t.reads;
+  $('#status').textContent=any?'':`Nothing checked in the last ${d.days} days yet. Each picture drawn from the flats is checked as it is drawn, and each picture read into flats is counted; the numbers start there.`;
+  $('#sum').classList.toggle('hidden',!any);$('#sum').innerHTML=tiles(t);
+  $('#details').classList.toggle('hidden',!d.details.length);$('#details').innerHTML=detailTable(d.details);
+  $('#styles').classList.toggle('hidden',!d.styles.length);$('#styles').innerHTML=styleTable(d.styles);
+  $('#recent').classList.toggle('hidden',!any);$('#recent').innerHTML=recentList(d.recent);
+  $('#ratchet').classList.toggle('hidden',!d.baseline);$('#ratchet').innerHTML=ratchet(d.baseline)}
+// a real miss as a test case: the flats, what was missed and the picture, as a file for test/fixtures/trip-cases (see docs/design-lab.md)
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-case]');if(!b)return;b.disabled=true;const was=b.textContent;b.textContent='Saving…';
+  try{const r=await fetch('/v1/lab/trip/cases/'+encodeURIComponent(b.dataset.case),{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Could not save it');
+    const name=(r.headers.get('content-disposition')||'').match(/filename="([^"]+)"/)?.[1]||'trip-case.json',url=URL.createObjectURL(await r.blob()),a=Object.assign(document.createElement('a'),{href:url,download:name});
+    document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);b.textContent='Saved · add it to test/fixtures/trip-cases'}
+  catch(err){b.textContent=was;b.disabled=false;$('#status').innerHTML=`<span class="err">${esc(err.message)}</span>`}});
+$('#days').addEventListener('change',load);
+load();
+</script>
+<script src="/console-nav.js" defer></script>
+</body>
+</html>

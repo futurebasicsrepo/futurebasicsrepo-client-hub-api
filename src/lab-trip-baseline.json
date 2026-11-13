@@ -1,0 +1,10 @@
+{
+  "about": "The ratchet for the flats and the picture, both ways (src/lab-trip.js). gaps: the details the structural round trip over every recipe piece and library sketch cannot carry yet, by what they are; test/lab-trip.test.js fails if one is new or grows, and asks for the number to be lowered when one shrinks. live: the last kept run of node scripts/flats-roundtrip.mjs --live; a live run fails if the pictures keep fewer of the checked details than this, by more than one. Lower gaps and raise live only by fixing the code, never by hand-editing the numbers up.",
+  "gaps": {
+    "Button": 2,
+    "Slant pocket": 2,
+    "Zip": 1,
+    "Zip pocket": 5
+  },
+  "live": null
+}

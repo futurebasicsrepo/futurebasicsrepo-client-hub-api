@@ -5583,4 +5583,56 @@ await journey('J313', 'The flats and the picture carry the product both ways: th
   } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
+await journey('J314', 'The flats and the picture in real use, counted (Sites & health → Flats ↔ picture, staff only): each picture drawn from the flats is counted with what its check found left out, a Draw it again with what it put back; a picture read into flats is counted once, and what of the read is taken off the flats by hand is counted as a correction (one per read, gone when it is put back); a real miss downloads as a test case with no name or client in it; the page shows it all, and a client cannot open it', async () => {
+  const made = [];
+  try {
+    // flats to picture: the fixture's check finds the wash left out (FLAT_TRIP_FIXTURE, "Trip hoodie"), and again when drawn insisting on it
+    const h = await K('/concepts/from-recipe', { body: { base: 'hoodie', addons: ['chest-pocket', 'wash-vintage'], system: 'earth', name: `Trip hoodie loop ${stamp}` } }), hid = h.json.concept?.id; made.push(hid);
+    const f0 = (await K(`/concepts/${hid}/flats`)).json.flat; await K(`/concepts/${hid}/flats`, { method: 'PUT', body: f0 });
+    const p1 = await K(`/concepts/${hid}/flats/picture`, { body: {} }), p2 = await K(`/concepts/${hid}/flats/picture`, { body: { replace: true, insist: ['wash'] } });
+    const ev = sql(`select kind || ':' || array_to_string(missing, ',') || ':' || array_to_string(insist, ',') from lab_trip_events where concept_id='${hid}' order by id`).split('\n').filter(Boolean);
+    ok(p1.status === 200 && p2.status === 200 && ev.join('|') === 'check:wash:|check:wash:wash', '0. each picture drawn from the flats is counted with what its check left out, and the redraw with what it insisted on', ev);
+    const st = await K('/trip/stats?days=7'), t = st.json.totals || {}, wash = (st.json.details || []).find(d => d.family === 'Wash') || {}, mine = (st.json.recent || []).filter(r => r.conceptId === hid);
+    ok(st.status === 200 && t.checks >= 2 && t.redos >= 1 && wash.missing >= 2 && wash.asked >= 1 && wash.missRate > 0 && mine.length === 2 && /stone wash/i.test(mine[0].missing.join()) && mine[0].redo === true && mine[1].redo === false, '1. the counts: pictures checked, the wash left out twice, a redraw that asked for it and did not get it back, and the latest misses', { totals: t, wash, mine });
+    ok((st.json.styles || []).some(s => s.style === 'hoodie' && s.missing >= 2) && st.json.baseline?.gaps?.['Zip pocket'] > 0, '   by garment, and the ratchet: the known gaps that may only shrink', [st.json.styles, st.json.baseline?.gaps]);
+    // picture to flats: the read is counted once per picture, and what of it is taken off by hand is a correction
+    const tt = await K('/concepts/from-sketch', { body: { template: 'tee-classic', name: `Trip read tee loop ${stamp}` } }), tid = tt.json.concept?.id; made.push(tid);
+    sql(`update lab_concepts set image=decode('${jpeg().split(',')[1]}','base64') where id='${tid}'`);
+    const fl = (await K(`/concepts/${tid}/flats`)).json.flat; await K(`/concepts/${tid}/flats`);
+    const read = sql(`select count(*) || ':' || (select string_agg(d->>'key', ',' order by d->>'key') from lab_trip_events e2, jsonb_array_elements(e2.details) d where e2.concept_id='${tid}' and e2.kind='read') from lab_trip_events where concept_id='${tid}' and kind='read'`);
+    ok(/^1:/.test(read) && read.includes('neckline') && read.includes('wash') && /edit:pic-pocket-patch/.test(read) && /edit:pic-zip/.test(read), '2. a picture read into flats is counted once, with what the read put on them: the stand-in pocket and zip, the mock neck, the garment dye', read);
+    await K(`/concepts/${tid}/flats`, { method: 'PUT', body: fl });
+    const none = sql(`select count(*) from lab_trip_events where concept_id='${tid}' and kind='correction'`);
+    const fixed = { ...fl, neckline: 'regular', edits: (fl.edits || []).filter(e => !String(e.id).startsWith('pic-pocket')) };
+    await K(`/concepts/${tid}/flats`, { method: 'PUT', body: fixed }); await K(`/concepts/${tid}/flats`, { method: 'PUT', body: fixed });
+    const corr = sql(`select count(*) || ':' || (select array_to_string(missing, ',') from lab_trip_events where concept_id='${tid}' and kind='correction') from lab_trip_events where concept_id='${tid}' and kind='correction'`);
+    ok(none === '0' && /^1:/.test(corr) && corr.includes('neckline') && /edit:pic-pocket-patch/.test(corr) && !/pic-zip/.test(corr), '3. saved as read, nothing is corrected; the pocket deleted and the neck changed by hand are one correction, however often it is saved', [none, corr]);
+    const st2 = await K('/trip/stats?days=7'), mineRead = (st2.json.recent || []).find(r => r.conceptId === tid && r.kind === 'correction');
+    ok(st2.json.totals.reads >= 1 && st2.json.totals.corrected >= 1 && mineRead && /Mock neck/i.test(mineRead.missing.join()), '   and it shows on the page as read from the picture, then taken off by hand', mineRead);
+    await K(`/concepts/${tid}/flats`, { method: 'PUT', body: fl });
+    ok(sql(`select count(*) from lab_trip_events where concept_id='${tid}' and kind='correction'`) === '0', '   put back as read, the correction is gone');
+    // a real miss as a test case: the flats, what was missed and the picture; no name, no client
+    const cs = await K(`/trip/cases/${hid}`), k = cs.json || {}, disp = (await fetch(`${BASE}/v1/lab/trip/cases/${hid}`, { headers: { Authorization: `Bearer ${kyleT}` } })).headers.get('content-disposition') || '';
+    const { checkCase } = await import('../trip-case.mjs');
+    ok(cs.status === 200 && /attachment; filename="hoodie-[0-9a-f]{8}\.json"/.test(disp) && k.id === `hoodie-${hid.slice(0, 8)}` && k.missed?.keys?.join() === 'wash' && k.missed.redo?.join() === 'wash'
+      && /^data:image\/jpeg;base64,/.test(k.picture || '') && k.pictureFrom === 'flats' && !JSON.stringify(k).includes(`Trip hoodie loop ${stamp}`) && !('name' in k) && checkCase(k) === null, '4. a real miss downloads as a test case: the flats, the wash left out and the redraw, the picture, and no concept name', { status: cs.status, id: k.id, missed: k.missed, from: k.pictureFrom });
+    if (process.env.TRIP_CASE_OUT) (await import('node:fs')).writeFileSync(process.env.TRIP_CASE_OUT, JSON.stringify(k, null, 2) + '\n'); // to refresh the example case in test/fixtures/trip-cases
+    ok((await call('/v1/lab/trip/stats')).status === 401 && (await call('/v1/lab/trip/stats', { token: room.token })).status === 403 && (await call(`/v1/lab/trip/cases/${hid}`, { token: room.token })).status === 403, '   signed out or as a client, neither the counts nor a case opens');
+    if (!playwright) { ok(true, 'needs a browser'); return; }
+    const b = await playwright.chromium.launch();
+    try {
+      const page = await (await b.newContext({ viewport: { width: 1180, height: 820 }, acceptDownloads: true })).newPage(), errs = []; page.on('pageerror', e => errs.push(String(e)));
+      await page.addInitScript(tk => { try { localStorage.setItem('fb.admin.token', tk); localStorage.setItem('fb.helper.on', '0'); } catch {} }, kyleT);
+      await page.goto(`${BASE}/lab/trip`, { waitUntil: 'networkidle' }); await page.waitForSelector('#sum:not(.hidden) .tile', { timeout: 20000 });
+      const seen = await page.evaluate(() => ({ tiles: document.querySelectorAll('#sum .tile').length, wash: [...document.querySelectorAll('#details tbody tr')].some(r => /^Wash/.test(r.innerText)), recent: document.querySelectorAll('#recent .miss').length, gaps: document.querySelector('#ratchet')?.innerText || '', nav: [...document.querySelectorAll('a[href="/lab/trip"]')].length, wide: document.documentElement.scrollWidth <= innerWidth }));
+      ok(seen.tiles === 4 && seen.wash && seen.recent >= 2 && /Zip pocket × \d/.test(seen.gaps) && /No live run kept yet|of \d+ checked details/.test(seen.gaps) && seen.nav >= 1 && seen.wide, '5. the page: four counts, the wash in the table by detail, the latest misses, the ratchet, and it is in the console menu', seen);
+      const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.click(`#recent [data-case="${hid}"]`)]);
+      ok(/^hoodie-[0-9a-f]{8}\.json$/.test(dl.suggestedFilename()) && /Saved/.test(await page.locator(`#recent [data-case="${hid}"]`).first().innerText()), '   Save as a test case downloads it', dl.suggestedFilename());
+      await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(150);
+      ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), '   on a phone the page does not scroll sideways (the tables scroll in their own box)');
+      ok(errs.length === 0, '   no page errors', errs);
+    } finally { await b.close(); }
+  } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
+});
+
 process.exit(summary() ? 1 : 0);
