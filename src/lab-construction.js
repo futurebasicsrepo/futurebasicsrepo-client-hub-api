@@ -17,7 +17,9 @@ import { TEMPLATE_CONSTRUCTION } from './lab-template-construction.js';
 export const SLEEVES = ['set', 'raglan', 'drop', 'none'];
 export const COLLARS = ['none', 'rib', 'shirt', 'stand', 'polo', 'lapel', 'shearling', 'funnel'];
 export const OPENINGS = ['none', 'zip', 'half-zip', 'quarter-zip', 'buttons', 'snaps', 'placket'];
-export const POCKETS = ['kangaroo', 'split-kangaroo', 'welt', 'flap-welt', 'chest', 'chest-flap', 'patch-hip', 'cargo', 'five-pocket', 'slash'];
+export const POCKETS = ['kangaroo', 'split-kangaroo', 'welt', 'flap-welt', 'chest', 'chest-flap', 'zip-chest', 'patch-hip', 'cargo', 'five-pocket', 'slash'];
+// where a button-down collar's buttons sit on a shirt's flats (the recipe menu draws them there, and a picture read draws them back)
+export const BUTTON_DOWN = { x: 2.2, y: 5.45 };
 export const WAISTS = ['fixed', 'elastic', 'drawcord'];
 export const LEGS = ['straight', 'flare', 'wide', 'taper', 'balloon'];
 export const PANELS = ['none', 'side-stripe', 'side-panel', 'sleeve-stripe'];
@@ -114,7 +116,7 @@ export function cleanConstruction(c) {
   if (ok(c.leg, LEGS)) out.leg = c.leg;
   if (Number.isFinite(Number(c.pleats)) && c.pleats !== null && c.pleats !== '') out.pleats = Math.min(Math.max(Math.round(Number(c.pleats)), 0), 3);
   if (ok(c.panels, PANELS)) out.panels = c.panels;
-  for (const k of ['quilted', 'belt', 'lined', 'backPockets', 'beltLoops', 'coinPocket', 'utility']) if (typeof c[k] === 'boolean') out[k] = c[k];
+  for (const k of ['quilted', 'belt', 'lined', 'backPockets', 'beltLoops', 'coinPocket', 'utility', 'buttondown']) if (typeof c[k] === 'boolean') out[k] = c[k];
   if (ok(c.backPocket, BACK_POCKETS)) out.backPocket = c.backPocket; if (ok(c.hem, HEMS)) out.hem = c.hem; if (ok(c.ankle, ANKLES)) out.ankle = c.ankle; if (ok(c.breasted, BREASTED)) out.breasted = c.breasted; if (ok(c.lapel, LAPELS)) out.lapel = c.lapel;
   return out;
 }
@@ -146,7 +148,10 @@ export function fromEdits(p) {
     const chest = e.y < L * .5;
     if (k === 'pocket-patch') pk.push(chest ? 'chest' : 'patch-hip');
     else if (k === 'pocket-flap') pk.push(chest ? 'chest-flap' : 'flap-welt');
-    else if (k === 'pocket-welt') pk.push('welt'); // (a zip pocket is drawn and listed, not drafted: the pattern has no zip pocket yet)
+    else if (k === 'pocket-welt') pk.push('welt');
+    else if (k === 'pocket-zip') { if (chest) pk.push('zip-chest'); } // a zip pocket on the chest (a low one on a top is drawn and listed, not drafted)
+    else if (k === 'pocket-slant' && p.style === 'dress') { if (!pk.includes('slash')) pk.push('slash'); } // a dress's side pockets: a pair, one pocket each side
+    else if (k === 'button' && Math.abs(e.x) > 1 && Math.abs(e.x) < 4.5 && e.y < (m.neckDropFront || 3) + 4) out.buttondown = true; // a button under each collar point
     else if (POCKET_OF[k] && POCKET_OF[k] !== 'five-pocket' && POCKET_OF[k] !== 'slash') pk.push(POCKET_OF[k]);
     else if (k === 'zip') out.opening = e.h >= L * .6 ? 'zip' : e.h >= 9 ? 'half-zip' : 'quarter-zip';
     else if (k === 'placket') out.opening = out.opening || 'placket';
@@ -168,6 +173,7 @@ export function constructionOf(p) {
   for (const k of ['opening', 'waist']) if (ed[k] && !set[k] && (!out[k] || out[k] === 'none' || out[k] === 'fixed')) out[k] = ed[k];
   if (ed.pleats && !('pleats' in set) && !out.pleats) out.pleats = ed.pleats;
   if (ed.backPockets && !('backPockets' in set)) { out.backPockets = true; if (!set.backPocket) out.backPocket = ed.backPocket; }
+  if (ed.buttondown && !('buttondown' in set) && out.collar === 'shirt') out.buttondown = true; // the buttons under a shirt collar's points
   // what follows from the rest: a hood takes the place of a collar (but an outer piece keeps a stand or a funnel the hood is set inside, as a
   // puffer's is); a collar the place of a neck rib
   if (out.hood && out.collar && out.collar !== 'shearling' && !(['stand', 'funnel'].includes(out.collar) && ['jacket', 'coat', 'vest'].includes(p.style))) delete out.collar;
@@ -183,10 +189,11 @@ export function constructionWords(c) {
   if (c.opening && c.opening !== 'none') w.push({ zip: 'Full zip', 'half-zip': 'Half zip', 'quarter-zip': 'Quarter zip', buttons: 'Button front', snaps: 'Snap front', placket: 'Button placket' }[c.opening]);
   if (c.yoke?.front || c.yoke?.back) w.push(`${[c.yoke.front && 'front', c.yoke.back && 'back'].filter(Boolean).join(' and ')} yoke`.replace(/^./, s => s.toUpperCase()));
   const pk = {}; for (const x of c.pockets || []) pk[x] = (pk[x] || 0) + 1;
-  for (const [k, n] of Object.entries(pk)) { const nm = { kangaroo: 'kangaroo pocket', 'split-kangaroo': 'split kangaroo pocket', welt: 'welt pockets', 'flap-welt': 'flap pockets', chest: 'chest pocket', 'chest-flap': 'flap chest pocket', 'patch-hip': 'patch hip pocket', cargo: 'cargo pockets', 'five-pocket': 'five-pocket', slash: 'slash pockets' }[k]; w.push(`${n > 1 ? `${n} ` : ''}${n > 1 && !/s$/.test(nm) ? nm + 's' : nm}`.replace(/^./, s => s.toUpperCase())); }
+  for (const [k, n] of Object.entries(pk)) { const nm = { kangaroo: 'kangaroo pocket', 'split-kangaroo': 'split kangaroo pocket', welt: 'welt pockets', 'flap-welt': 'flap pockets', chest: 'chest pocket', 'chest-flap': 'flap chest pocket', 'zip-chest': 'zip chest pocket', 'patch-hip': 'patch hip pocket', cargo: 'cargo pockets', 'five-pocket': 'five-pocket', slash: 'slash pockets' }[k]; w.push(`${n > 1 ? `${n} ` : ''}${n > 1 && !/s$/.test(nm) ? nm + 's' : nm}`.replace(/^./, s => s.toUpperCase())); }
   if (c.waist && c.waist !== 'fixed') w.push(c.waist === 'drawcord' ? 'Elastic waist with drawcord' : 'Elastic waist');
   if (c.backPockets === false) w.push('No back pockets');
   if (c.beltLoops) w.push('Belt loops');
+  if (c.buttondown) w.push('Button-down collar');
   if (c.collar === 'lapel' && c.breasted) w.push(c.breasted === 'double' ? 'Double-breasted' : 'Single-breasted'); if (c.collar === 'lapel' && c.lapel) w.push(c.lapel === 'peak' ? 'Peak lapel' : 'Notch lapel');
   if (c.backPocket && c.backPocket !== 'jeans' && c.backPockets !== false) w.push(c.backPocket === 'square' ? 'Square back pockets' : 'Welt back pockets');
   if (c.coinPocket === false && (c.pockets || []).includes('five-pocket')) w.push('No coin pocket');

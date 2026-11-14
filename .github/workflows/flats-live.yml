@@ -1,0 +1,86 @@
+# The flats and the picture, both ways, with the real models (scripts/flats-roundtrip.mjs --live): every piece in the battle test and every
+# real miss kept in test/fixtures/trip-cases is drawn from its flats by the image model, checked detail by detail and read back by Claude.
+# It fails when the pictures keep fewer of the checked details than the last kept run (src/lab-trip-baseline.json), by more than one.
+#
+#   when   every Monday; by hand (Actions → Flats ↔ picture, live → Run workflow); and on a pull request labelled trip-live, for a change
+#          to the prompts, the reads or the models
+#   cost   about one image generation and two Claude vision calls a piece: 17 pieces today, more as real misses are kept
+#   needs  repository secrets ANTHROPIC_API_KEY and OPENAI_API_KEY (or GEMINI_API_KEY); without them it fails and says so
+#   keep   run by hand with "keep the bar" ticked: a full run that is no worse becomes the new bar; the job prints the new
+#          src/lab-trip-baseline.json and attaches it, to commit
+# The report (each flat, its picture and the flat read back, side by side) is attached to the run as flats-roundtrip.
+name: Flats ↔ picture, live
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: 'Keep the bar: a full run that is no worse becomes the new bar in src/lab-trip-baseline.json'
+        type: boolean
+        default: false
+  pull_request:
+    types: [labeled, synchronize]
+
+concurrency:
+  group: flats-live-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: Flats ↔ picture, live
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'trip-live')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: The models' keys are there
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          missing=""
+          [ -n "$ANTHROPIC_API_KEY" ] || missing="$missing ANTHROPIC_API_KEY"
+          [ -n "$OPENAI_API_KEY$GEMINI_API_KEY" ] || missing="$missing OPENAI_API_KEY(or GEMINI_API_KEY)"
+          if [ -n "$missing" ]; then
+            echo "::error title=No model keys::Add the repository secrets:$missing (Settings → Secrets and variables → Actions). The live battle test cannot run without them."
+            exit 1
+          fi
+      - name: Draw, check and read back every piece
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          KEEP: ${{ github.event_name == 'workflow_dispatch' && inputs.keep && '--update-baseline' || '' }}
+        run: node scripts/flats-roundtrip.mjs --live --jobs 3 $KEEP
+      - name: Summary
+        if: always()
+        run: |
+          [ -f roundtrip-out/summary.json ] || exit 0
+          node -e '
+            const s = require("./roundtrip-out/summary.json"), b = require("./src/lab-trip-baseline.json"), row = r => r.live?.error ? "error: " + r.live.error : (r.live?.check?.missing || []).map(k => r.live.check.labels[k] || k).join(", ") || "all kept";
+            const out = [`## Flats ↔ picture, live`, ``, s.score ? `**${s.score.kept} of ${s.score.checked}** checked details kept over ${s.score.pieces} pieces` + (b.live ? ` · the bar: ${b.live.kept} of ${b.live.checked} (${String(b.live.at).slice(0, 10)})` : ` · no bar kept yet`) : `No score`, ``,
+              `| Piece | Left out of the picture | Lost reading it back |`, `|---|---|---|`, ...s.rows.map(r => `| ${r.id} | ${row(r)} | ${(r.live?.liveLost || []).join(", ") || "—"} |`)];
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, out.join("\n") + "\n");'
+      - name: The bar to commit
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.keep
+        run: |
+          if git diff --quiet -- src/lab-trip-baseline.json; then echo "The bar was not raised (see the run's log for why)."; else echo "New bar: commit this as src/lab-trip-baseline.json"; cat src/lab-trip-baseline.json; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flats-roundtrip
+          path: |
+            roundtrip-out/
+            src/lab-trip-baseline.json
+          retention-days: 30

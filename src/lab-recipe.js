@@ -10,6 +10,7 @@ import { BAG_TEMPLATES } from './lab-bag-templates.js';
 import { FOOTWEAR_TEMPLATES } from './lab-footwear-templates.js';
 import { GOODS, goodsTakes } from './lab-goods.js';
 import { necklineMeasures } from './lab-neck.js';
+import { BUTTON_DOWN } from './lab-construction.js';
 
 // sketch: the sketch the base is drawn on (the style's usual one when not named): a plain body, so the add-ons are what make it different
 const B = (id, label, style, fit, note, options = {}, sketch = null) => ({ id, label, style, fit, note, options, ...(sketch ? { sketch } : {}) });
@@ -95,7 +96,7 @@ function otherBase(id) {
 //   place  where the detail goes on this piece, in inches, when its usual place is wrong for it (p: the piece's params)
 const D = (id, label, group, on, detail, extra = {}) => ({ id, label, group, on, detail, ...extra });
 // where the button-down collar's buttons sit on the plain shirt sketch (shirt-classic-shirt), in inches from the centre front and the neck point
-const BUTTON_DOWN = { x: 2.2, y: 5.45 };
+// BUTTON_DOWN: where the collar buttons sit (src/lab-construction.js, so a picture read puts them back in the same place)
 const BOTTOMS_WITH_POCKETS = /chino|jean|trouser|pleat|carpenter|work|cargo|denim|five-pocket|jort|walk|wide|straight|barrel|flare|skinny|slim|baggy|tailor/i;
 const TOPS_AND_BOTTOMS = ['tee', 'longsleeve', 'tank', 'polo', 'crewneck', 'hoodie', 'ziphoodie', 'shirt', 'shirtss', 'jacket', 'vest', 'pants', 'shorts', 'skirt', 'dress'];
 export const RECIPE_ADDONS = [
