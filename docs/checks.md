@@ -9,6 +9,12 @@ Every pull request is checked by GitHub Actions (`.github/workflows/ci.yml`). No
 
 The journeys run on pull requests only. Main has just passed them on the pull request that was merged.
 
+One more check uses the paid models, so it does not run on every pull request: **Flats ↔ picture, live** (`.github/workflows/flats-live.yml`). It runs `node scripts/flats-roundtrip.mjs --live`: every piece in the battle test and every real miss kept in `test/fixtures/trip-cases` is drawn from its flats by the image model, checked detail by detail and read back by Claude. That is about one image generation and two Claude vision calls a piece. It fails when the pictures keep fewer of the checked details than the last kept run (`src/lab-trip-baseline.json`), by more than one detail.
+- **When it runs:** every Monday; by hand (**Actions → Flats ↔ picture, live → Run workflow**); and on a pull request labelled `trip-live`, for a change to the prompts, the reads or the models.
+- **What it needs:** the repository secrets `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` (or `GEMINI_API_KEY`). Without them it fails and says which are missing.
+- **Keeping the bar:** run it by hand with **Keep the bar** ticked. A full run that is no worse becomes the new bar; the job prints the new `src/lab-trip-baseline.json` to commit.
+- **The report:** each flat, its picture and the flat read back, side by side, under the run's **Artifacts** (`flats-roundtrip`, kept 30 days).
+
 When a check fails, the run keeps what explains it for a week: the proof page (`pattern-proof`) or the journey servers' logs (`journey-logs-core`, `journey-logs-lab`), under the run's **Artifacts**.
 
 A browser journey that fails also prints what its pages said in a pop-up (`the page said: alert: …`), since a page that reports a refused press in an alert shows nothing of it in a picture. It also keeps a picture of each of its pages (`journey-logs-*/shots/J31-2.png`): a timeout says which element never came, and the picture says what was on the screen instead. Locally, `JOURNEY_SHOT_DIR=/some/folder npm run journeys` does the same.

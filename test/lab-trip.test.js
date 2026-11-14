@@ -46,8 +46,12 @@ test('a detail added on the flats is drafted: the chest pocket, the placket, the
   assert.deepEqual(fromEdits(hip).pockets, ['patch-hip', 'patch-hip']);
   const pb = recipe('pants'), back = { ...pb, edits: [{ type: 'detail', kind: 'pocket-welt', view: 'back', x: 4, y: 4, w: 5, h: .6 }, { type: 'detail', kind: 'pocket-cargo', view: 'front', x: 7, y: 15, w: 7, h: 8 }, { type: 'detail', kind: 'pocket-cargo', view: 'front', x: -7, y: 15, w: 7, h: 8 }] };
   assert.deepEqual(fromEdits(back), { backPockets: true, backPocket: 'welt', pockets: ['cargo'] });
-  // a zip pocket is drawn and listed, not drafted (the pattern has no zip pocket yet)
-  assert.deepEqual(fromEdits(recipe('hoodie', ['zip-pocket'])), {});
+  // a zip pocket on the chest, a dress's slant side pockets (a pair: one pocket each side) and a button-down collar's buttons are drafted too
+  assert.deepEqual(fromEdits(recipe('hoodie', ['zip-pocket'])), { pockets: ['zip-chest'] });
+  assert.deepEqual(fromEdits(recipe('dress', ['slant-side'])), { pockets: ['slash'] });
+  assert.deepEqual(fromEdits(recipe('shirt', ['neck-buttondown'])), { buttondown: true });
+  assert.equal(constructionOf(recipe('shirt', ['neck-buttondown'])).buttondown, true);
+  assert.equal(constructionOf({ ...recipe('tee'), edits: recipe('shirt', ['neck-buttondown']).edits }).buttondown, undefined, 'only under a shirt collar');
   // in the construction, at least as many as the sketch has, and never more than drawn; what was set by hand stays as set
   assert.deepEqual(constructionOf(recipe('hoodie', ['chest-pocket'])).pockets, ['kangaroo', 'chest']);
   assert.deepEqual(constructionOf({ ...recipe('hoodie', ['chest-pocket']), options: { construction: { pockets: [] } } }).pockets, []);
@@ -103,14 +107,19 @@ test('read from a picture: what the stock sketch does not draw is drawn on it wh
   assert.equal(applyLook(recipe('pants'), { neckline: 'vneck', wash: 'none', distress: 'none', cropped: true, contrast: 'red' }).neckline, undefined);
   // the schemas the vision model answers in are the ones the flats clean
   assert.ok(BUILD_SCHEMA.properties.pockets.items.enum.includes('chest-flap') && LOOK_SCHEMA.properties.neckline.enum.includes('turtle'));
-  assert.deepEqual(cleanConstruction({ pockets: ['chest', 'zip-chest'], opening: 'buttons', sleeve: 'raglan' }), { sleeve: 'raglan', opening: 'buttons', pockets: ['chest'] });
+  assert.deepEqual(cleanConstruction({ pockets: ['chest', 'zip-chest', 'secret'], opening: 'buttons', sleeve: 'raglan', buttondown: true }), { sleeve: 'raglan', opening: 'buttons', pockets: ['chest', 'zip-chest'], buttondown: true });
+  assert.ok(BUILD_SCHEMA.properties.pockets.items.enum.includes('zip-chest') && BUILD_SCHEMA.properties.buttondown.type === 'boolean');
+  // read back, the zip pocket, the dress's side pockets and the collar buttons are drawn on the stock sketch where they go
+  assert.deepEqual(buildEdits({ pockets: ['zip-chest'] }, recipe('hoodie')).map(e => e.kind), ['pocket-zip']);
+  assert.deepEqual(buildEdits({ pockets: ['slash'] }, recipe('dress')).map(e => [e.kind, Math.sign(e.x)]), [['pocket-slant', 1], ['pocket-slant', -1]]);
+  assert.deepEqual(buildEdits({ collar: 'shirt', buttondown: true }, recipe('shirt')).map(e => [e.kind, e.x, e.y]), [['button', 2.2, 5.45], ['button', -2.2, 5.45]]);
 });
 
 test('a picture read wrongly is caught: what it lost and what it added are listed apart from what no picture can give back', () => {
   const p = recipe('shirt', ['flap-pocket', 'neck-buttondown']), wrong = readBack(p, cleanConstruction({ ...constructionOf(p), pockets: [], collar: 'stand' }));
   const t = tripLoss(p, wrong);
   assert.ok(t.lost.some(x => /Flap chest pocket|Pocket flap|Flap pocket/i.test(x)) && t.lost.includes('Shirt collar'), JSON.stringify(t.lost));
-  assert.ok(t.added.includes('Stand collar')); assert.ok(t.notCarried.length === 2 && t.notCarried.every(x => /^Button/.test(x)), 'the collar buttons are drawn and listed, not read back');
+  assert.ok(t.added.includes('Stand collar')); assert.deepEqual(t.notCarried, [], 'the collar buttons are drafted, so they are read back');
   assert.ok(t.score < 1);
   // the same piece read right loses nothing
   assert.deepEqual(tripLoss(p, readBack(p)).lost, []);
@@ -182,4 +191,27 @@ test('every real miss kept as a case (test/fixtures/trip-cases) stays asked for 
     }
     const t = tripLoss(p, readBack(p)); assert.deepEqual(t.lost, [], `${f}: read back whole`);
   }
+});
+
+test('the zip chest pocket, a dress\'s slant side pockets and a button-down collar are drafted, walked by the check, and asked for in full', () => {
+  for (const [base, addon, ids, trim] of [['hoodie', 'zip-pocket', ['zip-pocket', 'zip-pocket-fuse', 'zip-pocket-bag'], 'Pocket zip'], ['coat', 'zip-pocket', ['zip-pocket', 'zip-pocket-bag'], 'Pocket zip'],
+    ['dress', 'slant-side', ['side-pocket', 'side-pocket-bag'], null], ['shirt', 'neck-buttondown', ['collar'], 'Collar buttons']]) {
+    const p = recipe(base, [addon]);
+    for (const z of SIZES) {
+      const pat = garmentPattern(p, z), k = constructionCheck(pat, { m: measurementsFor(p, z), style: p.style }), cut = new Set(pat.pieces.filter(q => q.cut).map(q => q.id));
+      assert.ok(k.ok, `${base}+${addon} at ${z}: ${JSON.stringify([k.missing, k.seams.filter(s => s.ok === false)])}`);
+      for (const id of ids) assert.ok(cut.has(id), `${base}+${addon} at ${z}: ${id} is cut`);
+      if (trim) assert.ok(pat.trims.some(t => t.item === trim), `${base}+${addon}: ${trim}`);
+      const mouth = k.seams.filter(s => /mouth/.test(s.name)); if (addon !== 'neck-buttondown') assert.ok(mouth.length >= 1 && mouth.every(s => s.ok), `${base}+${addon} at ${z}: the mouth is walked`);
+    }
+  }
+  // the check asks for each part: a zip pocket without its zip or its bag, a slant pocket without its bag, collar buttons, all fail
+  const pat = garmentPattern(recipe('hoodie', ['zip-pocket']), 'M'), strip = (q, f) => constructionCheck({ ...pat, ...f(pat) }).missing.map(x => x.need);
+  assert.ok(strip(pat, x => ({ trims: x.trims.filter(t => t.item !== 'Pocket zip') })).includes('A pocket zip'));
+  assert.ok(strip(pat, x => ({ pieces: x.pieces.filter(q => q.id !== 'zip-pocket-bag') })).includes('Zip pocket bag'));
+  const dress = garmentPattern(recipe('dress', ['slant-side']), 'M'); assert.ok(constructionCheck({ ...dress, pieces: dress.pieces.filter(q => q.id !== 'side-pocket-bag') }).missing.some(x => x.need === 'Slant pocket bag'));
+  const shirt = garmentPattern(recipe('shirt', ['neck-buttondown']), 'M'); assert.ok(constructionCheck({ ...shirt, trims: shirt.trims.filter(t => t.item !== 'Collar buttons') }).missing.some(x => x.need === 'Collar buttons'));
+  // a zip longer than its window fails the walk
+  const long = constructionCheck({ ...pat, trims: pat.trims.map(t => t.item === 'Pocket zip' ? { ...t, spec: '#3 coil, closed-end, 6 in' } : t) });
+  assert.equal(long.seams.find(s => /the zip in its mouth/.test(s.name)).ok, false);
 });
