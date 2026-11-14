@@ -68,3 +68,32 @@ test('a wash tells the factory the measurements are finished, with a shrink allo
   assert.ok(stone > 0 && heavy > stone);
   assert.ok(washWords({ wash: { type: 'stone', strength: 'medium' } }).some(t => /finished, taken after the wash.*%/.test(t)));
 });
+
+test('a browser gets the wash as drawn; the service draws the same with a two-pass erode, or lays in a picture of it', () => {
+  const { params } = cleanFlat({ ...defaultParams('hoodie'), color: '#8a5a44', wash: { type: 'stone', strength: 'medium' }, distress: { on: true, amount: 70, focus: 'edges' } });
+  const page = renderSvg(params, 'front'), raster = renderSvg(params, 'front', { raster: true });
+  assert.ok(page.includes('operator="erode" radius="0.4"/>') && !page.includes('radius="0.4 0"'), 'the browser keeps one square erode');
+  assert.ok(raster.includes('radius="0.4 0"/><feMorphology operator="erode" radius="0 0.4"/>'), 'the service erodes across, then down');
+  // the pictures the service makes: the wash alone, uncut and past its box; the garment alone; the distressing over a picture of the wash
+  const wash = renderSvg(params, 'front', { washOnly: 'wash', raster: true, scale: 10 }), mask = renderSvg(params, 'front', { washOnly: 'mask', scale: 10 });
+  assert.ok(wash.includes('data-wash="stone"') && !wash.includes('data-distress') && !/<g mask=/.test(wash), 'the wash, not yet cut to the garment');
+  assert.match(mask, /<\/defs><use href="#[^"]+-b"\/><\/svg>$/);
+  const wear = renderSvg(params, 'front', { washOnly: 'wear', raster: true, scale: 10, washHref: 'data:image/png;base64,AA', washAt: { w: 100, h: 90 } });
+  assert.ok(wear.includes('clip-path="url(#') && wear.includes('data-distress="70"') && !wear.includes('data-fringe'), 'the wash cut at its box, the distressing over it');
+  assert.equal(renderSvg(defaultParams('hoodie'), 'front', { washOnly: 'wear' }), '', 'nothing to draw: no picture');
+  // the flat with the picture: no filters for the wash, the fringe still drawn past the hem
+  const laid = renderSvg(params, 'front', { raster: true, washHref: 'data:image/png;base64,AA', washAt: { w: 100, h: 90 } });
+  assert.ok(laid.includes('<image href="data:image/png;base64,AA"') && !laid.includes('data-wash') && !laid.includes('-wm"') && laid.includes('data-fringe="1"'));
+});
+
+test('a flat picture drawn with the picture of its wash looks as it does drawn with the filters', async () => {
+  const { readFileSync } = await import('node:fs'), sharp = (await import('sharp')).default, { washPictures, flatPng } = await import('../src/lab-flats-routes.js');
+  const templateSvg = file => { const t = readFileSync(new URL(`../src/flat-templates/${file}`, import.meta.url), 'utf8'); return t.slice(t.indexOf('>', t.indexOf('<svg')) + 1, t.lastIndexOf('</svg>')); };
+  const W = 480, diff = async (a, b) => { const [x, y] = await Promise.all([a, b].map(s => flatPng(s, W).flatten({ background: '#ffffff' }).raw().toBuffer())); let sum = 0, mx = 0; for (let i = 0; i < x.length; i++) { const d = Math.abs(x[i] - y[i]); sum += d; mx = Math.max(mx, d); } return { mean: sum / x.length, mx }; };
+  for (const wash of [{ type: 'stone', strength: 'medium' }, { type: 'snow', strength: 'heavy' }]) {
+    const { params } = cleanFlat({ ...defaultParams('hoodie'), color: '#8a5a44', wash, distress: { on: true, amount: 70 } }), o = { templateSvg, scale: 60, raster: true };
+    const pics = await washPictures(params, ['front'], { templateSvg }, W);
+    const d = await diff(renderSvg(params, 'front', o), renderSvg(params, 'front', { ...o, ...pics.front }));
+    assert.ok(d.mean < .5 && d.mx < 24, `${wash.type}: mean ${d.mean.toFixed(3)}, max ${d.mx}`);
+  }
+});

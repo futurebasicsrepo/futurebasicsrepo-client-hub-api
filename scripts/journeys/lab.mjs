@@ -5546,12 +5546,14 @@ await journey('J313', 'The flats and the picture carry the product both ways: th
     ok(ck.missing?.join() === 'wash' && ck.kept.includes('pocket:kangaroo') && ck.kept.includes('edit:r-chest-pocket') && !ck.kept.includes('place:logo') && /stone wash/i.test(ck.labels.wash), '   it is checked detail by detail: here the check found the wash left out, and the graphics are not asked of it', ck);
     const st = (await K(`/concepts/${hid}/studio`)).json.concept;
     ok(st.fromFlats === true && st.pictureCheck?.missing?.join() === 'wash', '   the Studio knows the picture came from the flats and what it left out', [st.fromFlats, st.pictureCheck]);
-    // the tech pack says how it is built (an unwashed hoodie: a washed one's pack takes far longer to draw)
-    const hp = await K('/concepts/from-recipe', { body: { base: 'hoodie', addons: ['chest-pocket'], system: 'earth', name: `Trip pack hoodie ${stamp}` } }), pid = hp.json.concept?.id; made.push(pid);
+    // the tech pack says how it is built, of a washed hoodie: its flats are drawn with the wash in a few seconds, inside the usual 30 s
+    const hp = await K('/concepts/from-recipe', { body: { base: 'hoodie', addons: ['chest-pocket', 'zip-pocket', 'wash-vintage'], system: 'earth', name: `Trip pack hoodie ${stamp}` } }), pid = hp.json.concept?.id; made.push(pid);
     await K(`/concepts/${pid}`, { method: 'PUT', body: { twist: 'A chest pocket on a heavyweight hoodie' } });
     const apv = await K(`/concepts/${pid}/approve`, { body: { overrideReason: 'journey: round trip of the flats and the picture' } }); ok(apv.status === 200, '   (approved, to make its tech pack)', apv.json?.error);
-    const tp = await K(`/concepts/${pid}/tech-pack`, { body: {}, timeout: 90000 }), built = tp.json.productId ? sql(`select r->>'detail' from tech_packs, jsonb_array_elements(data->'construction') r where product_id='${tp.json.productId}' and r->>'area' like '%How it is built'`) : '';
+    const t0 = Date.now(), tp = await K(`/concepts/${pid}/tech-pack`, { body: {} }), ms = Date.now() - t0, built = tp.json.productId ? sql(`select r->>'detail' from tech_packs, jsonb_array_elements(data->'construction') r where product_id='${tp.json.productId}' and r->>'area' like '%How it is built'`) : '';
     ok(tp.status === 201 && /Hood/.test(built) && /Kangaroo pocket/.test(built) && /Chest pocket/.test(built), '2. the tech pack says how it is built, the chest pocket added on the flats included (it is drafted, not only drawn)', [tp.status, built]);
+    const washed = tp.json.productId ? sql(`select count(*) from tech_packs, jsonb_array_elements(data->'construction') r where product_id='${tp.json.productId}' and r->>'area' like '%· Wash' and r->>'detail' like 'Stone wash%'`) : '';
+    ok(washed === '1' && (process.env.JOURNEY_PERF === 'off' || ms < 15000), `   the pack of the washed hoodie carries its wash, and is made in ${(ms / 1000).toFixed(1)} s (under 15 s; not timed with JOURNEY_PERF=off)`, [washed, ms]);
     // picture to flats: a tee sketch whose picture shows a quarter zip, a red chest pocket, a mock neck and a garment dye
     const t = await K('/concepts/from-sketch', { body: { template: 'tee-classic', name: `Trip read tee ${stamp}` } }), tid = t.json.concept?.id; made.push(tid);
     sql(`update lab_concepts set image=decode('${jpeg().split(',')[1]}','base64') where id='${tid}'`);

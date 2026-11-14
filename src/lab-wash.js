@@ -30,6 +30,9 @@ export const WASHES = [
 export const WASH_IDS = WASHES.map(w => w.id);
 export const STRENGTHS = [{ id: 'light', label: 'Light', k: .55 }, { id: 'medium', label: 'Medium', k: 1 }, { id: 'heavy', label: 'Heavy', k: 1.6 }];
 export const washOf = id => WASHES.find(w => w.id === id) || WASHES[0];
+// a wash with nothing small and sharp in it (all but the snow wash's speckles and the acid wash's veins): a picture of it can be drawn at a
+// lower resolution and enlarged
+export const washSoft = p => { const w = cleanWash(p.wash), L = w ? washOf(w.type).look : {}; return !L.speckle && !L.marble; };
 
 // where distressing goes: everywhere, only the edges (collar, cuffs, hems, pocket openings), or only the body (holes and wear across it)
 export const DISTRESS_FOCUS = [{ id: 'all', label: 'All over' }, { id: 'edges', label: 'Edges only' }, { id: 'body', label: 'Body only' }];
@@ -89,14 +92,20 @@ export function washPrompt(p = {}) {
 }
 
 // ---- drawing it on the flat ----
-// `box` is the drawing's box in inches ({x0, y0, x1, y1}); `mask` the id of a mask that is white where the garment is; `geo` where the
+// `box` is the drawing's box in inches ({x0, y0, x1, y1}); `mask` the id of a mask that is white where the garment is (none: not masked, for the
+// service to mask the wash itself); `geo` where the
 // garment's edges are, in the same inches (from its measurements): a top { kind:'top', half, neckY, neckHalf, hemY, hemRib, cuff, longSleeve },
 // a bottom { kind:'bottom', waistband, rise, hemY }. Returns SVG laid over the drawing: wear inside the garment only, a fringe past the hem.
+// `raster`: the SVG is for the service to turn into a picture (sharp, librsvg), not for a browser. The seams' darkening then erodes in two passes,
+// across and then down, which gives the same pixels as one square erode: librsvg erodes a square naively, a 33 × 33 window a pixel at a flat
+// picture's resolution, most of the 14 s a washed flat took. A browser keeps the single erode (a zero radius on one axis is not read the same
+// everywhere).
+const erode = (r, raster) => raster ? `<feMorphology in="SourceAlpha" operator="erode" radius="${r} 0"/><feMorphology operator="erode" radius="0 ${r}"/>` : `<feMorphology in="SourceAlpha" operator="erode" radius="${r}"/>`;
 const rnd = seed => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 const n3 = v => Math.round(v * 1000) / 1000;
 // an irregular hole: a jagged ring of points around (x, y)
 function jag(r, x, y, rx, ry, n = 11) { let d = ''; for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, k = .62 + r() * .5; d += `${i ? 'L' : 'M'} ${n3(x + Math.cos(a) * rx * k)} ${n3(y + Math.sin(a) * ry * k)} `; } return d + 'Z'; }
-export function washSvg(p = {}, { box, mask, pid = 'w', kind = 'top', view = 'front', cloth = '#ffffff', geo = null } = {}) {
+export function washSvg(p = {}, { box, mask, pid = 'w', kind = 'top', view = 'front', cloth = '#ffffff', geo = null, raster = false, layer = 'all', bleed = null } = {}) { // layer: 'all', or only the 'wash' or the 'distress' (each inside the garment) or the 'fringe' (past the hem)
   const w = cleanWash(p.wash), d = cleanDistress(p.distress); if (!box || (!w && !(d?.on && d.amount > 0))) return '';
   const { x0, y0, x1, y1 } = box, W = x1 - x0, H = y1 - y0, L = w ? washOf(w.type).look : {}, k = w ? STRENGTHS.find(s => s.id === w.strength).k : 0;
   const lum = (() => { const h = String(cloth).replace('#', ''); const n = parseInt(h.length === 6 ? h : 'ffffff', 16); return ((n >> 16 & 255) * .2126 + (n >> 8 & 255) * .7152 + (n & 255) * .0722) / 255; })();
@@ -106,14 +115,15 @@ export function washSvg(p = {}, { box, mask, pid = 'w', kind = 'top', view = 'fr
   const bottom = G.kind === 'bottom', cx = x0 + W / 2;
   const knee = bottom ? G.rise + (G.hemY - G.rise) * .42 : 0, legX = [cx - W * .25, cx + W * .25];
   let defs = '', out = '', loose = '';
-  const rect = (fill, op, extra = '', rx0 = x0, ry0 = y0, rw = W, rh = H) => `<rect x="${n3(rx0)}" y="${n3(ry0)}" width="${n3(rw)}" height="${n3(rh)}" fill="${fill}" opacity="${n3(Math.min(1, op))}"${extra}/>`;
+  // bleed: a box past `box` the layers that fill it are drawn to, the same inside it, for the service to cut at the box itself (renderSvg washOnly)
+  const fb = bleed || box, rect = (fill, op, extra = '', rx0 = fb.x0, ry0 = fb.y0, rw = fb.x1 - fb.x0, rh = fb.y1 - fb.y0) => `<rect x="${n3(rx0)}" y="${n3(ry0)}" width="${n3(rw)}" height="${n3(rh)}" fill="${fill}" opacity="${n3(Math.min(1, op))}"${extra}/>`;
   if (w) {
     if (L.fade) out += rect('#ffffff', L.fade * k * lift);
     if (L.tint) out += rect(L.tint[0], L.tint[1] * k, ' style="mix-blend-mode:multiply"');
     if (L.mottle) { defs += `<filter id="${pid}-wm" x="0" y="0" width="1" height="1"><feTurbulence type="fractalNoise" baseFrequency="${L.mottle[0] * 22}" numOctaves="3" seed="7"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 ${n3(1.6 * L.mottle[1] * k * lift)} ${n3(-.35 * L.mottle[1] * k)}"/></filter>`; out += rect('#ffffff', 1, ` filter="url(#${pid}-wm)"`); }
     if (L.marble) { defs += `<filter id="${pid}-wa" x="0" y="0" width="1" height="1"><feTurbulence type="turbulence" baseFrequency=".22 .3" numOctaves="4" seed="3"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -5 ${n3(1.05 + .1 * k)}"/><feComponentTransfer><feFuncA type="linear" slope="${n3(L.marble * k * lift)}"/></feComponentTransfer></filter>`; /* thin light veins where the turbulence is lowest */ out += rect('#ffffff', 1, ` filter="url(#${pid}-wa)"`); }
     if (L.speckle) { const r = rnd(11); let s = ''; const n = Math.round(240 * L.speckle * k * (W * H) / 400); for (let i = 0; i < Math.min(n, 1600); i++) s += `<circle cx="${n3(x0 + r() * W)}" cy="${n3(y0 + r() * H)}" r="${n3(.05 + r() * .13)}" opacity="${n3(.45 + r() * .55)}"/>`; out += `<g fill="#ffffff" opacity="${n3(.75 * lift)}">${s}</g>`; }
-    if (L.top) { defs += `<linearGradient id="${pid}-wt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="${n3(Math.min(.8, L.top * k * lift))}"/><stop offset=".7" stop-color="#ffffff" stop-opacity="0"/></linearGradient>`; out += rect(`url(#${pid}-wt)`, 1); }
+    if (L.top) { defs += `<linearGradient id="${pid}-wt" ${bleed ? `gradientUnits="userSpaceOnUse" x1="0" y1="${n3(y0)}" x2="0" y2="${n3(y1)}"` : 'x1="0" y1="0" x2="0" y2="1"'}><stop offset="0" stop-color="#ffffff" stop-opacity="${n3(Math.min(.8, L.top * k * lift))}"/><stop offset=".7" stop-color="#ffffff" stop-opacity="0"/></linearGradient>`; out += rect(`url(#${pid}-wt)`, 1); }
     // the high points take the fade: a top's chest, hood and shoulders; a bottom's thighs and knees
     if (L.lit) {
       defs += `<radialGradient id="${pid}-wp"><stop offset="0" stop-color="#ffffff" stop-opacity="${n3(Math.min(.8, L.lit * k * lift))}"/><stop offset=".55" stop-color="#ffffff" stop-opacity="${n3(Math.min(.8, L.lit * k * lift) * .45)}"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>`;
@@ -123,7 +133,7 @@ export function washSvg(p = {}, { box, mask, pid = 'w', kind = 'top', view = 'fr
     // whiskers: thin faded lines fanning from the crotch across the upper thighs (jeans)
     if (L.whiskers && bottom) { const r = rnd(41); let s = ''; for (const side of [-1, 1]) for (let i = 0; i < 5; i++) { const yy = G.rise - .4 + i * .7 + (r() - .5) * .3, xs = cx + side * (.5 + r() * .4), xe = cx + side * (W * (.2 + r() * .14)); s += `<path d="M ${n3(xs)} ${n3(yy)} Q ${n3((xs + xe) / 2)} ${n3(yy - .3 - r() * .3)} ${n3(xe)} ${n3(yy - .7 - r() * .4)}" stroke="#ffffff" stroke-width="${n3(.1 + r() * .1)}" fill="none" opacity="${n3(L.whiskers * k * (.25 + r() * .3))}" stroke-linecap="round"/>`; } out += `<g filter="url(#${pid}-wb)">${s}</g>`; defs += `<filter id="${pid}-wb"><feGaussianBlur stdDeviation=".12"/></filter>`; }
     // dye settles in the seams and edges, and the ribs (hem band, cuffs, collar) stay darker than the faded body
-    if (L.edges) { defs += `<filter id="${pid}-we"><feMorphology in="SourceAlpha" operator="erode" radius=".4"/><feGaussianBlur stdDeviation=".3"/><feComposite in2="SourceAlpha" operator="out"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 ${n3(L.edges * k)} 0"/></filter>`; out += `<use href="#${pid}-b" filter="url(#${pid}-we)"/>`; }
+    if (L.edges) { defs += `<filter id="${pid}-we">${erode(.4, raster)}<feGaussianBlur stdDeviation=".3"/><feComposite in2="SourceAlpha" operator="out"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 ${n3(L.edges * k)} 0"/></filter>`; out += `<use href="#${pid}-b" filter="url(#${pid}-we)"/>`; }
     if (L.ribs) {
       const dk = n3(Math.min(.55, L.ribs * k)); let s = '';
       if (bottom) s += rect('#000000', dk, '', x0, y0, W, G.waistband || 1.5) + rect('#000000', dk * .8, '', x0, G.hemY - 1.2, W, 1.3);
@@ -137,6 +147,7 @@ export function washSvg(p = {}, { box, mask, pid = 'w', kind = 'top', view = 'fr
       out += `<g filter="url(#${pid}-wr)">${s}</g>`;
     }
   }
+  const washDefs = defs, washOut = out;
   if (d?.on && d.amount > 0) {
     const P2 = distressParts(d.amount, d.focus || 'all'), a = d.amount / 100, r = rnd(view === 'back' ? 29 : 17), thread = lum > .7 ? '#d9d4c7' : '#efeadf';
     const hole = (x, y, rx, ry, threads = 0) => { let t = ''; for (let i = 0; i < threads; i++) { const ty = y - ry * .55 + (i + .5) * (ry * 1.1 / threads); t += `<path d="M ${n3(x - rx * .9)} ${n3(ty)} Q ${n3(x + (r() - .5) * rx * .4)} ${n3(ty + (r() - .5) * ry * .3)} ${n3(x + rx * .9)} ${n3(ty + (r() - .5) * .05)}" stroke="${thread}" stroke-width="${n3(.016 + r() * .012)}" fill="none" opacity=".9"/>`; } return `<path d="${jag(r, x, y, rx * 1.25, ry * 1.35)}" fill="#ffffff" opacity=".28"/><path d="${jag(r, x, y, rx, ry)}" fill="#141210" opacity=".88"/>${t}`; };
@@ -184,5 +195,8 @@ export function washSvg(p = {}, { box, mask, pid = 'w', kind = 'top', view = 'fr
     }
   }
   if (!out && !loose) return '';
-  return `<defs>${defs}</defs><g mask="url(#${mask})" pointer-events="none" data-wash="${w ? w.type : ''}" data-distress="${d?.on ? d.amount : 0}">${out}</g>${loose ? `<g pointer-events="none" data-fringe="1">${loose}</g>` : ''}`;
+  if (layer === 'fringe') return loose ? `<g pointer-events="none" data-fringe="1">${loose}</g>` : '';
+  if (layer === 'wash') return washOut ? `<defs>${washDefs}</defs><g${mask ? ` mask="url(#${mask})"` : ''} pointer-events="none" data-wash="${w.type}">${washOut}</g>` : '';
+  if (layer === 'distress') return out.length > washOut.length ? `<defs>${defs.slice(washDefs.length)}</defs><g${mask ? ` mask="url(#${mask})"` : ''} pointer-events="none" data-distress="${d.amount}">${out.slice(washOut.length)}</g>` : '';
+  return `<defs>${defs}</defs><g${mask ? ` mask="url(#${mask})"` : ''} pointer-events="none" data-wash="${w ? w.type : ''}" data-distress="${d?.on ? d.amount : 0}">${out}</g>${loose ? `<g pointer-events="none" data-fringe="1">${loose}</g>` : ''}`;
 }
