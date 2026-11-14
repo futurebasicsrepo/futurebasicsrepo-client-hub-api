@@ -1471,6 +1471,26 @@ export async function migrate() {
       started_at timestamptz not null default now(),
       finished_at timestamptz
     );
+    create table if not exists lab_trip_events ( -- what the flats and the picture lose between them in real use (src/lab-trip-routes.js): a picture
+      -- drawn from the flats and checked ('check', insist: what a Draw it again asked for), a picture read into flats ('read'), and what was
+      -- taken off the flats by hand after that read ('correction'); ref ties a read and its correction to the picture read
+      id bigserial primary key,
+      concept_id uuid references lab_concepts(id) on delete set null,
+      kind text not null,
+      ref text,
+      style text,
+      template text,
+      kept text[] not null default '{}',
+      missing text[] not null default '{}',
+      unsure text[] not null default '{}',
+      insist text[] not null default '{}',
+      labels jsonb not null default '{}',
+      details jsonb,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists lab_trip_events_at on lab_trip_events(created_at desc);
+    create unique index if not exists lab_trip_events_once on lab_trip_events(concept_id, kind, ref) where kind in ('read', 'correction');
     -- A conversation between Future Basics and a factory about one pack, one thread per factory link. The client never sees it.
     create table if not exists factory_messages (
       id uuid primary key default gen_random_uuid(),

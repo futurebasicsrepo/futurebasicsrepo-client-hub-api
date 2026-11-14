@@ -13,18 +13,27 @@
 //   4. the image model draws the picture from the front and back flats with that prompt, and a vision model checks it detail by detail;
 //   5. the picture is read for how the piece is built, and the flats it makes are compared with the ones it came from.
 // About 1 image generation and 2 vision calls a piece. Writes <out>/report.html (the flats, the picture, what was kept and lost) and summary.json.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+//
+// The pieces are the set below and every real miss kept as a case in test/fixtures/trip-cases (scripts/trip-case.mjs saves one): a case is
+// drawn again from its flats, and the report says whether what was missed in real use now comes back.
+// The ratchet (src/lab-trip-baseline.json): a live run fails if its pictures keep fewer of the checked details than the last kept run, by more
+// than one detail. --update-baseline keeps this run as the bar when it is no worse (never with --fixture).
+import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import sharp from 'sharp';
 import { cookRecipe } from '../src/lab-recipe.js';
 import { STYLES, SIZES, defaultParams, fitToTemplate, renderSvg, drawingOf, viewsOf, measurementsFor } from '../src/lab-flats.js';
 import { FLAT_TEMPLATES } from '../src/lab-flat-templates.js';
 import { constructionOf, constructionWords, cleanConstruction } from '../src/lab-construction.js';
-import { flatDetails, pictureFromFlatsPrompt, auditOf, auditResult, BUILD_SCHEMA, BUILD_SYSTEM, LOOK_SCHEMA, buildAsk, lookOf, readBack, tripLoss } from '../src/lab-trip.js';
+import { flatDetails, pictureFromFlatsPrompt, auditOf, auditResult, BUILD_SCHEMA, BUILD_SYSTEM, LOOK_SCHEMA, buildAsk, lookOf, readBack, tripLoss, ratchetLive } from '../src/lab-trip.js';
 import { garmentPattern } from '../src/lab-pattern.js';
 import { constructionCheck } from '../src/lab-pattern-check.js';
 
 const arg = (k, d = '') => { const i = process.argv.indexOf('--' + k); return i < 0 ? d : (process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : true); };
-const ONLY = arg('only') && arg('only') !== true ? String(arg('only')).split(',') : [], OUT = arg('out', 'roundtrip-out'), FIXTURE = Boolean(arg('fixture')), LIVE = Boolean(arg('live')) || FIXTURE, JOBS = Number(arg('jobs', 3)) || 3;
+const ONLY = arg('only') && arg('only') !== true ? String(arg('only')).split(',') : [], OUT = arg('out', 'roundtrip-out'), FIXTURE = Boolean(arg('fixture')), LIVE = Boolean(arg('live')) || FIXTURE, JOBS = Number(arg('jobs', 3)) || 3, UPDATE = Boolean(arg('update-baseline'));
+const BASELINE_FILE = new URL('../src/lab-trip-baseline.json', import.meta.url), BASELINE = JSON.parse(readFileSync(BASELINE_FILE, 'utf8'));
+// the real misses kept as cases: drawn again from their flats; `was` is what real use left out
+const CASE_DIR = new URL('../test/fixtures/trip-cases/', import.meta.url);
+const realCases = () => { try { return readdirSync(CASE_DIR).filter(f => f.endsWith('.json')).map(f => JSON.parse(readFileSync(new URL(f, CASE_DIR), 'utf8'))); } catch { return []; } };
 
 // the pieces: recipe pieces with details added on the flats, and library sketches whose details are in the sketch itself
 const R = (id, base, addons, extra = {}) => ({ id, make: () => cookRecipe({ base, addons, system: 'earth', ...extra }).params });
@@ -42,6 +51,7 @@ export const CASES = [
   R('dress-zip-side', 'dress', ['zip-front', 'slant-side']),
   R('vest-pockets', 'vest', ['chest-pocket', 'zip-pocket']),
   S('sketch-western', 'shirt-western-overshirt'), S('sketch-trucker', 'jk-trucker'), S('sketch-cargo', 'pt-cargo'), S('sketch-double-knee', 'pt-double-knee-work-pants'), S('sketch-work-shirt', 'ss-two-pocket-work-shirt'),
+  ...realCases().map(k => ({ id: `case-${k.id}`, make: () => k.flat, was: k.missed?.keys || [], wasLabels: k.missed?.labels || {} })),
 ].filter(c => { try { return !ONLY.length || ONLY.includes(c.id); } catch { return false; } });
 
 // ---- the structural round trip ----
@@ -52,7 +62,7 @@ export function structural(c) {
   const said = det.filter(d => !d.layer && d.group !== 'kind' && d.view !== 'inside').filter(d => !prompt.includes(d.words ? d.words.replace(/^(Front|Back): /, '') : d.label));
   const p2 = fromPicture(p), w1 = words(p), all = fullLoss(p, p2);
   const fails = []; for (const z of (STYLES[p2.style].oneSize ? ['M'] : SIZES)) { try { const pat = garmentPattern(p2, z), k = pat && constructionCheck(pat, { m: measurementsFor(p2, z), style: p2.style }); if (!k?.ok) fails.push(z); } catch { fails.push(z); } }
-  return { id: c.id, style: p.style, template: p.template, details: det.length, unsaid: said.map(d => d.label), built: w1, lostBuild: all.lost, addedBuild: all.added, notCarried: all.notCarried, standIns: p2.edits.map(e => e.kind), patternFails: fails, p, p2 };
+  return { id: c.id, was: c.was || [], wasLabels: c.wasLabels || {}, style: p.style, template: p.template, details: det.length, unsaid: said.map(d => d.label), built: w1, lostBuild: all.lost, addedBuild: all.added, notCarried: all.notCarried, standIns: p2.edits.map(e => e.kind), patternFails: fails, p, p2 };
 }
 
 // ---- the live round trip ----
@@ -73,7 +83,8 @@ async function live(c, r) {
   const read = cleanConstruction(got?.build), p2 = fromPicture(p, read, got?.look), cmp = fullLoss(p, p2);
   writeFileSync(`${OUT}/${c.id}-flat.png`, front); if (backPng) writeFileSync(`${OUT}/${c.id}-flat-back.png`, backPng); writeFileSync(`${OUT}/${c.id}-picture.png`, picture);
   writeFileSync(`${OUT}/${c.id}-back-to-flat.png`, await flatPng(p2, 'front'));
-  return { check, read, look: got?.look, liveLost: cmp.lost, liveAdded: cmp.added, detailScore: cmp.score };
+  const cameBack = (r.was || []).filter(k => check.kept.includes(k)), still = (r.was || []).filter(k => check.missing.includes(k));
+  return { check, read, look: got?.look, liveLost: cmp.lost, liveAdded: cmp.added, detailScore: cmp.score, wasBack: cameBack, wasStill: still };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -86,13 +97,24 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const list = (xs, none = '—') => xs?.length ? xs.map(esc).join('<br>') : none;
   const html = `<!doctype html><meta charset="utf-8"><title>Flats and picture round trip</title><style>body{font:14px/1.45 system-ui,sans-serif;margin:24px;color:#141416}table{border-collapse:collapse;width:100%}td,th{border-top:1px solid #ddd;padding:8px;vertical-align:top;text-align:left}th{font-size:12px;color:#666}.bad{color:#a02a20}.ok{color:#17603a}img{width:150px;background:#f4f4f1;border-radius:8px}</style>
 <h1>Flats and picture round trip</h1><p>${rows.length} pieces, ${LIVE ? 'with the models (live)' : 'structural only (no models)'}; ${new Date().toISOString().slice(0, 16)}</p>
-<table><tr><th>Piece</th><th>Built with (flats)</th><th>Not in the picture's prompt</th><th>Lost reading it back</th><th>Stand-ins drawn</th><th>Pattern</th>${LIVE ? '<th>Picture check: missing</th><th>Lost from the real picture</th><th>Images</th>' : ''}</tr>
-${rows.map(r => `<tr><td><b>${esc(r.id)}</b><br><small>${esc(r.style)} · ${esc(r.template)} · ${r.details} details</small></td><td>${list(r.built)}</td><td class="${r.unsaid.length ? 'bad' : 'ok'}">${list(r.unsaid, 'all said')}</td><td class="${r.lostBuild.length ? 'bad' : 'ok'}">${list(r.lostBuild, 'none')}${r.notCarried.length ? `<br><small>not carried by design: ${list(r.notCarried)}</small>` : ''}</td><td>${list(r.standIns)}</td><td class="${r.patternFails.length ? 'bad' : 'ok'}">${r.patternFails.length ? 'fails at ' + r.patternFails.join(', ') : 'passes'}</td>${LIVE ? `<td class="${r.live?.error || r.live?.check?.missing?.length ? 'bad' : 'ok'}">${r.live?.error ? esc(r.live.error) : list((r.live?.check?.missing || []).map(k => r.live.check.labels[k] || k), 'none')}</td><td class="${r.live?.liveLost?.length ? 'bad' : 'ok'}">${list(r.live?.liveLost, 'none')}${r.live?.liveAdded?.length ? `<br><small>added: ${list(r.live.liveAdded)}</small>` : ''}</td><td>${r.live?.error ? '' : `<img src="${r.id}-flat.png"> <img src="${r.id}-picture.png"> <img src="${r.id}-back-to-flat.png">`}</td>` : ''}</tr>`).join('')}</table>`;
+<table><tr><th>Piece</th><th>Built with (flats)</th><th>Not in the picture's prompt</th><th>Lost reading it back</th><th>Stand-ins drawn</th><th>Pattern</th><th>Missed in real use</th>${LIVE ? '<th>Picture check: missing</th><th>Lost from the real picture</th><th>Images</th>' : ''}</tr>
+${rows.map(r => `<tr><td><b>${esc(r.id)}</b><br><small>${esc(r.style)} · ${esc(r.template)} · ${r.details} details</small></td><td>${list(r.built)}</td><td class="${r.unsaid.length ? 'bad' : 'ok'}">${list(r.unsaid, 'all said')}</td><td class="${r.lostBuild.length ? 'bad' : 'ok'}">${list(r.lostBuild, 'none')}${r.notCarried.length ? `<br><small>not carried by design: ${list(r.notCarried)}</small>` : ''}</td><td>${list(r.standIns)}</td><td class="${r.patternFails.length ? 'bad' : 'ok'}">${r.patternFails.length ? 'fails at ' + r.patternFails.join(', ') : 'passes'}</td><td class="${r.live?.wasStill?.length ? 'bad' : r.was.length ? 'ok' : ''}">${!r.was.length ? '—' : LIVE && !r.live?.error ? `${r.live.wasBack.length ? `back now: ${list(r.live.wasBack.map(k => r.wasLabels[k] || k))}` : ''}${r.live.wasStill.length ? `<br>still left out: ${list(r.live.wasStill.map(k => r.wasLabels[k] || k))}` : ''}` : `asked for: ${list(r.was.map(k => r.wasLabels[k] || k))}`}</td>${LIVE ? `<td class="${r.live?.error || r.live?.check?.missing?.length ? 'bad' : 'ok'}">${r.live?.error ? esc(r.live.error) : list((r.live?.check?.missing || []).map(k => r.live.check.labels[k] || k), 'none')}</td><td class="${r.live?.liveLost?.length ? 'bad' : 'ok'}">${list(r.live?.liveLost, 'none')}${r.live?.liveAdded?.length ? `<br><small>added: ${list(r.live.liveAdded)}</small>` : ''}</td><td>${r.live?.error ? '' : `<img src="${r.id}-flat.png"> <img src="${r.id}-picture.png"> <img src="${r.id}-back-to-flat.png">`}</td>` : ''}</tr>`).join('')}</table>`;
   writeFileSync(`${OUT}/report.html`, html);
   const sum = { pieces: rows.length, live: LIVE, unsaid: rows.filter(r => r.unsaid.length).length, lostBuild: rows.filter(r => r.lostBuild.length).length, patternFails: rows.filter(r => r.patternFails.length).length,
     ...(LIVE ? { pictureMissing: rows.filter(r => r.live?.check?.missing?.length).length, liveLost: rows.filter(r => r.live?.liveLost?.length).length, errors: rows.filter(r => r.live?.error).length } : {}),
     rows: rows.map(({ p, p2, ...r }) => r) };
+  // the live score: of the details the pictures were checked for, how many they kept; against the last kept run (the ratchet)
+  let gate = null;
+  if (LIVE) {
+    const done = rows.filter(r => r.live && !r.live.error), kept = done.reduce((n, r) => n + r.live.check.kept.length, 0), checked = done.reduce((n, r) => n + r.live.check.kept.length + r.live.check.missing.length, 0);
+    sum.score = { kept, checked, pieces: done.length }; gate = ratchetLive(BASELINE.live, sum.score);
+    const full = !ONLY.length && !sum.errors, keepIt = UPDATE && !FIXTURE && full && gate.ok && (gate.first || gate.better);
+    if (keepIt) { BASELINE.live = { at: new Date().toISOString(), pieces: done.length, kept, checked, missed: Object.fromEntries(done.filter(r => r.live.check.missing.length).map(r => [r.id, r.live.check.missing.map(k => r.live.check.labels[k] || k)])) };
+      writeFileSync(BASELINE_FILE, JSON.stringify(BASELINE, null, 2) + '\n'); }
+    console.log(`live score: ${kept} of ${checked} checked details kept${BASELINE.live && !keepIt ? `; the bar is ${BASELINE.live.kept} of ${BASELINE.live.checked} (${gate.want ?? '–'} needed here)` : ''}${gate.first ? ' · no live run kept yet' : ''}${keepIt ? ' · kept as the new bar in src/lab-trip-baseline.json (commit it)' : UPDATE ? ` · not kept${FIXTURE ? ' (stand-ins are not a score)' : !full ? ' (only a full run without errors is kept)' : !gate.ok ? ' (worse than the bar)' : ' (no better than the bar)'}` : ''}`);
+  }
   writeFileSync(`${OUT}/summary.json`, JSON.stringify(sum, null, 2));
   console.log(`\n${rows.length} pieces · prompt missing a detail: ${sum.unsaid} · build lost reading back: ${sum.lostBuild} · pattern fails: ${sum.patternFails}${LIVE ? ` · picture missing a detail: ${sum.pictureMissing} · build lost from the real picture: ${sum.liveLost} · errors: ${sum.errors}` : ''}\n→ ${OUT}/report.html`);
-  process.exit(sum.unsaid || sum.lostBuild || sum.patternFails || (LIVE && (sum.pictureMissing || sum.liveLost || sum.errors)) ? 1 : 0);
+  // structural loss is code, and fails; with the models, a run fails on an error or when it keeps fewer details than the bar (the models never keep all)
+  process.exit(sum.unsaid || sum.lostBuild || sum.patternFails || (LIVE && (sum.errors || !gate.ok)) ? 1 : 0);
 }

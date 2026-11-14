@@ -13,6 +13,9 @@
 //   buildEdits(read, p)                                  the details a stock sketch does not draw but the picture shows, as flats details
 //   compareDetails(before, after)                        which details made it from one list to the other
 //   readBack(p, read, look) / tripLoss(p, p2)            the flats a picture of p makes, and what of p they lost (scripts/flats-roundtrip.mjs)
+//   familyOf, readContribution, readRemoved, tripStats   what real use loses, counted by detail (src/lab-trip-routes.js, /lab/trip)
+//   gapCounts, ratchetGaps, ratchetLive                  the ratchet: the known gaps only shrink, the live score only rises
+//                                                        (src/lab-trip-baseline.json; test/lab-trip.test.js, scripts/flats-roundtrip.mjs)
 // Pure: no I/O. Graphics are carried as layers over the picture (the Studio lays them at their size), not drawn by the image model.
 import { STYLES, FITS, DETAILS, templateOf, describe, describeEdit, sideOf, defaultDetail, defaultParams, fitToTemplate, measurementsFor, partOf } from './lab-flats.js';
 import { constructionOf, constructionWords, cleanConstruction, fromEdits, SLEEVES, COLLARS, OPENINGS, POCKETS, WAISTS, LEGS, PANELS, HEMS, ANKLES, BACK_POCKETS } from './lab-construction.js';
@@ -211,4 +214,70 @@ export const notReadBack = (d, p = {}) => ['stitch', 'redrawn', 'ai'].includes(d
 export function tripLoss(p, p2) {
   const c = compareDetails(flatDetails(p).filter(d => !d.layer), flatDetails(p2)), w1 = constructionWords(constructionOf(p)), w2 = constructionWords(constructionOf(p2));
   return { lost: [...w1.filter(x => !w2.includes(x)), ...c.lost.filter(d => !notReadBack(d, p)).map(d => d.label)], added: [...w2.filter(x => !w1.includes(x)), ...c.added.map(d => d.label)], notCarried: c.lost.filter(d => notReadBack(d, p)).map(d => d.label), score: c.score };
+}
+
+// ---- what real use loses (src/lab-trip-routes.js records it; the Flats ↔ picture page at /lab/trip shows it) ----
+// one name for a detail across pieces, so a miss on one piece and on the next count together: 'Hood', 'Patch pocket', 'Wash'
+export function familyOf(key = '', label = '') {
+  const fixed = { kind: 'Garment type', colour: 'Main colour', fabric: 'Cloth', wash: 'Wash', distress: 'Distressing', cropped: 'Cropped', allover: 'All-over print' }[key];
+  if (fixed) return fixed;
+  const l = String(label || key);
+  return (/^(edit|place):/.test(key) ? l.replace(/ on the .*$/i, '') : l).replace(/,.*$/, '').replace(/ \(.*$/, '').replace(/ in #[0-9a-f]{6}.*$/i, '').trim() || key;
+}
+// what a picture read put on the flats: the details of the flats after the read that the sketch alone did not have (how it is built, how it
+// is finished, the stand-ins drawn for what the sketch does not draw); its colour and graphics are design, not read
+export function readContribution(before = [], after = []) {
+  return compareDetails(before, after).added.filter(d => ['build', 'finish', 'detail'].includes(d.group) && !d.layer)
+    .map(({ key, group, view, label, covers: cv }) => ({ key, group, view, label, ...(cv ? { covers: cv } : {}) }));
+}
+// what of a read was taken off the flats by hand: a stand-in detail deleted, a neckline, a wash or a construction detail changed or removed,
+// and the garment type if it was changed. A detail resized or moved is kept (its key stays)
+export function readRemoved(read = [], saved = [], { readStyle = null, savedStyle = null } = {}) {
+  const keys = new Set(saved.map(d => d.key)), same = new Set(saved.map(d => `${d.key}|${d.label}`));
+  const gone = read.filter(d => d.key.startsWith('edit:') ? !keys.has(d.key) : !same.has(`${d.key}|${d.label}`)).map(d => d.key);
+  return readStyle && savedStyle && readStyle !== savedStyle ? ['kind', ...gone] : gone;
+}
+// the counts the page shows, from lab_trip_events rows: { kind, style, kept, missing, unsure, insist, labels, details }
+export function tripStats(rows = []) {
+  const fam = new Map(), styles = new Map(), at = f => { if (!fam.has(f)) fam.set(f, { family: f, checked: 0, missing: 0, unsure: 0, asked: 0, fixed: 0, read: 0, removed: 0 }); return fam.get(f); };
+  const t = { checks: 0, clean: 0, checked: 0, kept: 0, missing: 0, unsure: 0, redos: 0, asked: 0, fixed: 0, reads: 0, corrected: 0, removed: 0 };
+  for (const r of rows) {
+    const L = r.labels || {}, f = k => familyOf(k, L[k]), kept = r.kept || [], missing = r.missing || [], unsure = r.unsure || [], insist = r.insist || [];
+    if (r.kind === 'check') {
+      t.checks++; if (!missing.length) t.clean++;
+      t.kept += kept.length; t.missing += missing.length; t.unsure += unsure.length; t.checked += kept.length + missing.length + unsure.length;
+      for (const k of kept) at(f(k)).checked++;
+      for (const k of missing) { const x = at(f(k)); x.checked++; x.missing++; }
+      for (const k of unsure) { const x = at(f(k)); x.checked++; x.unsure++; }
+      if (insist.length) { t.redos++; for (const k of insist) { t.asked++; const x = at(f(k)); x.asked++; if (kept.includes(k)) { t.fixed++; x.fixed++; } } }
+      const s = styles.get(r.style) || { style: r.style, checks: 0, checked: 0, missing: 0 }; s.checks++; s.checked += kept.length + missing.length; s.missing += missing.length; styles.set(r.style, s);
+    } else if (r.kind === 'read') { t.reads++; for (const d of r.details || []) at(familyOf(d.key, d.label)).read++; }
+    else if (r.kind === 'correction' && missing.length) { t.corrected++; t.removed += missing.length; for (const k of missing) at(f(k)).removed++; }
+  }
+  const rate = (a, b) => b ? Math.round(a / b * 1000) / 1000 : null;
+  return { totals: { ...t, keptRate: rate(t.kept, t.kept + t.missing), fixedRate: rate(t.fixed, t.asked), correctedRate: rate(t.corrected, t.reads) },
+    details: [...fam.values()].map(x => ({ ...x, missRate: rate(x.missing, x.checked - x.unsure), fixedRate: rate(x.fixed, x.asked), removedRate: rate(x.removed, x.read) }))
+      .sort((a, b) => (b.missing + b.removed) - (a.missing + a.removed) || b.checked - a.checked || a.family.localeCompare(b.family)),
+    styles: [...styles.values()].map(s => ({ ...s, missRate: rate(s.missing, s.checked) })).sort((a, b) => b.missing - a.missing || b.checks - a.checks) };
+}
+
+// ---- the ratchet (src/lab-trip-baseline.json): what is known not to carry may only shrink, and the live score may only rise ----
+// the known gaps (tripLoss's notCarried), counted by what they are
+export function gapCounts(labels = []) {
+  const out = {}; for (const l of labels) { const f = familyOf('edit:', l); out[f] = (out[f] || 0) + 1; }
+  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
+}
+// worse: a gap that is new or grew (fix it: a detail the flats have must carry); better: one that shrank (lower the baseline, so it stays so)
+export function ratchetGaps(baseline = {}, now = {}) {
+  const worse = [], better = [];
+  for (const [k, n] of Object.entries(now)) if (n > (baseline[k] || 0)) worse.push(`${k}: ${baseline[k] || 0} → ${n}`);
+  for (const [k, n] of Object.entries(baseline)) if ((now[k] || 0) < n) better.push(`${k}: ${n} → ${now[k] || 0}`);
+  return { worse, better };
+}
+// the live run against the last kept one: the share of checked details the pictures kept, scaled to this run, may fall by at most `slack`
+// details (one picture drawn twice does not come out the same); first: no live run kept yet
+export function ratchetLive(base, now, slack = 1) {
+  if (!base?.checked) return { ok: true, first: true, better: true };
+  const want = Math.ceil(base.kept / base.checked * now.checked) - slack;
+  return { ok: now.kept >= want, want, better: now.checked > 0 && now.kept / now.checked > base.kept / base.checked };
 }

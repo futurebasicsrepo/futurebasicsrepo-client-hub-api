@@ -46,7 +46,8 @@ import { rankTemplates, candidateTemplates, tagMarks, viewsOf, viewLabel, sideOf
 import { tagFaceSvg } from './lab-tags.js';
 import { washWords, washPrompt, cleanWash, washShrink } from './lab-wash.js';
 import { necklineWords, necklineOf } from './lab-neck.js';
-import { flatDetails, pictureFromFlatsPrompt, auditOf, auditResult, BUILD_SCHEMA, BUILD_SYSTEM, LOOK_SCHEMA, buildAsk, buildEdits, applyLook } from './lab-trip.js';
+import { flatDetails, pictureFromFlatsPrompt, auditOf, auditResult, BUILD_SCHEMA, BUILD_SYSTEM, LOOK_SCHEMA, buildAsk, buildEdits, applyLook, readContribution } from './lab-trip.js';
+import { recordCheck, recordRead, recordCorrection } from './lab-trip-routes.js';
 import { cleanConstruction, constructionOf, constructionWords } from './lab-construction.js';
 import { brandHits } from './lab-concepts.js';
 import { readiness } from './lab-ready.js';
@@ -201,6 +202,7 @@ export function registerLabFlatsRoutes(app, d) {
     // picture is not only drawn but made
     const build = out?.build ? cleanConstruction(out.build) : null;
     const r = out && STYLES[out.style] ? { style: out.style, fit: FITS[out.fit] ? out.fit : null, color: /^#[0-9a-f]{6}$/i.test(String(out.color || '')) ? String(out.color).toLowerCase() : null, ...(build && Object.keys(build).length ? { build } : {}), ...(out.look && typeof out.look === 'object' ? { look: out.look } : {}) } : null;
+    if (r) r.ref = key.slice(0, 16); // which picture was read: a read is counted once per picture (src/lab-trip-routes.js)
     if (reads.size > 500) reads.clear(); reads.set(key, r); return r;
   }
   const rgb = h => [1, 3, 5].map(i => parseInt(String(h).slice(i, i + 2), 16)), far = (a, b) => { const [x, y] = [rgb(a), rgb(b)]; return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) > 70; };
@@ -246,12 +248,14 @@ export function registerLabFlatsRoutes(app, d) {
     // the picture says how the piece is built: the flats keep it (it wins over the sketch's own and the words), and a detail the stock sketch
     // does not draw (a chest pocket on a plain tee, a zip on a crew) is drawn on it, where that detail usually goes, until the flat is drawn
     // from the picture itself
+    const unread = read && read.style === params.style ? flatDetails(params) : null; // the flats before the read's build and look, to count what the read put on them
     if (read?.build && read.style === params.style && ['top', 'bottom'].includes(STYLES[params.style]?.kind)) {
       const add = params.drawn?.front ? [] : buildEdits(read.build, params);
       params = { ...params, options: { ...(params.options || {}), construction: { ...(params.options?.construction || {}), ...read.build } }, edits: [...(params.edits || []), ...add] };
     }
     // and how it is finished: the neckline, the wash and wear, cropped, contrast pockets
     if (read?.look && read.style === params.style) params = applyLook(params, read.look);
+    if (unread) await recordRead(pool, { conceptId: c.id, ref: read.ref, params, details: readContribution(unread, flatDetails(params)), log });
     const logo = spec.branding?.logo || {};
     if (logo.mark && logo.mark !== 'none') { const mark = logo.mark === 'cue' ? 'mark' : logo.mark, base = LOGO_BASE[logo.technique] || 'embroidery', aspect = await aspectOf({ mark }); const t = techFor(list, { technique: base }, params.style);
       placements.push({ id: 'logo', name: 'Future Basics logo', source: 'logo', mark, technique: base, techniqueId: t.id, ...defaultPlacement('logo', params, { aspect, label: logo.placement || '' }) }); }
@@ -470,6 +474,7 @@ export function registerLabFlatsRoutes(app, d) {
     await pool.query(`insert into lab_flats(concept_id, style, params, placements, check_result, checked_at, updated_by) values($1,$2,$3,$4,$5,now(),$6)
       on conflict(concept_id) do update set style=excluded.style, params=excluded.params, placements=excluded.placements, check_result=excluded.check_result, checked_at=now(), updated_by=excluded.updated_by, updated_at=now()`,
     [t.c.id, t.params.style, t.params, JSON.stringify(t.placements), ck, actorOf(req)]);
+    await recordCorrection(pool, { conceptId: t.c.id, params: t.params, by: actorOf(req), log }); // what of a picture's read was taken off by hand
     let decorations = [], cost = null; try { decorations = await decorationsOf(t.c, t.params, t.placements); cost = await keepDecorations(t.c, decorations); } catch (e) { log.warn?.({ err: e.message }, 'flats decoration costing failed'); }
     thumbSoon(t.c); keepInLibrary(t.c, t.params, req).catch(e => log.warn?.({ err: e.message }, 'sketch library keep failed'));
     return { ok: true, check: ck, where: Object.fromEntries(t.placements.map(q => [q.id, describe(q, t.params)])), decorations, cost: cost ? { decorationCents: cost.decorationCents, landedCents: cost.landedCents, marginPct: cost.marginPct } : null };
@@ -564,6 +569,7 @@ export function registerLabFlatsRoutes(app, d) {
       on conflict(concept_id) do update set original=coalesce(lab_studio_docs.original, (select image from lab_concepts where id=$1))`, [c.id, actorOf(req)]);
     // the picture is checked against the flats: each detail that can be seen from the front, kept or missing (one vision call; none without one)
     const check = await checkPicture(c, image, details);
+    await recordCheck(pool, { conceptId: c.id, params: p, check, insist, by: actorOf(req), log }); // counted on the Flats ↔ picture page (/lab/trip)
     await pool.query(`update lab_concepts set image=$2, thumb=$3, raw=null, image_note='Drawn from the flats', spec = coalesce(spec,'{}'::jsonb) || jsonb_build_object('pictureCheck', $4::jsonb), updated_at=now() where id=$1`, [c.id, image, thumb, JSON.stringify(check ? { ...check, at: new Date().toISOString() } : null)]);
     await pool.query('delete from lab_concept_views where concept_id=$1', [c.id]); // views drawn from an older picture
     // the Studio opens its saved layers before the concept's picture: the old base (often a blank page) comes off them, so the new picture is the

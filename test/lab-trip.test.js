@@ -1,29 +1,39 @@
 // The flats and the picture, both ways (src/lab-trip.js): every detail of the flats is told to the image model and checked for in the
 // picture; what a picture says of how a piece is built and finished comes back into the flats; and a detail added on the flats is drafted.
 import { test } from 'node:test';
+import { readFileSync, readdirSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { RECIPE_BASES, addonsFor, cookRecipe } from '../src/lab-recipe.js';
 import { STYLES, SIZES, defaultParams, fitToTemplate, viewsOf, measurementsFor, renderSvg } from '../src/lab-flats.js';
 import { FLAT_TEMPLATES } from '../src/lab-flat-templates.js';
 import { constructionOf, constructionWords, fromEdits, cleanConstruction } from '../src/lab-construction.js';
-import { flatDetails, pictureBrief, pictureFromFlatsPrompt, auditOf, auditResult, buildEdits, lookOf, applyLook, compareDetails, readBack, tripLoss, notReadBack, BUILD_SCHEMA, LOOK_SCHEMA } from '../src/lab-trip.js';
+import { flatDetails, pictureBrief, pictureFromFlatsPrompt, auditOf, auditResult, buildEdits, lookOf, applyLook, compareDetails, readBack, tripLoss, notReadBack, BUILD_SCHEMA, LOOK_SCHEMA,
+  familyOf, readContribution, readRemoved, tripStats, gapCounts, ratchetGaps, ratchetLive } from '../src/lab-trip.js';
+import { checkCase } from '../scripts/trip-case.mjs';
 import { garmentPattern } from '../src/lab-pattern.js';
 import { constructionCheck } from '../src/lab-pattern-check.js';
 
 const recipe = (base, addons = [], extra = {}) => cookRecipe({ base, addons, system: 'earth', ...extra }).params;
 const said = d => d.words ? d.words.replace(/^(Front|Back): /, '') : d.label;
 
-test('every recipe piece and every library sketch: the picture is told every detail, and a picture read back loses none the code can carry', () => {
-  let pieces = 0;
+const BASELINE = JSON.parse(readFileSync(new URL('../src/lab-trip-baseline.json', import.meta.url), 'utf8'));
+
+test('every recipe piece and every library sketch: the picture is told every detail, and a picture read back loses none the code can carry; the known gaps only shrink', () => {
+  let pieces = 0; const gaps = [];
   const check = (id, p) => { pieces++;
     const det = flatDetails(p), prompt = pictureFromFlatsPrompt({ details: det, back: viewsOf(p.style).includes('back') });
     for (const d of det) if (!d.layer && d.group !== 'kind' && d.view !== 'inside') assert.ok(prompt.includes(said(d)), `${id}: the prompt names ${d.label}`);
-    const t = tripLoss(p, readBack(p));
+    const t = tripLoss(p, readBack(p)); gaps.push(...t.notCarried);
     assert.deepEqual(t.lost, [], `${id}: lost reading its picture back`); assert.deepEqual(t.added, [], `${id}: added reading its picture back`); };
   for (const b of RECIPE_BASES) { if (!['top', 'bottom'].includes(STYLES[b.style].kind)) continue;
     for (const a of [null, ...addonsFor(b)]) { const r = cookRecipe({ base: b.id, addons: a ? [a.id] : [], system: 'earth' }); if (!r.error) check(`${b.id}+${a?.id || '-'}`, r.params); } }
   for (const t of FLAT_TEMPLATES) if (['top', 'bottom'].includes(STYLES[t.style]?.kind)) check(t.id, fitToTemplate({ ...defaultParams(t.style, 'regular'), template: t.id }));
   assert.ok(pieces > 600, `${pieces} pieces`);
+  // the ratchet (src/lab-trip-baseline.json): a detail the flats draw that a picture cannot carry back is a known gap, counted by what it is.
+  // A new or larger gap fails; a smaller one fails too, until the baseline is lowered, so a fix stays fixed
+  const r = ratchetGaps(BASELINE.gaps, gapCounts(gaps));
+  assert.deepEqual(r.worse, [], `a detail no longer carries both ways (fix it; never raise the baseline): ${r.worse.join('; ')}`);
+  assert.deepEqual(r.better, [], `fewer known gaps now: lower them in src/lab-trip-baseline.json so they stay fixed: ${r.better.join('; ')}`);
 });
 
 test('a detail added on the flats is drafted: the chest pocket, the placket, the drawcord and the pleats reach the pattern, which still makes the piece', () => {
@@ -114,4 +124,62 @@ test('the flats a picture is drawn from show the details: the front and the back
   const p = recipe('shorts', ['cargo', 'back-welts']);
   for (const v of ['front', 'back']) assert.ok(renderSvg(p, v, { plain: true, scale: 0 }).length > 1000, `${v} renders`);
   assert.ok(viewsOf(p.style).includes('back'));
+});
+
+test('real use, counted: one name per detail across pieces, what a read put on the flats and what was taken off by hand, and the totals', () => {
+  assert.equal(familyOf('edit:r-chest-pocket', 'Patch pocket on the front, 4½ in × 5 in, 7 in below the HPS'), 'Patch pocket');
+  assert.equal(familyOf('wash', 'Heavy stone wash'), 'Wash'); assert.equal(familyOf('pocket:kangaroo', 'Kangaroo pocket'), 'Kangaroo pocket');
+  assert.equal(familyOf('place:logo', 'Logo on the front, 3 in wide'), 'Logo'); assert.equal(familyOf('edit:b1', 'Yoke in #141416 (front)'), 'Yoke');
+  // a plain tee read as a quarter zip with a chest pocket and a mock neck: the read put those on the flats, not its colour
+  const tee = recipe('tee'), before = flatDetails(tee), q = applyLook({ ...tee, options: { ...tee.options, construction: { opening: 'quarter-zip', pockets: ['chest'] } }, edits: buildEdits({ opening: 'quarter-zip', pockets: ['chest'] }, tee) }, { neckline: 'mock', wash: 'none', distress: 'none', cropped: false, contrast: '' });
+  const read = readContribution(before, flatDetails(q)), keys = read.map(d => d.key);
+  assert.ok(keys.includes('neckline') && keys.filter(k => k.startsWith('edit:pic-')).length === 2 && !keys.includes('colour'), JSON.stringify(keys));
+  // nothing changed: nothing taken off; the stand-in pocket deleted, the neckline changed back, the garment changed: each counts
+  assert.deepEqual(readRemoved(read, flatDetails(q)), []);
+  const pocket = keys.find(k => k.startsWith('edit:pic-pocket')), q2 = { ...q, neckline: 'crew', edits: q.edits.filter(e => `edit:${e.id}` !== pocket) };
+  assert.deepEqual(readRemoved(read, flatDetails(q2)).sort(), [pocket, 'neckline'].sort());
+  assert.deepEqual(readRemoved(read, flatDetails(q), { readStyle: 'tee', savedStyle: 'polo' }), ['kind']);
+  // moved or resized, a stand-in is kept
+  assert.deepEqual(readRemoved(read, flatDetails({ ...q, edits: q.edits.map(e => ({ ...e, x: e.x + 1, w: e.w + 1 })) })), []);
+  const L = { wash: 'Medium stone wash', hood: 'Hood', 'edit:p': 'Patch pocket on the front, 4 in' };
+  const s = tripStats([
+    { kind: 'check', style: 'hoodie', kept: ['hood', 'edit:p'], missing: ['wash'], unsure: [], insist: [], labels: L },
+    { kind: 'check', style: 'hoodie', kept: ['hood', 'wash'], missing: ['edit:p'], unsure: [], insist: ['wash'], labels: L },
+    { kind: 'read', style: 'tee', details: [{ key: 'neckline', label: 'Mock neck' }, { key: 'edit:pic-pocket-patch-0', label: 'Patch pocket on the front, 4 in' }] },
+    { kind: 'correction', style: 'tee', missing: ['edit:pic-pocket-patch-0'], labels: { 'edit:pic-pocket-patch-0': 'Patch pocket on the front, 4 in' } }]);
+  assert.deepEqual([s.totals.checks, s.totals.clean, s.totals.kept, s.totals.missing, s.totals.redos, s.totals.fixed, s.totals.reads, s.totals.corrected], [2, 0, 4, 2, 1, 1, 1, 1]);
+  assert.equal(s.totals.keptRate, .667); assert.equal(s.totals.fixedRate, 1);
+  const pp = s.details.find(d => d.family === 'Patch pocket'); assert.deepEqual([pp.checked, pp.missing, pp.read, pp.removed, pp.removedRate], [2, 1, 1, 1, 1]);
+  assert.equal(s.details[0].family, 'Patch pocket', 'the detail lost most often comes first');
+  assert.deepEqual(s.styles.map(x => [x.style, x.checks, x.missRate]), [['hoodie', 2, .333]]);
+});
+
+test('the ratchet: a gap may only shrink, the live score may only rise (by more than one detail\'s noise)', () => {
+  assert.deepEqual(gapCounts(['Zip pocket on the front, 5 in', 'Zip pocket on the front, 6 in', 'Button on the front, ½ in']), { Button: 1, 'Zip pocket': 2 });
+  assert.deepEqual(ratchetGaps({ 'Zip pocket': 2 }, { 'Zip pocket': 2 }), { worse: [], better: [] });
+  assert.deepEqual(ratchetGaps({ 'Zip pocket': 2 }, { 'Zip pocket': 3, Button: 1 }).worse, ['Zip pocket: 2 → 3', 'Button: 0 → 1']);
+  assert.deepEqual(ratchetGaps({ 'Zip pocket': 2 }, {}).better, ['Zip pocket: 2 → 0']);
+  assert.deepEqual(ratchetLive(null, { kept: 10, checked: 20 }), { ok: true, first: true, better: true });
+  assert.equal(ratchetLive({ kept: 90, checked: 100 }, { kept: 89, checked: 100 }).ok, true, 'one detail is noise');
+  assert.equal(ratchetLive({ kept: 90, checked: 100 }, { kept: 88, checked: 100 }).ok, false);
+  assert.equal(ratchetLive({ kept: 90, checked: 100 }, { kept: 46, checked: 50 }).better, true);
+  // the baseline file says what it is and holds counts only
+  assert.ok(BASELINE.about && Object.values(BASELINE.gaps).every(n => Number.isInteger(n) && n > 0));
+});
+
+test('every real miss kept as a case (test/fixtures/trip-cases) stays asked for in the picture\'s prompt, stays checked, and reads back whole', () => {
+  const dir = new URL('./fixtures/trip-cases/', import.meta.url), files = readdirSync(dir).filter(f => f.endsWith('.json'));
+  assert.ok(files.length >= 1, 'at least the example case');
+  for (const f of files) {
+    const k = JSON.parse(readFileSync(new URL(f, dir), 'utf8'));
+    assert.equal(checkCase(k), null, `${f} is a case`); assert.equal(`${k.id}.json`, f, `${f} is named by its id`);
+    const p = k.flat, det = flatDetails(p, { placements: k.placements || [] }), prompt = pictureFromFlatsPrompt({ details: det, back: viewsOf(p.style).includes('back'), insist: k.missed?.keys || [] }), a = auditOf(det);
+    for (const key of k.missed?.keys || []) {
+      const d = det.find(x => x.key === key); assert.ok(d, `${f}: ${key} is a detail of its flats`);
+      if (d.layer) continue;
+      assert.ok(prompt.includes(said(d)), `${f}: the prompt asks for ${d.label}`); assert.match(prompt, /left out/, `${f}: drawn again, the prompt says what was left out`);
+      if (d.view !== 'back' && d.view !== 'inside') assert.ok(a.checked.some(x => x.key === key), `${f}: the check asks about ${d.label}`);
+    }
+    const t = tripLoss(p, readBack(p)); assert.deepEqual(t.lost, [], `${f}: read back whole`);
+  }
 });

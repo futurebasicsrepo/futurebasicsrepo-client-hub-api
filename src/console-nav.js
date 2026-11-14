@@ -63,7 +63,8 @@
       { label: 'Platform health', href: '/platform', key: 'platform', module: 'platform', words: 'status uptime sites watch' },
       { label: 'Platform map', href: '/platform/map', module: 'platform', words: 'architecture how it works diagram partners system map flows' },
       { label: 'Connections', href: '/admin#connections', module: 'platform', words: 'shopify resend quickbooks' },
-      { label: 'Engineering benchmark', href: '/lab/engineering/benchmark', module: 'lab', words: 'benchmark engineering known products score review accuracy' }] },
+      { label: 'Engineering benchmark', href: '/lab/engineering/benchmark', module: 'lab', words: 'benchmark engineering known products score review accuracy' },
+      { label: 'Flats ↔ picture', href: '/lab/trip', module: 'lab', words: 'flats picture round trip details missing check read quality ratchet test cases' }] },
     { id: 'settings', label: 'Settings', icon: 'gear', items: [
       { label: 'Team access', href: '/team', owner: true, waiting: true, words: 'staff permissions' },
       { label: 'Brand and assets', href: '/brand', module: 'brand', words: 'logo fonts colours' },
