@@ -203,7 +203,10 @@ const COMMON = new Set(['with', 'from', 'shirt', 'tee', 'pants', 'shorts', 'jack
 // a sketch's own proportions: a cropped tee, a maxi dress or a long short is drawn shorter or longer than the usual sketch of its style, so a
 // piece drawn from it starts that much shorter or longer than the style's standard (the sketches are stylised, so the comparison is with the
 // style's middle sketch, not with real inches), and the drawing is not stretched back to the standard
-const REF = {};
+// a style's usual sketch proportion is the middle of its sketches' (below); a tee's is held where the library set it. Three jerseys measured to
+// a panel line (scripts/flat-templates/chest-fixes.tsv) had stood at the top of the tees; corrected, they moved the middle enough to make nine
+// tees nobody re-measured about 3 in longer. (The vests', the camis' and the dresses' moved because most of their sketches were measured wrong.)
+const REF = { tee: 1.66 };
 const refRatio = style => { if (!(style in REF)) { const r = FLAT_TEMPLATES.filter(t => t.style === style && t.views.front.ratio).map(t => t.views.front.measuredRatio ?? t.views.front.ratio).sort((a, b) => a - b); REF[style] = r.length ? r[Math.floor(r.length / 2)] : null; } return REF[style]; };
 // asDrawn: the sketch's ratio as the pack measured it, which is what the drawing is laid over inches by (drawingOf), so a correction to the
 // length a sketch suggests never moves what is already placed on it
@@ -282,10 +285,11 @@ function drawnSleeve(t) {
   return /long[- ]sleeve/.test(n) ? { sleeve: 23, sleeveOpening: 4 } : /cap[- ]sleeve/.test(n) ? { sleeve: 3, sleeveOpening: 6.5 } : /\btee\b|t-shirt|short[- ]sleeve/.test(n) ? { sleeve: 6.5, sleeveOpening: 5.5 } : null;
 }
 // a sleeve the sketch's name gives against its style's: a long-sleeve polo or tee (the style is short-sleeved) gets a long sleeve and a rib
-// cuff; a short-sleeve one of a long-sleeved style a short sleeve
+// cuff, and so does a sweatshirt drawn on a polo's collar (a rugby, a henley, a johnny collar); a short-sleeve one of a long-sleeved style a
+// short sleeve
 function namedSleeve(t, base) {
   const n = `${t.id} ${t.label}`.toLowerCase();
-  if (base.sleeve > 0 && base.sleeve <= 12 && /long[- ]sleeve/.test(n)) return { sleeve: 24.5, sleeveOpening: 4, cuffRib: Math.max(base.cuffRib || 0, 2.5) };
+  if (base.sleeve > 0 && base.sleeve <= 12 && /long[- ]sleeve|sweatshirt/.test(n)) return { sleeve: 24.5, sleeveOpening: 4, cuffRib: Math.max(base.cuffRib || 0, 2.5) };
   if (base.sleeve > 12 && /short[- ]sleeve/.test(n)) return { sleeve: 9, sleeveOpening: 7, cuffRib: 0 };
   return null;
 }

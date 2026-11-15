@@ -6,4 +6,5 @@ eval/cases
 eval/results
 pattern-judge-out/
 pattern-proof/
+pattern-drawn/
 roundtrip-out/
