@@ -33,8 +33,9 @@ graphics, and it comes out as a tech pack that a factory can quote from and make
    codes, decoration sheets, costing, PDF and Excel export, and a factory link.
 3. **No design skills needed to start.** The recipe menu lets anyone build a piece by picking a base, add-ons and a colour system.
    On the Make page (thefuturebasics.com/pages/make) anyone can try it without signing up: **build one now** draws the real flats of
-   a piece from 9 staple bases with up to 4 add-ons and a colour, says what its tech pack would say, and **make this for real** opens
-   the Lab on that piece. **See it work** clicks through the Lab for real, 9 steps from the recipe menu to the factory's sign-off.
+   a piece from 9 staple bases with up to 4 add-ons and a colour, says what its tech pack would say, lets anyone **download its tech
+   pack** free as a PDF (cover, materials and trims, measurements graded XS to XXL, construction with the pattern check, sample-room
+   checks and the flats), and **make this for real** opens the Lab on that piece. **See it work** clicks through the Lab for real, 9 steps from the recipe menu to the factory's sign-off.
 
 ## 3. The tools to feature
 

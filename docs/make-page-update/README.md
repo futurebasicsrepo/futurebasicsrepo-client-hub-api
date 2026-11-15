@@ -11,6 +11,13 @@ The Make page lives in the live Shopify theme. The files here are what goes into
 | `sections-make-v5.liquid` | `sections/make-v5.liquid` (new): v4 with the two pieces below; `templates-page.make.json` now points at it |
 | `snippets-make-try.liquid` | `snippets/make-try.liquid` (new): see it work and build one now |
 | `assets-make-try.css` | `assets/make-try.css` (new): their styles |
+| `sections-compare.liquid` | `sections/compare.liquid` (new): an honest comparison page |
+| `sections-guide.liquid` | `sections/guide.liquid` (new): a guide page (the page's own body, a contents list, the free tech pack) |
+| `assets-compare.css` | `assets/compare.css` (new): both pages' styles |
+| `templates-page.compare-techpacker.json` | `templates/page.compare-techpacker.json` (new): Future Basics and Techpacker |
+| `templates-page.compare-onbrand.json` | `templates/page.compare-onbrand.json` (new): Future Basics and Onbrand |
+| `templates-page.guide.json` | `templates/page.guide.json` (new) |
+| `page-what-goes-in-a-tech-pack.html` | the body of the page "What goes in a tech pack" (page editor, HTML view) |
 
 The `systems` section (`sections/make-systems.liquid`) is unchanged and stays between the two halves.
 
@@ -38,6 +45,31 @@ v4 as it is, with two pieces under the graphics strip and a link to each under t
 - The hub's address is a section setting (`api_url`). If the hub cannot be reached, both pieces stay hidden and the page reads as v4.
 
 Publish as for v4: merge and deploy the hub first, so the endpoints and `make-walk.json` are live, then load the five files onto a copy of the live theme, preview, and publish the copy. Roll back by pointing `templates/page.make.json` at `make-v4` (both sections).
+
+## The free tech pack, comparison and guide pages (November 2026)
+
+**Build one now** gains **download its tech pack**: the PDF of the piece the visitor built, made by the hub
+(`GET /v1/public/make/techpack.pdf`, `src/make-demo.js`) from the same flats, graded measurements, construction and pattern check a Lab
+piece's pack takes, through the same PDF (`src/tp-pdf.js`). No sign-up. It counts against the same hourly limit as a new piece, and each
+piece's PDF is kept once made. A download pushes `make_techpack_download` to the data layer when the theme has one.
+
+Three pages send people to it:
+
+| Page (handle) | Template | Title |
+| --- | --- | --- |
+| `future-basics-vs-techpacker` | `page.compare-techpacker` | Future Basics or Techpacker? |
+| `future-basics-vs-onbrand` | `page.compare-onbrand` | Future Basics or Onbrand? |
+| `what-goes-in-a-tech-pack` | `page.guide` | What goes in a tech pack (body: `page-what-goes-in-a-tech-pack.html`) |
+
+The guide's pictures are pages of a real free pack, served by the hub (`src/help-assets/guide-pack-*.webp`).
+
+**Rules for the comparison pages.** Every fact about the other tool comes from its own site, is listed under sources, and is dated
+(`as_of`). Where their site does not say something, the page says so ("not mentioned on its pricing page"), never that they cannot do it.
+Each page says who should pick them. Re-read their pricing pages each quarter and update the rows and the date; change a claim about us
+only when the product changes (and the video brief with it).
+
+To publish: upload the files above to an unpublished copy of the theme, create the three pages with those handles and templates (the guide's
+body pasted in), check them on the copy's preview, then publish the copy. Link the guide and the comparisons from the footer.
 
 ## v4: the Design Lab leads, production follows (November 2026)
 

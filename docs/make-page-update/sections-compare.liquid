@@ -1,0 +1,90 @@
+{%- comment -%}
+  An honest comparison page: Future Basics beside another tool, on the Make page's tokens (make-v4.css, .mk3).
+  One section, filled per page from its JSON template (templates/page.compare-*.json): the short answer (who should pick which), the rows
+  (what each does, in plain words, with the date the other tool's facts were read and where from), and the free tech pack to try it.
+  Rules for the words (docs/make-page-update/README.md, "Comparison and guide pages"): every claim about the other tool comes from its own
+  pages and is listed under sources with the date read; say where they are the better pick; no claims about their quality we cannot show.
+{%- endcomment -%}
+{%- assign make_url = section.settings.make_url | default: '/pages/make' -%}
+{{ 'make-v4.css' | asset_url | stylesheet_tag }}
+{{ 'compare.css' | asset_url | stylesheet_tag }}
+<div class="mk3 cmp">
+  <section class="mk3__pad cmp-hero">
+    <span class="mk3__mono">{{ section.settings.eyebrow | default: 'compare' }}</span>
+    <h1>{{ section.settings.heading }}</h1>
+    {%- if section.settings.lede != blank -%}<div class="cmp-lede">{{ section.settings.lede }}</div>{%- endif -%}
+    <p class="mk3__fine">{{ section.settings.them_name }}'s facts read from its own site on {{ section.settings.as_of }} · sources at the bottom · tell us if anything has changed</p>
+  </section>
+
+  <section class="mk3__pad cmp-pick" aria-labelledby="cmp-pick-h">
+    <h2 id="cmp-pick-h" class="mk3__mono">the short answer</h2>
+    <div class="cmp-cards">
+      <div class="cmp-card">
+        <h3>pick {{ section.settings.them_name | downcase }} if</h3>
+        <ul>{%- for b in section.blocks -%}{%- if b.type == 'pick_them' -%}<li {{ b.shopify_attributes }}>{{ b.settings.text }}</li>{%- endif -%}{%- endfor -%}</ul>
+      </div>
+      <div class="cmp-card cmp-card--us">
+        <h3>pick future basics if</h3>
+        <ul>{%- for b in section.blocks -%}{%- if b.type == 'pick_us' -%}<li {{ b.shopify_attributes }}>{{ b.settings.text }}</li>{%- endif -%}{%- endfor -%}</ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="mk3__pad cmp-table-wrap" aria-labelledby="cmp-rows-h">
+    <h2 id="cmp-rows-h" class="mk3__mono">side by side</h2>
+    <div class="cmp-scroll">
+      <table class="cmp-table">
+        <thead><tr><th scope="col"></th><th scope="col">future basics</th><th scope="col">{{ section.settings.them_name | downcase }}</th></tr></thead>
+        <tbody>
+          {%- for b in section.blocks -%}{%- if b.type == 'row' -%}
+          <tr {{ b.shopify_attributes }}><th scope="row">{{ b.settings.topic }}</th><td>{{ b.settings.us }}</td><td>{{ b.settings.them }}</td></tr>
+          {%- endif -%}{%- endfor -%}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="mk3__pad cmp-try">
+    <div>
+      <span class="mk3__mono">try it before you decide</span>
+      <h2>{{ section.settings.try_heading | default: 'build a piece and download its tech pack. free, no sign-up.' }}</h2>
+      <p>Pick a base, a few details and a colour on the Make page. You get the real flats, graded measurements, how it is built and a pattern that has been checked to sew together, as a PDF to keep.</p>
+    </div>
+    <div class="mk3__actions">
+      <a class="mk3__btn" href="{{ make_url }}#build-one">build one now</a>
+      <a class="mk3__btn mk3__btn--ghost" href="{{ make_url }}#see-it-work">watch it work</a>
+    </div>
+  </section>
+
+  <section class="mk3__pad cmp-sources" aria-labelledby="cmp-src-h">
+    <h2 id="cmp-src-h" class="mk3__mono">sources</h2>
+    <ol>
+      {%- for b in section.blocks -%}{%- if b.type == 'source' -%}
+      <li {{ b.shopify_attributes }}><a href="{{ b.settings.url }}" rel="nofollow noopener" target="_blank">{{ b.settings.label }}</a>{%- if b.settings.note != blank %} · {{ b.settings.note }}{%- endif -%}</li>
+      {%- endif -%}{%- endfor -%}
+    </ol>
+    <p class="mk3__fine">{{ section.settings.them_name }} is a trademark of its owner. This page is ours, not theirs, and was checked against their site on {{ section.settings.as_of }}.</p>
+  </section>
+</div>
+
+{% schema %}
+{
+  "name": "Compare — honest comparison",
+  "tag": "div",
+  "settings": [
+    { "type": "text", "id": "eyebrow", "label": "Eyebrow", "default": "compare" },
+    { "type": "text", "id": "heading", "label": "Heading" },
+    { "type": "richtext", "id": "lede", "label": "Lede" },
+    { "type": "text", "id": "them_name", "label": "The other tool's name" },
+    { "type": "text", "id": "as_of", "label": "Their facts read on (date)" },
+    { "type": "text", "id": "try_heading", "label": "Try-it heading" },
+    { "type": "text", "id": "make_url", "label": "Make page URL", "default": "/pages/make" }
+  ],
+  "blocks": [
+    { "type": "pick_them", "name": "Pick them if", "settings": [{ "type": "text", "id": "text", "label": "Reason" }] },
+    { "type": "pick_us", "name": "Pick us if", "settings": [{ "type": "text", "id": "text", "label": "Reason" }] },
+    { "type": "row", "name": "Row", "settings": [{ "type": "text", "id": "topic", "label": "Topic" }, { "type": "textarea", "id": "us", "label": "Future Basics" }, { "type": "textarea", "id": "them", "label": "Them" }] },
+    { "type": "source", "name": "Source", "settings": [{ "type": "text", "id": "label", "label": "Label" }, { "type": "url", "id": "url", "label": "URL" }, { "type": "text", "id": "note", "label": "Note" }] }
+  ]
+}
+{% endschema %}

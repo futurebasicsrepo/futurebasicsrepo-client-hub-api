@@ -1,0 +1,172 @@
+{
+  "sections": {
+    "main": {
+      "type": "compare",
+      "blocks": {
+        "them0": {
+          "type": "pick_them",
+          "settings": {
+            "text": "You have a team of designers and developers, and you need a full PLM: assortment planning, time and action calendars, costing, and a portal for many suppliers."
+          }
+        },
+        "them1": {
+          "type": "pick_them",
+          "settings": {
+            "text": "You want AI image generation for concepts, colourways and on-model renders."
+          }
+        },
+        "them2": {
+          "type": "pick_them",
+          "settings": {
+            "text": "You need an API, custom integrations or role-based permissions across several brands."
+          }
+        },
+        "us0": {
+          "type": "pick_us",
+          "settings": {
+            "text": "You want to see the price before you talk to sales, and try it free without a demo."
+          }
+        },
+        "us1": {
+          "type": "pick_us",
+          "settings": {
+            "text": "You need the pack to come with drawn flats, graded measurements and a pattern checked to sew, not only a place to keep them."
+          }
+        },
+        "us2": {
+          "type": "pick_us",
+          "settings": {
+            "text": "You want one partner from the idea to finished goods: samples, production and the factory, handled."
+          }
+        },
+        "row0": {
+          "type": "row",
+          "settings": {
+            "topic": "What it is",
+            "us": "A design studio (the Design Lab) and a manufacturer. The Lab makes the pack; Future Basics samples and produces it.",
+            "them": "A fashion PLM (plans: Core, Pro, Enterprise) and a separate AI design product. Its site describes working with your suppliers through a vendor portal, not making the product itself."
+          }
+        },
+        "row1": {
+          "type": "row",
+          "settings": {
+            "topic": "Price",
+            "us": "Design Lab $499 for 90 days, or membership $100 a month. Your first tech pack is free, and the Make page gives a tech pack PDF of any piece you build there, no sign-up.",
+            "them": "PLM prices are not published: every plan says to book a demo. AI Design: Design Starter $35 and Design Pro $75 per user per month, billed yearly; Enterprise on request."
+          }
+        },
+        "row2": {
+          "type": "row",
+          "settings": {
+            "topic": "Trying it",
+            "us": "Build a piece on the Make page and download its tech pack, free, no sign-up.",
+            "them": "No free trial is stated on its pricing pages."
+          }
+        },
+        "row3": {
+          "type": "row",
+          "settings": {
+            "topic": "Technical flats",
+            "us": "Drawn for you from 382 professional flat sketches across 24 garment styles, front and back, measured in inches.",
+            "them": "The AI design tool turns sketches into \"clean flat images or on-model renders\". The PLM lists an Adobe Illustrator plug-in."
+          }
+        },
+        "row4": {
+          "type": "row",
+          "settings": {
+            "topic": "Sewing pattern",
+            "us": "Drafted from the measurements, and checked: every seam is walked to make sure the pieces sew together.",
+            "them": "Not mentioned on the pages we read."
+          }
+        },
+        "row5": {
+          "type": "row",
+          "settings": {
+            "topic": "Getting started",
+            "us": "Open the Lab and start from the recipe menu, a sketch, a photo or your own tech pack PDF.",
+            "them": "Core lists 2-week onboarding. The home page claims 10-day data migration and implementation, including moving old Excel and PDF tech packs."
+          }
+        },
+        "row6": {
+          "type": "row",
+          "settings": {
+            "topic": "Factory",
+            "us": "Future Basics makes it. Factories also get a link to the pack in their language, with messages on the pack.",
+            "them": "A vendor portal, with several factories assigned to one tech pack and their communication kept apart."
+          }
+        },
+        "row7": {
+          "type": "row",
+          "settings": {
+            "topic": "AI",
+            "us": "You can describe a piece in words to start it, or build it from the menu. Flats and patterns are drawn, not generated.",
+            "them": "AI design from a text prompt, a sketch or an inspiration photo, with colourway variations, mood boards and visual line plans."
+          }
+        },
+        "src0": {
+          "type": "source",
+          "settings": {
+            "label": "Onbrand PLM pricing",
+            "url": "https://www.onbrandplm.com/pricing-plm",
+            "note": "PLM plans and what each includes"
+          }
+        },
+        "src1": {
+          "type": "source",
+          "settings": {
+            "label": "Onbrand AI design pricing",
+            "url": "https://www.onbrandplm.com/pricing-ai-design",
+            "note": "AI design plans and prices"
+          }
+        },
+        "src2": {
+          "type": "source",
+          "settings": {
+            "label": "Onbrand AI design",
+            "url": "https://www.onbrandplm.com/ai-design",
+            "note": "what the AI design product does"
+          }
+        },
+        "src3": {
+          "type": "source",
+          "settings": {
+            "label": "Onbrand home page",
+            "url": "https://www.onbrandplm.com",
+            "note": "implementation and migration claims"
+          }
+        }
+      },
+      "block_order": [
+        "them0",
+        "them1",
+        "them2",
+        "us0",
+        "us1",
+        "us2",
+        "row0",
+        "row1",
+        "row2",
+        "row3",
+        "row4",
+        "row5",
+        "row6",
+        "row7",
+        "src0",
+        "src1",
+        "src2",
+        "src3"
+      ],
+      "settings": {
+        "eyebrow": "compare · future basics and onbrand",
+        "heading": "future basics or onbrand?",
+        "lede": "<p><b>Onbrand is a PLM for fashion teams</b>, with an AI design tool sold on its own. <b>Future Basics is a design studio and a manufacturer</b>: the Design Lab draws the flats, grades the measurements and checks the pattern sews, and then we make the product.</p>",
+        "them_name": "Onbrand",
+        "as_of": "15 November 2026",
+        "make_url": "/pages/make"
+      }
+    }
+  },
+  "order": [
+    "main"
+  ]
+}

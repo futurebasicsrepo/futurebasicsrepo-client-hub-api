@@ -5645,6 +5645,8 @@ await journey('J315', 'The Make page, tried for real: build one now draws the re
   const img = await fetch(BASE + pc.json.images.front), buf = Buffer.from(await img.arrayBuffer());
   ok(img.status === 200 && img.headers.get('content-type') === 'image/webp' && buf.length > 5000 && !buf.includes('<svg'), '   its flats are pictures, not the purchased vector sketches', [img.status, img.headers.get('content-type'), buf.length]);
   ok((await call('/v1/public/make/piece?base=mug')).status === 400, '   a base that is not on the menu is refused');
+  const tp = await fetch(BASE + pc.json.techpack), tpb = Buffer.from(await tp.arrayBuffer());
+  ok(tp.status === 200 && tp.headers.get('content-type') === 'application/pdf' && /attachment/.test(tp.headers.get('content-disposition') || '') && tpb.subarray(0, 5).toString() === '%PDF-' && tpb.length > 50000, '   its tech pack, free: a PDF to keep, made from the same flats, measurements and pattern', [tp.status, tp.headers.get('content-type'), tpb.length]);
   const walk = await call('/help/assets/make-walk.json');
   ok(walk.status === 200 && walk.json.steps?.length >= 7 && walk.json.steps.every(x => x.img && x.title && x.hot && x.hot.x >= 0 && x.hot.x + x.hot.w <= 101), '3. see it work: its steps, each a screen, the spot the next click lands on and its words, served by the hub', walk.json.steps?.map(x => x.title));
   if (!playwright) { ok(true, 'needs a browser'); return; }

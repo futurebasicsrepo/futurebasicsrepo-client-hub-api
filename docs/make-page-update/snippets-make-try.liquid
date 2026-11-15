@@ -58,9 +58,9 @@
       <div class="mkt-spec" aria-live="polite"></div>
       <div class="mk3__actions">
         <a class="mk3__btn mkt-real" href="{{ lab_url }}">make this for real</a>
-        <a class="mk3__btn mk3__btn--ghost" href="{{ start_url }}?utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_build">start a tech pack <i>free</i></a>
+        <a class="mk3__btn mk3__btn--ghost mkt-pack" href="{{ start_url }}?utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_build">download its tech pack <i>free</i></a>
       </div>
-      <p class="mk3__fine">opens the design lab with this piece in the recipe menu · $499 for 90 days</p>
+      <p class="mk3__fine">the tech pack is a pdf to keep, no sign-up: flats, graded measurements, construction and the pattern check · the design lab is $499 for 90 days</p>
     </div>
   </div>
 </section>
@@ -124,10 +124,17 @@
         ${s.details.length ? `<dt>details</dt><dd>${s.details.map(esc).join(' · ').toLowerCase()}</dd>` : ''}
         <dt>measured · M</dt><dd>${s.measurements.map(m => `${esc(m.label.toLowerCase())} <b>${esc(m.value)}</b>`).join(' · ')}</dd>
         ${s.pattern?.trims?.length ? `<dt>trims</dt><dd>${s.pattern.trims.map(esc).join(' · ').toLowerCase()}</dd>` : ''}</dl>`;
+      // the free tech pack: the same pdf a Lab piece's pack prints; the first one for a piece takes a few seconds, so the button says so
+      const pk = $('.mkt-pack'); if (j.techpack) { pk.href = api + j.techpack; }
       const real = $('.mkt-real'); real.href = `${B.dataset.lab}${B.dataset.lab.includes('?') ? '&' : '?'}recipe=${encodeURIComponent(j.recipe)}&utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_build`;
     } catch (e) { if (n === seq) { B.classList.remove('is-busy'); $('.mkt-spec').innerHTML = `<p class="mkt-err">${esc(e.message || 'The Lab could not be reached just now.')}</p>`; } }
   };
   B.addEventListener('click', e => {
+    const pk = e.target.closest('.mkt-pack');
+    if (pk && last?.techpack) { e.preventDefault(); if (pk.dataset.busy) return; pk.dataset.busy = '1'; const was = pk.innerHTML; pk.textContent = 'making the pdf…';
+      fetch(pk.href).then(r => r.ok ? r.blob() : r.json().then(j => Promise.reject(new Error(j.error)))).then(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `${last.spec.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-tech-pack.pdf`; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); window.dataLayer?.push({ event: 'make_techpack_download', piece: last.recipe }); })
+        .catch(err => { $('.mkt-spec').insertAdjacentHTML('beforeend', `<p class="mkt-err">${esc(err.message || 'The tech pack could not be made just now.')}</p>`); })
+        .finally(() => { delete pk.dataset.busy; pk.innerHTML = was; }); return; }
     const t = e.target.closest('button'); if (!t || !M) return;
     if (t.dataset.base) { S.base = t.dataset.base; const ok = M.bases.find(b => b.id === S.base).addons.map(a => a.id); S.addons = S.addons.filter(a => ok.includes(a)); }
     else if (t.dataset.addon) { const a = t.dataset.addon; S.addons = S.addons.includes(a) ? S.addons.filter(x => x !== a) : [...S.addons, a].slice(-4); }

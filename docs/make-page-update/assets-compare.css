@@ -1,0 +1,43 @@
+/* Comparison and guide pages (sections/compare.liquid, sections/guide.liquid), on the tokens of make-v4.css (.mk3). */
+.cmp h1{font:500 clamp(36px,5.2vw,72px)/1 var(--sans);letter-spacing:-.045em;margin:14px 0 18px;max-width:16ch;text-wrap:balance}
+.cmp h2{text-wrap:balance}
+.cmp>section:not(.cmp-try){padding-block:clamp(14px,2vw,28px)}
+.cmp>.cmp-hero{padding-top:clamp(40px,6vw,96px)}
+.cmp-lede{max-width:62ch;font:400 clamp(17px,1.4vw,20px)/1.5 var(--sans);color:var(--ink)}
+.cmp-lede p{margin:0 0 12px}
+.cmp-pick h2,.cmp-table-wrap h2,.cmp-sources h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 14px}
+.cmp-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(12px,2vw,20px)}
+.cmp-card{border:1px solid var(--line);border-radius:18px;background:var(--card);padding:clamp(18px,2.4vw,28px)}
+.cmp-card h3{margin:0 0 12px;font:500 20px/1.2 var(--sans);letter-spacing:-.02em}
+.cmp-card ul{margin:0;padding-left:1.1em;display:grid;gap:8px;font:400 15px/1.5 var(--sans)}
+.cmp-card--us{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.cmp-card--us li::marker{color:var(--green)}
+.cmp-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:18px;background:var(--card)}
+.cmp-table{width:100%;min-width:640px;border-collapse:collapse;font:400 14.5px/1.5 var(--sans)}
+.cmp-table th,.cmp-table td{text-align:left;vertical-align:top;padding:14px 18px;border-bottom:1px solid var(--line)}
+.cmp-table tbody tr:last-child>*{border-bottom:0}
+.cmp-table thead th{font:500 10.5px/1.4 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);background:var(--panel)}
+.cmp-table thead th:nth-child(2){color:var(--deep)}
+.cmp-table tbody th{width:22%;font:500 14px/1.4 var(--sans)}
+.cmp-table td{width:39%}
+.cmp-try{display:grid;grid-template-columns:minmax(0,1.4fr) auto;gap:20px 40px;align-items:end;margin:clamp(12px,2vw,24px) var(--pad);padding:clamp(24px,3.4vw,44px);border-radius:22px;background:var(--panel)}
+.cmp-try h2{font:500 clamp(24px,2.6vw,36px)/1.08 var(--sans);letter-spacing:-.03em;margin:8px 0 10px;max-width:24ch}
+.cmp-try p{margin:0;max-width:56ch;color:var(--dim);font:400 15px/1.55 var(--sans)}
+.cmp-sources ol{margin:0 0 12px;padding-left:1.2em;display:grid;gap:6px;font:400 13px/1.5 var(--sans);color:var(--dim)}
+.cmp-sources a{color:var(--ink);text-decoration:underline;text-underline-offset:2px}
+/* a guide: an article with a sticky contents list */
+.gd{display:grid;grid-template-columns:minmax(180px,240px) minmax(0,1fr);gap:clamp(20px,4vw,64px);align-items:start}
+.gd-toc{position:sticky;top:96px;display:grid;gap:6px;font:400 13px/1.4 var(--sans)}
+.gd-toc a{color:var(--dim);text-decoration:none}.gd-toc a:hover{color:var(--ink)}
+.gd-body{max-width:68ch;font:400 17px/1.65 var(--sans)}
+.gd-body h2{font:500 clamp(24px,2.4vw,32px)/1.15 var(--sans);letter-spacing:-.03em;margin:44px 0 12px;scroll-margin-top:96px}
+.gd-body h2:first-child{margin-top:0}
+.gd-body table{width:100%;border-collapse:collapse;font-size:14.5px;margin:12px 0 20px}
+.gd-body th,.gd-body td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line)}
+.gd-body th{font:500 10.5px/1.4 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.gd-body figure{margin:20px 0}.gd-body img{width:100%;height:auto;border:1px solid var(--line);border-radius:14px;background:#fff}
+.gd-body figcaption{font:400 12px/1.4 var(--mono);color:var(--dim);margin-top:8px}
+@media (max-width:900px){
+  .cmp-cards,.cmp-try,.gd{grid-template-columns:minmax(0,1fr)}
+  .gd-toc{position:static}
+}

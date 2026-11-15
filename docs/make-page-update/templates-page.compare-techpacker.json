@@ -1,0 +1,154 @@
+{
+  "sections": {
+    "main": {
+      "type": "compare",
+      "blocks": {
+        "them0": {
+          "type": "pick_them",
+          "settings": {
+            "text": "You already have a designer who draws flats in Illustrator, and you want a low-cost place to lay out tech packs and share them with your own factories."
+          }
+        },
+        "them1": {
+          "type": "pick_them",
+          "settings": {
+            "text": "You run many styles with factories you already trust, and you want grading rules, line sheets and production stages in one tool."
+          }
+        },
+        "them2": {
+          "type": "pick_them",
+          "settings": {
+            "text": "You want a software seat per person and you do not need anyone to make the product for you."
+          }
+        },
+        "us0": {
+          "type": "pick_us",
+          "settings": {
+            "text": "You do not have flats yet, or a tech designer or pattern maker. You want to pick a piece and get real flats and a checked pattern."
+          }
+        },
+        "us1": {
+          "type": "pick_us",
+          "settings": {
+            "text": "You want one partner from the idea to finished goods: samples, production and the factory, handled."
+          }
+        },
+        "us2": {
+          "type": "pick_us",
+          "settings": {
+            "text": "Your factory should get the pack in its own language (Chinese, Spanish, Portuguese or Italian), with every version kept."
+          }
+        },
+        "row0": {
+          "type": "row",
+          "settings": {
+            "topic": "What it is",
+            "us": "A design studio (the Design Lab) and a manufacturer. The Lab makes the pack; Future Basics samples and produces it.",
+            "them": "Tech pack and PLM software. Its site describes software only, with no sourcing or production service."
+          }
+        },
+        "row1": {
+          "type": "row",
+          "settings": {
+            "topic": "Price",
+            "us": "Design Lab $499 for 90 days, or membership $100 a month. Your first tech pack is free, and the Make page gives a tech pack PDF of any piece you build there, no sign-up.",
+            "them": "Techpack Builder $35 per user per month, billed yearly ($420 a year). PLM Professional $95 and PLM Premium $125 per user per month, billed yearly. One-time onboarding: $100, $500 or $3,000."
+          }
+        },
+        "row2": {
+          "type": "row",
+          "settings": {
+            "topic": "Trying it",
+            "us": "Build a piece on the Make page and download its tech pack, free, no sign-up.",
+            "them": "A 7-day free trial, no credit card. A 60-day money-back guarantee when bought with paid onboarding."
+          }
+        },
+        "row3": {
+          "type": "row",
+          "settings": {
+            "topic": "Technical flats",
+            "us": "Drawn for you from 382 professional flat sketches across 24 garment styles, front and back, measured in inches. Pick a base, add details, pick a colour.",
+            "them": "Its site lists image editing tools and an Adobe Illustrator plug-in. It does not say it draws flats for you."
+          }
+        },
+        "row4": {
+          "type": "row",
+          "settings": {
+            "topic": "Measurements and grading",
+            "us": "Points of measure come from the flats, graded XS to XXL, with tolerances.",
+            "them": "Measurement grading and automated grading rules (PLM Professional and up)."
+          }
+        },
+        "row5": {
+          "type": "row",
+          "settings": {
+            "topic": "Sewing pattern",
+            "us": "Drafted from the measurements, and checked: every seam is walked to make sure the pieces sew together.",
+            "them": "Not mentioned on its pricing or home page."
+          }
+        },
+        "row6": {
+          "type": "row",
+          "settings": {
+            "topic": "Factory",
+            "us": "Future Basics makes it. Factories also get a link to the pack in their language, with messages on the pack.",
+            "them": "A team and factory collaboration hub and a manufacturer portal for the factories you already use."
+          }
+        },
+        "row7": {
+          "type": "row",
+          "settings": {
+            "topic": "AI",
+            "us": "You can describe a piece in words to start it, or build it from the menu. Flats and patterns are drawn, not generated.",
+            "them": "Its site describes its PLM as an \"AI-powered platform\" but does not list specific AI features."
+          }
+        },
+        "src0": {
+          "type": "source",
+          "settings": {
+            "label": "Techpacker pricing",
+            "url": "https://techpacker.com/pricing",
+            "note": "plans, trial, onboarding fees and the money-back terms"
+          }
+        },
+        "src1": {
+          "type": "source",
+          "settings": {
+            "label": "Techpacker home page",
+            "url": "https://techpacker.com",
+            "note": "what the product is and who it is for"
+          }
+        }
+      },
+      "block_order": [
+        "them0",
+        "them1",
+        "them2",
+        "us0",
+        "us1",
+        "us2",
+        "row0",
+        "row1",
+        "row2",
+        "row3",
+        "row4",
+        "row5",
+        "row6",
+        "row7",
+        "src0",
+        "src1"
+      ],
+      "settings": {
+        "eyebrow": "compare · future basics and techpacker",
+        "heading": "future basics or techpacker?",
+        "lede": "<p>Both get you to a tech pack a factory can read. <b>Techpacker is software for building and sharing tech packs</b>: you bring the flats, the measurements and the factory. <b>Future Basics draws them for you</b>: the flats, the graded measurements and a pattern checked to sew together. Then we make the product.</p>",
+        "them_name": "Techpacker",
+        "as_of": "15 November 2026",
+        "make_url": "/pages/make"
+      }
+    }
+  },
+  "order": [
+    "main"
+  ]
+}

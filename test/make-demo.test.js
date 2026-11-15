@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 import sharp from 'sharp';
-import { makeMenu, pieceOf, pieceSpec, recipeLink, registerMakeDemoRoutes, MAKE_BASES } from '../src/make-demo.js';
+import { makeMenu, pieceOf, pieceSpec, piecePack, recipeLink, registerMakeDemoRoutes, MAKE_BASES, PACK_NOTE } from '../src/make-demo.js';
 
 test('the menu: the staple bases, each with the add-ons that suit it, and the colour systems', () => {
   const m = makeMenu();
@@ -46,5 +46,22 @@ test('over HTTP: the menu, a piece with its two flats as pictures, and the limit
   assert.equal(calls, 2);
   const over = await app.inject('/v1/public/make/piece?base=shorts'); assert.equal(over.statusCode, 429);
   assert.equal((await app.inject('/v1/public/make/piece?base=nothing')).statusCode, 400);
+  assert.match(j.techpack, /^\/v1\/public\/make\/techpack\.pdf\?base=tee&/);
   await app.close();
+  const app2 = Fastify(); registerMakeDemoRoutes(app2); await app2.ready();
+  const pdf = await app2.inject(j.techpack); assert.equal(pdf.statusCode, 200); assert.equal(pdf.headers['content-type'], 'application/pdf');
+  assert.match(pdf.headers['content-disposition'], /attachment; filename="[a-z0-9-]+-tech-pack\.pdf"/); assert.equal(pdf.rawPayload.subarray(0, 5).toString(), '%PDF-');
+  await app2.close();
+});
+
+test('the free tech pack: the pack a Lab piece would have, from its flats, measurements and pattern, saying what is chosen in the Lab', async () => {
+  const { pack, name } = await piecePack(pieceOf({ base: 'hoodie', addons: 'chest-pocket,wash-vintage', system: 'earth' }));
+  assert.match(name, /hoodie/i); assert.equal(pack.style.sampleSize, 'M'); assert.deepEqual(pack.sizes, ['XS', 'S', 'M', 'L', 'XL', 'XXL']);
+  assert.ok(pack.pom.length >= 8 && pack.pom.every(r => r.values.M && r.values.XXL), 'graded points of measure');
+  assert.deepEqual(pack.sketches.map(k => k.view), ['front', 'back']); assert.ok(pack.sketches.every(k => /^data:image\/png;base64,/.test(k.image)), 'flats as pictures');
+  const areas = pack.construction.map(r => r.area.replace(/^Flats · /, ''));
+  for (const a of ['Drawing', 'How it is built', 'Wash', 'Pattern', 'Pattern check']) assert.ok(areas.includes(a), `${a} in ${areas}`);
+  assert.match(pack.construction.find(r => /Pattern check/.test(r.area)).detail, /^Sews together: \d+ of \d+ seams/);
+  assert.ok(pack.bom.some(r => r.component === 'Drawcord') && pack.bom.every(r => !r.cost), 'trims, and no costs on a free pack');
+  assert.equal(pack.colorways[0].name, 'Clay'); assert.equal(pack.notes, PACK_NOTE);
 });

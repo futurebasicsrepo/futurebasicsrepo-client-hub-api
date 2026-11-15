@@ -62,7 +62,9 @@ export async function techPackPdf({ pack: input, product = {}, version = null, p
   const heroSk = p.sketches.find(x => x.hero && x.hero.image), cover = heroSk ? await pic(heroSk.hero.image) : (tiles[0] ? await pic(tiles[0].image) : (p.sketches.find(x => x.image) ? await pic(p.sketches.find(x => x.image).image) : null));
   let y = b.bodyTop - 4;
   doc.fillColor(DIM).font('MONO').fontSize(8).text(`TECH PACK  ·  ${ver}${publishedAt ? '  ·  PUBLISHED ' + fmtDate(publishedAt).toUpperCase() : '  ·  NOT YET PUBLISHED'}${lockedAt ? '  ·  LOCKED' : ''}`, L, y, { characterSpacing: 1, lineBreak: false });
-  doc.fillColor(INK).font('SG-B').fontSize(36).text(safe(title), L, y + 14, { width: CW * .55, lineGap: -2 });
+  // the title stays left of the cover picture (which starts at 42% across); a long name steps down a size rather than running under it
+  const tw = cover ? CW * .42 + 10 : CW * .55; let ts = 36; doc.font('SG-B'); while (ts > 24 && doc.fontSize(ts).heightOfString(safe(title), { width: tw, lineGap: -2 }) > ts * 3.2) ts -= 4;
+  doc.fillColor(INK).font('SG-B').fontSize(ts).text(safe(title), L, y + 14, { width: tw, lineGap: -2 });
   y = doc.y + 2; if (client) { doc.fillColor(DIM).font('MONO').fontSize(8.5).text(safe(`${client}${project ? '  ·  ' + project : ''}`).toUpperCase(), L, y, { characterSpacing: 1, lineBreak: false }); y += 16; }
   const lw = CW * .42; doc.moveTo(L, y + 6).lineTo(L + lw, y + 6).lineWidth(1.8).strokeColor(INK).stroke(); y += 20;
   const facts = [['Style no.', st.styleNumber], ['Season', st.season], ['Category', st.category], ['Designer', st.designer || 'Future Basics'], ['Sample size', st.sampleSize], ['Fit block', st.fitBlock], ['Size run', p.sizes.join(' · ')], ['Fabric', st.fabricSummary]].filter(x => x[1]);

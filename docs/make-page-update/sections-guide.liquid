@@ -1,0 +1,52 @@
+{%- comment -%}
+  A guide page (thefuturebasics.com/pages/<guide>): the page's own body (written in the Shopify page editor, HTML in docs/make-page-update/page-*.html)
+  with a contents list built from its h2s, and the free tech pack to try at the end. On the Make page's tokens (make-v4.css, .mk3).
+{%- endcomment -%}
+{%- assign make_url = section.settings.make_url | default: '/pages/make' -%}
+{{ 'make-v4.css' | asset_url | stylesheet_tag }}
+{{ 'compare.css' | asset_url | stylesheet_tag }}
+<div class="mk3 cmp">
+  <section class="mk3__pad cmp-hero">
+    <span class="mk3__mono">{{ section.settings.eyebrow | default: 'guide' }}</span>
+    <h1>{{ page.title }}</h1>
+    {%- if section.settings.lede != blank -%}<div class="cmp-lede">{{ section.settings.lede }}</div>{%- endif -%}
+  </section>
+  <section class="mk3__pad gd">
+    <nav class="gd-toc mk3__mono" aria-label="On this page" hidden></nav>
+    <article class="gd-body">{{ page.content }}</article>
+  </section>
+  <section class="mk3__pad cmp-try">
+    <div>
+      <span class="mk3__mono">{{ section.settings.try_eyebrow | default: 'get one free' }}</span>
+      <h2>{{ section.settings.try_heading | default: 'build a piece and download its tech pack. free, no sign-up.' }}</h2>
+      <p>Pick a base, a few details and a colour on the Make page. You get the real flats, graded measurements, how it is built and a pattern that has been checked to sew together, as a PDF to keep.</p>
+    </div>
+    <div class="mk3__actions">
+      <a class="mk3__btn" href="{{ make_url }}#build-one">build one now</a>
+      <a class="mk3__btn mk3__btn--ghost" href="{{ make_url }}#see-it-work">watch it work</a>
+    </div>
+  </section>
+</div>
+<script>
+(() => {
+  const body = document.querySelector('.gd-body'), toc = document.querySelector('.gd-toc'); if (!body || !toc) return;
+  const hs = [...body.querySelectorAll('h2')]; if (hs.length < 3) return;
+  const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  toc.innerHTML = hs.map(h => { h.id = h.id || slug(h.textContent); return `<a href="#${h.id}">${h.textContent.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))}</a>`; }).join('');
+  toc.hidden = false;
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Guide — article and free tech pack",
+  "tag": "div",
+  "settings": [
+    { "type": "text", "id": "eyebrow", "label": "Eyebrow", "default": "guide" },
+    { "type": "richtext", "id": "lede", "label": "Lede" },
+    { "type": "text", "id": "try_eyebrow", "label": "Try-it eyebrow" },
+    { "type": "text", "id": "try_heading", "label": "Try-it heading" },
+    { "type": "text", "id": "make_url", "label": "Make page URL", "default": "/pages/make" }
+  ]
+}
+{% endschema %}
