@@ -21,7 +21,7 @@ for (const [id, f] of Object.entries(SKETCH_FIXES)) {
 }
 import { FLAT_PARTS, PART_KINDS } from './lab-flat-parts.js';
 import { washSvg, cleanWash, cleanDistress } from './lab-wash.js';
-import { necklineSvg, cleanNeckline, necklinePomName } from './lab-neck.js';
+import { necklineSvg, cleanNeckline, necklinePomName, NECKLINES } from './lab-neck.js';
 import { GOODS, GOODS_POM, SURFACES, goodsGeom, goodsSides, hasWrap, backSideX } from './lab-goods.js';
 export { FLAT_PARTS, PART_KINDS };
 
@@ -801,6 +801,27 @@ export const PART_URL = file => `/lab/flat-parts/${file}`;
 export const partOf = id => FLAT_PARTS.find(q => q.id === id) || null;
 // a cropped body (drawingOf's cut): the sketch drawn twice, everything above the cut (and the long sleeves beside it) as it is, and the body
 // below it (the hem band) moved up by the cut, so the hem, its stitching and the band are the sketch's own
+// the sketch's silhouette as it is drawn, in inches (its outline, with a cropped body's cut taken out): what a wash and distressing are placed by
+export function silhouetteOf(d) {
+  if (!d?.v?.clip?.length) return null; const c = d.cut;
+  return d.v.clip.map(([x, y]) => { if (c && y > c.y && Math.abs(x - d.ox) < c.half) y = y >= c.y + c.h ? y - c.h : c.y; return [(x - d.ox) / d.sx, (y - d.oy) / d.sy]; });
+}
+// where a wash and distressing go on a view of the flat: its edges as drawn (silhouetteOf, the drawn hem) and its neck, in inches (src/lab-wash.js washSvg)
+export function washGeo(p, view = 'front', size = p.size || 'M') {
+  const kd = STYLES[p.style]?.kind, mm = measurementsFor(p, size), d = drawingOf(p, view, size), b = d ? d.box : geometry(p, view, size).bounds, sil = silhouetteOf(d);
+  const hemY = d?.v.hemY != null ? (d.v.hemY - d.oy) / d.sy - (d.cut ? d.cut.h / d.sy : 0) : b.y1, neck = ribNeck(p, d);
+  if (kd === 'top' && mm.chest) return { kind: 'top', half: mm.chest / 2, neckY: view === 'back' ? (mm.neckDropBack ?? 1) : (mm.neckDropFront ?? 3), neckHalf: (mm.neckWidth || 7) / 2, neckRib: mm.neckRib || NECKLINES.find(q => q.id === p.neckline)?.rib || .75, neck: Boolean(neck), vNeck: neck === 'v' && view !== 'back', hemY: Math.min(hemY, b.y1), hemRib: mm.hemRib || 0, cuff: mm.cuffRib || 0, longSleeve: (mm.sleeve || 0) > 14, hood: Boolean(STYLES[p.style]?.hood), sil };
+  if (kd === 'bottom' && mm.rise) return { kind: 'bottom', waistband: mm.waistband || 1.5, rise: mm.rise, hemY: b.y1, sil };
+  return null;
+}
+// a round ribbed neck, which a wash darkens and distressing wears ('round' or 'v'): the neckline chosen in the Studio, or a crew-necked knit
+// top's sketch. A hood, a collar, a stand, a placket or an open or strapless neck has none (null)
+const CREW_STYLES = new Set(['tee', 'longsleeve', 'crewneck', 'tank', 'dress', 'bodysuit']);
+const NOT_CREW = /v-?neck|collar|polo|zip|mock|turtle|scoop|square|plunge|halter|strapless|shoulder|henley|wrap|tie|cross|open|racer|slip|column|gown|maxi|jersey|cami|bustier|corset|tube|layered/;
+function ribNeck(p, d) {
+  if (p.neckline) return ['thin', 'regular'].includes(p.neckline) ? 'round' : p.neckline === 'vneck' ? 'v' : null;
+  return CREW_STYLES.has(p.style) && !STYLES[p.style]?.hood && !NOT_CREW.test(d?.t?.id || p.template || '') ? 'round' : null;
+}
 function cutOut(d, pid, inner) {
   const c = d.cut; if (!c) return inner;
   const [bx, by, bw, bh] = d.v.box, big = bh * 3, x0 = bx - 1, x1 = bx + bw + 1, L = Number.isFinite(c.half) ? d.ox - c.half : x0, R = Number.isFinite(c.half) ? d.ox + c.half : x1;
@@ -846,7 +867,7 @@ export function renderSvg(p, view = 'front', { placements = [], hrefs = {}, size
   // whole box, which is slow in librsvg. The service makes the picture once a view (washOnly), shared by the sheet and the flat pictures:
   // a soft wash at a lower resolution, then the distressing over it and the garment's outline that cuts both at the flats' own
   // (src/lab-flats-routes.js washPictures). The fringe a distressed hem hangs past the garment is drawn as it is either way.
-  const washLayer = (layer, masked = true, bleed = null) => { const kd = STYLES[p.style]?.kind, mm = measurementsFor(p, size), geo = kd === 'top' && mm.chest ? { kind: 'top', half: mm.chest / 2, neckY: view === 'back' ? (mm.neckDropBack ?? 1) : (mm.neckDropFront ?? 3), neckHalf: (mm.neckWidth || 7) / 2, hemY: mm.length || b.y1, hemRib: mm.hemRib || 0, cuff: mm.cuffRib || 0, longSleeve: (mm.sleeve || 0) > 14, hood: Boolean(STYLES[p.style]?.hood) } : kd === 'bottom' && mm.rise ? { kind: 'bottom', waistband: mm.waistband || 1.5, rise: mm.rise, hemY: b.y1 } : null, ws = washSvg(p, { box: b, mask: masked ? `${pid}-gm` : null, pid, kind: kd, view, cloth: cloth || '#ffffff', geo, raster, layer, bleed });
+  const washLayer = (layer, masked = true, bleed = null) => { const kd = STYLES[p.style]?.kind, geo = washGeo(p, view, size), ws = washSvg(p, { box: b, mask: masked ? `${pid}-gm` : null, pid, kind: kd, view, cloth: cloth || '#ffffff', geo, raster, layer, bleed });
     return ws && masked && layer !== 'fringe' ? `<defs><filter id="${pid}-gw" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0"/></filter><mask id="${pid}-gm" maskUnits="userSpaceOnUse" x="${x0}" y="${y0}" width="${W}" height="${H}"><use href="#${pid}-b" filter="url(#${pid}-gw)"/></mask></defs>${ws}` : ws; };
   // a picture of this view w × h pixels, laid where it was drawn: over the box those pixels covered, the viewBox fitted in it and centred
   // (xMidYMid meet), so drawn at that size again each of its pixels falls on the one it was drawn from

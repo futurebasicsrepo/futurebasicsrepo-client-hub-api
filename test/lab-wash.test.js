@@ -97,3 +97,48 @@ test('a flat picture drawn with the picture of its wash looks as it does drawn w
     assert.ok(d.mean < .5 && d.mx < 24, `${wash.type}: mean ${d.mean.toFixed(3)}, max ${d.mx}`);
   }
 });
+
+test('distressing is on the edges of the drawing: every nick and every frayed thread of every library top and bottom starts on its outline', async () => {
+  const { FLAT_TEMPLATES } = await import('../src/lab-flat-templates.js'), { washGeo, fitToTemplate, drawingOf, STYLES } = await import('../src/lab-flats.js');
+  const toSeg = ([px, py], [ax, ay], [bx, by]) => { const dx = bx - ax, dy = by - ay, t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(px - ax - t * dx, py - ay - t * dy); };
+  const dist = (sil, q) => Math.min(...sil.map((a, i) => toSeg(q, a, sil[(i + 1) % sil.length])));
+  const off = []; let nicks = 0, threads = 0, views = 0;
+  for (const t of FLAT_TEMPLATES) {
+    const kind = STYLES[t.style]?.kind; if (kind !== 'top' && kind !== 'bottom') continue;
+    const p = { ...fitToTemplate({ ...defaultParams(t.style), template: t.id }), distress: { on: true, amount: 19, focus: 'edges' } }; // nicks and a ragged hem; no pinholes (body wear)
+    for (const view of Object.keys(t.views)) {
+      const geo = washGeo(p, view), d = drawingOf(p, view); if (!geo?.sil || !d) continue; views++;
+      const svg = washSvg(p, { box: d.box, mask: 'm', kind, view, geo });
+      for (const m of svg.matchAll(/<path d="([^"]+)" fill="#141210"/g)) { // each nick: the centre of its dark hole
+        const n = m[1].match(/-?[\d.]+/g).map(Number), q = [0, 1].map(k => n.filter((_, i) => i % 2 === k).reduce((s, v) => s + v, 0) / (n.length / 2)), e = dist(geo.sil, q); nicks++;
+        const neck = kind === 'top' && q[1] < geo.neckY + 1 && Math.abs(q[0]) < geo.neckHalf + .5, pocket = kind === 'bottom' && q[1] < geo.waistband + 3 && e < 2.2;
+        if (neck ? !geo.neck : !(pocket || e < .8)) off.push(`${t.id} ${view}: a nick ${e.toFixed(1)} in from the edge at ${q.map(v => v.toFixed(1))}${neck ? ' (a neck with no rib)' : ''}`);
+      }
+      for (const m of (svg.match(/data-fringe="1">(.*)<\/g>/)?.[1] || '').matchAll(/<path d="M ([-\d.]+) ([-\d.]+) q/g)) { threads++; const e = dist(geo.sil, [Number(m[1]), Number(m[2])]); if (e > .4) off.push(`${t.id} ${view}: a frayed thread ${e.toFixed(1)} in from the edge`); }
+    }
+  }
+  assert.ok(views > 700 && nicks > 3000 && threads > 5000, `${views} views, ${nicks} nicks, ${threads} threads`);
+  assert.deepEqual(off.slice(0, 12), [], `${off.length} of ${nicks} nicks and ${threads} threads off the edges`);
+});
+
+test('a ribbed neck is darkened and worn only where there is one: a crew, not a hood, a collar or an open neck', async () => {
+  const { washGeo, fitToTemplate } = await import('../src/lab-flats.js');
+  const neck = (style, template, more = {}) => washGeo({ ...fitToTemplate({ ...defaultParams(style), template }), ...more }, 'front').neck;
+  assert.deepEqual([neck('tee', 'tee-classic'), neck('crewneck', 'crew-classic'), neck('tank', 'tank-muscle-tank'), neck('dress', 'dr-t-shirt-dress')], [true, true, true, true]);
+  assert.deepEqual([neck('hoodie', 'hood-boxy'), neck('polo', 'polo-rib-hem-polo'), neck('shirt', 'shirt-classic-shirt'), neck('vest', 'vest-zip-fleece-vest'), neck('tee', 'tee-vneck'), neck('dress', 'dr-strapless-mini-dress')], [false, false, false, false, false, false]);
+  assert.equal(neck('tee', 'tee-vneck', { neckline: 'regular' }), true, 'a crew chosen in the Studio is a crew');
+  // and the darkened neck is a band along the neckline, not a patch over the chest
+  const { params } = cleanFlat({ ...defaultParams('tee'), wash: { type: 'garment-dye', strength: 'medium' } });
+  assert.ok(!/<ellipse[^>]*fill="#000000"/.test(renderSvg(params, 'front')), 'no dark ellipse at the neck');
+});
+
+test('the wash darkens the hem the sketch is drawn with, not where the measured length would put it', async () => {
+  const { washGeo, fitToTemplate, drawingOf } = await import('../src/lab-flats.js');
+  for (const [style, template] of [['tee', 'tee-boxy'], ['longsleeve', 'ls-long-sleeve-tee'], ['crewneck', 'crew-classic'], ['hoodie', 'hood-boxy']]) {
+    const p = { ...fitToTemplate({ ...defaultParams(style), template }), wash: { type: 'spray', strength: 'heavy' } }, g = washGeo(p, 'front'), d = drawingOf(p, 'front');
+    const ys = []; g.sil.forEach((a, i) => { const b = g.sil[(i + 1) % g.sil.length]; if ((a[0] <= 0) !== (b[0] <= 0)) ys.push(a[1] + (0 - a[0]) / (b[0] - a[0]) * (b[1] - a[1])); }); const drawn = Math.max(...ys);
+    assert.ok(Math.abs(g.hemY - drawn) < .75, `${template}: the hem at ${g.hemY.toFixed(1)} in, the drawing's body ends at ${drawn.toFixed(1)} in`);
+    const band = washSvg(p, { box: d.box, mask: 'm', kind: 'top', geo: g }).match(/<g filter="url\(#w-wr\)"><path d="M ([-\d.]+) ([-\d.]+)/);
+    assert.ok(band && Number(band[2]) > g.hemY - (g.hemRib || 1) - 1.5, `${template}: the hem band starts at ${band?.[2]} in, the hem is at ${g.hemY.toFixed(1)} in`);
+  }
+});
