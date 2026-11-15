@@ -744,15 +744,15 @@ patent's gloss, a fur's strands, and so is the tech flats SVG. The concept windo
 
 Each comes in Light, Medium or Heavy, with the factory's own words shown under it. A wash also tells the factory that the pack's measurements are finished, after the wash. It gives a shrink allowance for the pattern (`washShrink`): about 1.5% for low-impact finishes, 2% soft, 3% stone or bleach and 4% dye, scaled for Light and Heavy. The spec sheet's points of measure are headed "finished, after wash", and the tech pack's points of measure note the allowance. A wash is drawn the way it wears:
 - **Fades:** the high points fade, meaning the chest, hood and shoulders on a top, or the thighs and knees on a bottom.
-- **Seams:** dye settles in the seams and edges.
-- **Ribs:** the hem band, cuffs and (except under a hood) the collar stay darker.
+- **Seams:** dye settles in the seams and edges: a soft darker band just inside the garment's outline, and along the seams and pocket edges drawn on the sketch.
+- **Ribs:** the hem band, the cuffs and a ribbed crew neck (a band along the neckline) stay darker; on a bottom, the waistband and each leg's hem.
 - **Particular washes:** spray and sun fades lighten from the top down, acid marbles, snow speckles, and laser fade adds whiskers on jeans.
 
-The positions come from the garment's own measurements: neckline, hem, ribs, cuffs, rise and knee.
+The positions come from the drawing itself (`washGeo` in `src/lab-flats.js`): the sketch's silhouette as it is drawn, in inches. The hem is where the body ends (a sketch keeps its own proportions, so the drawn hem can sit inches from the measured length), the cuffs are where the long sleeves end, the crotch is where the legs part, and each leg's hem and the hips follow. The neckline comes from the neck measurements. Only a ribbed round or V neck (a crew-necked knit sketch, or a crew or V chosen in the Studio) is darkened and nicked; a hood, a collar, a stand or an open or strapless neck has neither.
 
 **Distressing.** An on/off switch, an amount slider (0–100), and **Where**: all over, edges only, or body only.
-- **Edges:** chewed nicks around the collar, cuffs and hem (or the pocket openings, waistband and hems of a bottom), plus a ragged hem with a fringe hanging past the edge.
-- **Body:** pinhole clusters, holes, worn patches, open knee rips with the weft across them on trousers, and dirt marks on heavy wear.
+- **Edges:** chewed nicks on the edges themselves: a ribbed neck, the cuffs and the hem (or the waistband, the pocket openings and each leg's hem of a bottom), plus a ragged hem with a fringe hanging from the hem and the cuffs.
+- **Body:** pinhole clusters, holes, worn patches, open knee rips with the weft across them on trousers (mid-thigh on shorts, whose legs have no knee), and dirt marks on heavy wear. A top's wear stays above its hem.
 - **The summary:** the section lists what you get, and the tech pack's construction notes use the same words.
 
 **Where it goes.**
