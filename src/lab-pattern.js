@@ -364,7 +364,12 @@ function topPieces(S, m, o, style) {
         const at = a => { const d = [Math.sin(a), Math.cos(a)], e = [-Math.cos(a), Math.sin(a)], O = [SP[0] + d[0] * Ls, SP[1] + d[1] * Ls]; return { d, O, I: [O[0] + e[0] * wEnd, O[1] + e[1] * wEnd] }; };
         while (al < 1.3 && at(al).I[0] < UA[0] + .25) al += .01;
         const { d, O, I } = at(al), bow = short ? .1 : .25, mid = (P, Q, k) => [(P[0] + Q[0]) / 2 + d[1] * k, (P[1] + Q[1]) / 2 - d[0] * k];
-        const outer = cubic(SP, mid(SP, O, bow * .6), mid(O, SP, bow * .6), O), inner = cubic(I, mid(I, UA, -bow * .4), mid(UA, I, -bow * .4), UA), seam = armhole.slice().reverse();
+        // a long sleeve's inner edge, as a flat draws it: down beside the body's side seam from the underarm, then across to the end of the
+        // sleeve, at about 45°, where it leaves the body (no lower than the body's hem). A line straight from the underarm to the end would
+        // draw a sleeve as narrow as its opening all the way up, far slimmer than the piece that is cut
+        const P = !short && I[0] > UA[0] + .5 ? [UA[0], Math.min(Math.max(I[1] - (I[0] - UA[0]), UA[1] + 2), L)] : null;
+        const inner = P ? [...cubic(I, mid(I, P, -bow * .2), mid(P, I, -bow * .2), P), UA] : cubic(I, mid(I, UA, -bow * .4), mid(UA, I, -bow * .4), UA);
+        const outer = cubic(SP, mid(SP, O, bow * .6), mid(O, SP, bow * .6), O), seam = armhole.slice().reverse();
         shownP = [...outer, ...tail(inner), ...tail(seam)].map(([x, y]) => [x - SP[0], y - SP[1]]);
         placeR = { view: 'front', x: SP[0], y: SP[1], rot: 0, z: -1 }; placeL = { view: 'front', x: -SP[0], y: SP[1], rot: 0, flip: true, z: -1 };
         SLV = { hang: true, flat: true, O, I, d, rot: -al * 180 / Math.PI, end: [(O[0] + I[0]) / 2, (O[1] + I[1]) / 2], so: wEnd / 2, Ls, full };
