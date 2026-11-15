@@ -11,7 +11,7 @@
   "layout": "exhibition",
   "sections": {
     "make": {
-      "type": "make-v4",
+      "type": "make-v5",
       "settings": {
         "cta_url": "/pages/contact",
         "start_url": "https://hub.thefuturebasics.com/start",
@@ -428,7 +428,7 @@
       ]
     },
     "make_end": {
-      "type": "make-v4",
+      "type": "make-v5",
       "settings": {
         "cta_url": "/pages/contact",
         "start_url": "https://hub.thefuturebasics.com/start",

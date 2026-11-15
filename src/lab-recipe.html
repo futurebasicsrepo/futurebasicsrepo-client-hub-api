@@ -278,7 +278,12 @@ $('#open').addEventListener('click',async()=>{const b=$('#open');FBN?.begin?.(b)
     FBN?.end?.(b,true);location.href=j.studio}
   catch(x){FBN?.end?.(b,false);$('#msg').textContent=x.message;$('#msg').classList.add('bad')}});
 (async()=>{if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}try{await api('/v1/lab/concepts?limit=1')}catch(x){if(x.status===401||x.status===403){$('#needSignin').classList.remove('hidden');return}}
-  $('#app').classList.remove('hidden');const q=new URLSearchParams(location.search);if(baseOf(q.get('base')))S.base=q.get('base');if(RECIPE_SHELVES.some(s=>s.id===q.get('shelf')))S.shelf=q.get('shelf');
+  $('#app').classList.remove('hidden');const q=new URLSearchParams(location.search);
+  // a piece built on the Make page (src/make-demo.js): "base.addon+addon.system.colour", kept by the join page until the Lab opens here
+  {let pend=null;try{pend=localStorage.getItem('fb.pendingRecipe')}catch{}if(pend&&!q.get('base')&&!EDIT){const [b,a,s,c]=pend.split('.');q.set('base',b||'');q.set('addons',a&&a!=='-'?a.split('+').join(','):'');q.set('system',s||'');q.set('colour',c||'0')}if(pend)try{localStorage.removeItem('fb.pendingRecipe')}catch{}}
+  if(baseOf(q.get('base')))S.base=q.get('base');if(RECIPE_SHELVES.some(s=>s.id===q.get('shelf')))S.shelf=q.get('shelf');
+  if(S.base&&q.get('addons')){const ok=addonsFor(S.base).map(a=>a.id);S.addons=q.get('addons').split(',').filter(a=>ok.includes(a))}
+  if(COLOUR_SYSTEMS.some(s=>s.id===q.get('system')))S.system=q.get('system');if(q.get('colour'))S.colour=Math.max(0,Math.floor(Number(q.get('colour'))||0));
   if(EDIT){try{const r=await api(`/v1/lab/concepts/${EDIT}/recipe`),rc=r.recipe;S.base=rc.base;S.addons=rc.addons||[];S.parts=(rc.parts||[]).filter(id=>partOf(id));if(rc.system==='own'&&rc.colours?.length){OWN=rc.colours.map(c=>c.hex).concat(OWN).slice(0,Math.max(4,rc.colours.length));S.system='own'}else if(rc.system)S.system=rc.system;S.colour=Number(rc.colour)||0;if(rc.fit)S.fit={m:{...(rc.fit.m||{})},adjust:{...(rc.fit.adjust||{})}};
       $('#name').value=r.name;NAMED=true;$('#eyebrow').textContent='Edit the recipe';$('#title').textContent=r.name;$('#open').textContent='Save the changes';$('#miniOpen').textContent='Save';
       if(r.locked){LOCKED=true;$('#msg').textContent='This piece is already a tech pack: change it there.'}}catch(x){$('#msg').textContent=x.message;$('#msg').classList.add('bad')}}

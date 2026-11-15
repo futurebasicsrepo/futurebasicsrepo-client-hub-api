@@ -1,0 +1,105 @@
+{
+  "made": "2026-11-15",
+  "base": "https://hub.thefuturebasics.com/help/assets/",
+  "steps": [
+    {
+      "img": "make-walk-1.webp",
+      "title": "Pick a base",
+      "text": "26 staples at their usual fit, each drawn on a real flat sketch.",
+      "hot": {
+        "x": 29.7,
+        "y": 77,
+        "w": 9.9,
+        "h": 23.7
+      }
+    },
+    {
+      "img": "make-walk-2.webp",
+      "title": "Add what it needs",
+      "text": "Pockets, closures and washes: only what suits this base is offered, and each one lands where it usually goes.",
+      "hot": {
+        "x": 10.3,
+        "y": 47.3,
+        "w": 8.6,
+        "h": 5.3
+      }
+    },
+    {
+      "img": "make-walk-3.webp",
+      "title": "Pick the colours",
+      "text": "A colour system: the first colour is the garment, and every colour in it becomes a colourway.",
+      "hot": {
+        "x": 14,
+        "y": 47.3,
+        "w": 3.5,
+        "h": 5.6
+      }
+    },
+    {
+      "img": "make-walk-4.webp",
+      "title": "Open it in the Studio",
+      "text": "The piece arrives measured, drawn and coloured, ready to finish.",
+      "hot": {
+        "x": 62,
+        "y": 80.6,
+        "w": 27.9,
+        "h": 5.8
+      }
+    },
+    {
+      "img": "make-walk-5.webp",
+      "title": "Real flats, checked as you go",
+      "text": "The flats are measured in inches, and every pocket, placement and detail is checked against what a factory can make.",
+      "hot": {
+        "x": 4.9,
+        "y": 28.2,
+        "w": 67.5,
+        "h": 5.8
+      }
+    },
+    {
+      "img": "make-walk-6.webp",
+      "title": "The pattern drafts itself",
+      "text": "From the flats, graded XS to XXL. Every seam is walked against the one it is sewn to.",
+      "hot": {
+        "x": 77.2,
+        "y": 48.5,
+        "w": 22.2,
+        "h": 19.6
+      }
+    },
+    {
+      "img": "make-walk-7.webp",
+      "title": "Every piece, ready to cut",
+      "text": "The pattern pieces, apart, with seam allowances and notches, and laid out on the cloth with its yardage.",
+      "hot": {
+        "x": 60.8,
+        "y": 18.4,
+        "w": 8.8,
+        "h": 4.7
+      }
+    },
+    {
+      "img": "make-pack-callouts.webp",
+      "title": "A tech pack the factory signs off",
+      "text": "Every detail is a callout pinned on the flat, with a note to the factory, and the factory acknowledges each one.",
+      "hot": {
+        "x": 58.5,
+        "y": 17,
+        "w": 40.5,
+        "h": 16.5
+      }
+    },
+    {
+      "img": "make-pack-spec.webp",
+      "title": "Measured, graded, placed",
+      "text": "The spec sheet: every placement measured from the shoulder and the centre front, and every point of measure graded XS to XXL.",
+      "hot": {
+        "x": 68.5,
+        "y": 64.5,
+        "w": 31,
+        "h": 33
+      }
+    }
+  ]
+}

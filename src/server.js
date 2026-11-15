@@ -77,6 +77,7 @@ import { labHandoff } from './lab-handoff.js';
 import { registerLabClientRoutes } from './lab-client-routes.js';
 import { registerLabFlatsRoutes } from './lab-flats-routes.js';
 import { registerLabTripRoutes } from './lab-trip-routes.js';
+import { registerMakeDemoRoutes } from './make-demo.js';
 import { registerLabPatternRoutes } from './lab-pattern-routes.js';
 import { registerLabAssemblyRoutes } from './lab-assembly-routes.js';
 import { createArtService, registerLabArtRoutes } from './lab-art-routes.js';
@@ -1055,7 +1056,7 @@ app.get('/qrcode.js',(_req,reply)=>reply.header('cache-control','public, max-age
 app.get('/help',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./help.html',import.meta.url),'utf8')));
 app.get('/how-it-works',(_req,reply)=>reply.redirect('/help'));
 app.get('/help/guide.pdf',(_req,reply)=>{try{return reply.header('cache-control','no-cache').header('content-disposition','inline; filename="future-basics-client-hub-guide.pdf"').type('application/pdf').send(readFileSync(new URL('future-basics-client-hub-guide.pdf',helpAssets)))}catch{return reply.code(404).send({error:'Guide PDF not built yet'})}});
-app.get('/help/assets/:file',(req,reply)=>{const f=String(req.params.file||'');if(!/^[a-z0-9-]+\.(jpg|png|webp)$/.test(f))return reply.code(404).send({error:'Not found'});try{return reply.header('cache-control','public, max-age=86400').type(f.endsWith('.png')?'image/png':f.endsWith('.webp')?'image/webp':'image/jpeg').send(readFileSync(new URL(f,helpAssets)))}catch{return reply.code(404).send({error:'Not found'})}});
+app.get('/help/assets/:file',(req,reply)=>{const f=String(req.params.file||'');if(!/^[a-z0-9-]+\.(jpg|png|webp)$/.test(f)&&f!=='make-walk.json')return reply.code(404).send({error:'Not found'});try{return reply.header('cache-control',f.endsWith('.json')?'public, max-age=3600':'public, max-age=86400').header('cross-origin-resource-policy','cross-origin').type(f.endsWith('.json')?'application/json':f.endsWith('.png')?'image/png':f.endsWith('.webp')?'image/webp':'image/jpeg').send(readFileSync(new URL(f,helpAssets)))}catch{return reply.code(404).send({error:'Not found'})}}); // make-walk.json: the Make page's walkthrough (scripts/make-walkthrough.mjs)
 // Home-screen icon and web app manifest: the hub installs as a standalone app, the work console keeps opening in the browser so Google sign-in round-trips cleanly.
 const iconDir=new URL('./icons/',import.meta.url);
 app.get('/manifest.webmanifest',(req,reply)=>{const work=/^work\./i.test(String(req.headers.host||''));return reply.header('cache-control','public, max-age=3600').type('application/manifest+json').send({name:work?'Future Basics Work':'Future Basics',short_name:work?'FB Work':'Future Basics',start_url:'/',scope:'/',display:work?'browser':'standalone',background_color:'#141416',theme_color:'#141416',icons:[{src:'/icons/icon-192.png',sizes:'192x192',type:'image/png'},{src:'/icons/icon-512.png',sizes:'512x512',type:'image/png'},{src:'/icons/icon-maskable-512.png',sizes:'512x512',type:'image/png',purpose:'maskable'}]})});
@@ -1110,6 +1111,8 @@ app.get('/tp/:token', sendTechPack);
 app.get('/i/:code',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').header('referrer-policy','no-referrer').type('text/html').send(readFileSync(new URL('./invite.html',import.meta.url),'utf8')));
 app.get('/print/:id',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./print.html',import.meta.url),'utf8')));
 app.get('/v1/public/config', async () => ({ workHubUrl, clientHubUrl, startProjectUrl, googleSsoEnabled }));
+// Build one now, on the Make page: the recipe menu's flats and what the piece's tech pack would say; no sign-in and no AI (src/make-demo.js)
+registerMakeDemoRoutes(app, { allowed: publicIntakeAllowed, log: app.log });
 app.get('/v1/session', { preHandler: authenticate }, async (req, reply) => {
   const client = (await pool.query('select id,slug,name,status,archived_at,onboarding_status from clients where id=$1', [req.auth.clientId])).rows[0];
   if (!client || (req.auth.role !== 'admin' && (client.archived_at || ['archive','archived'].includes(client.status)))) return reply.code(404).send({ error: 'Client workspace not found' });
