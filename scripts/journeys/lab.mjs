@@ -5637,4 +5637,36 @@ await journey('J314', 'The flats and the picture in real use, counted (Sites & h
   } finally { for (const id of made) if (id) await K(`/concepts/${id}`, { method: 'DELETE' }); }
 });
 
+await journey('J315', 'The Make page, tried for real: build one now draws the real flats of a piece picked from the recipe menu with no sign-in and says what its tech pack would say, as pictures (never the vector sketches); Make this for real carries the piece through the join page into the Lab, which opens on it in the recipe menu, once; and see it work reads its steps from the hub', async () => {
+  const menu = await call('/v1/public/make/menu');
+  ok(menu.status === 200 && menu.json.bases?.some(b => b.id === 'hoodie' && b.addons.some(a => a.id === 'chest-pocket')) && menu.json.systems?.length >= 4, '1. the menu: the staple bases with the add-ons that suit each, and the colour systems, without a sign-in', menu.json.bases?.map(b => b.id));
+  const pc = await call('/v1/public/make/piece?base=hoodie&addons=chest-pocket,wash-vintage,cargo&system=earth&colour=1'), s = pc.json.spec || {};
+  ok(pc.status === 200 && pc.json.recipe === 'hoodie.chest-pocket+wash-vintage.earth.1' && s.built?.includes('Chest pocket') && s.pattern?.sews && s.details?.includes('Medium stone wash'), '2. a piece: only what the menu offers (no cargo pocket on a hoodie), how it is built, what was added, and its pattern sewing together', { recipe: pc.json.recipe, built: s.built, details: s.details, pattern: s.pattern });
+  const img = await fetch(BASE + pc.json.images.front), buf = Buffer.from(await img.arrayBuffer());
+  ok(img.status === 200 && img.headers.get('content-type') === 'image/webp' && buf.length > 5000 && !buf.includes('<svg'), '   its flats are pictures, not the purchased vector sketches', [img.status, img.headers.get('content-type'), buf.length]);
+  ok((await call('/v1/public/make/piece?base=mug')).status === 400, '   a base that is not on the menu is refused');
+  const tp = await fetch(BASE + pc.json.techpack), tpb = Buffer.from(await tp.arrayBuffer());
+  ok(tp.status === 200 && tp.headers.get('content-type') === 'application/pdf' && /attachment/.test(tp.headers.get('content-disposition') || '') && tpb.subarray(0, 5).toString() === '%PDF-' && tpb.length > 50000, '   its tech pack, free: a PDF to keep, made from the same flats, measurements and pattern', [tp.status, tp.headers.get('content-type'), tpb.length]);
+  const walk = await call('/help/assets/make-walk.json');
+  ok(walk.status === 200 && walk.json.steps?.length >= 7 && walk.json.steps.every(x => x.img && x.title && x.hot && x.hot.x >= 0 && x.hot.x + x.hot.w <= 101), '3. see it work: its steps, each a screen, the spot the next click lands on and its words, served by the hub', walk.json.steps?.map(x => x.title));
+  if (!playwright) { ok(true, 'needs a browser'); return; }
+  // a room with the Lab open, as a client who pressed Make this for real
+  const j = await call('/v1/public/join', { body: { company: `Try label ${stamp}`, name: 'Try Person', email: `try-${stamp}@chaos.test` } }), cid = j.json.client?.id, ct = j.json.token;
+  ok(j.status === 201 && ct, '4. a new room from the join link', j.status);
+  await call(`/v1/admin/clients/${cid}/lab`, { token: kyleT, method: 'PATCH', body: { action: 'comp' } });
+  const b = await playwright.chromium.launch();
+  try {
+    const cc = await b.newContext({ viewport: { width: 1280, height: 900 } }), p = await cc.newPage(), errs = []; p.on('pageerror', e => errs.push(String(e)));
+    await p.goto(`${BASE}/join?for=lab&recipe=${encodeURIComponent('hoodie.chest-pocket+wash-vintage.earth.1')}`, { waitUntil: 'domcontentloaded' });
+    ok(await p.evaluate(() => localStorage.getItem('fb.pendingRecipe')) === 'hoodie.chest-pocket+wash-vintage.earth.1', '5. the join page keeps the piece');
+    await p.evaluate(t => { localStorage.setItem('fb.client.token', t); localStorage.setItem('fb.lab.welcomed', '1'); localStorage.setItem('fb.helper.on', '0'); }, ct);
+    await p.goto(`${BASE}/lab`, { waitUntil: 'domcontentloaded' }); await p.waitForURL(/\/lab\/recipe/, { timeout: 30000 }); await p.waitForSelector('[data-base="hoodie"][aria-checked="true"]', { timeout: 20000 });
+    const on = await p.evaluate(() => ({ addons: [...document.querySelectorAll('[data-addon][aria-pressed="true"],[data-addon][aria-checked="true"]')].map(e => e.dataset.addon), sys: document.querySelector('[data-sys][aria-checked="true"]')?.dataset.sys, main: document.querySelector('[data-main][aria-checked="true"]')?.dataset.main, left: localStorage.getItem('fb.pendingRecipe') }));
+    ok(on.addons.includes('chest-pocket') && on.addons.includes('wash-vintage') && on.sys === 'earth' && on.main === '1' && on.left === null, '   the Lab opens on it in the recipe menu: the hoodie, its chest pocket and stone wash, its colour; and only once', on);
+    await p.goto(`${BASE}/lab`, { waitUntil: 'networkidle' }); await p.waitForTimeout(800);
+    ok(!/\/lab\/recipe/.test(p.url()), '   opened again, the Lab opens as usual', p.url());
+    ok(errs.length === 0, '   no page errors', errs);
+  } finally { await b.close(); }
+});
+
 process.exit(summary() ? 1 : 0);

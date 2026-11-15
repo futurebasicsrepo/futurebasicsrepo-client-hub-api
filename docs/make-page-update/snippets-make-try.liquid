@@ -1,0 +1,149 @@
+{%- comment -%}
+  The Make page's two "try it" pieces, rendered by sections/make-v5.liquid under the graphics strip:
+    see it work   — the Design Lab used for real, one click at a time: a hoodie from the recipe menu to its pattern, then its tech pack.
+                    Screens and the spot each click lands on come from the hub (help/assets/make-walk.json, made by scripts/make-walkthrough.mjs).
+                    It plays by itself; a visitor clicks the spot, the arrows or a step to go on. Nothing plays for people who ask for less motion.
+    build one now — the recipe menu without signing in: a base, add-ons and colours, and the real flats and what the tech pack would say,
+                    from the hub (GET /v1/public/make/…, src/make-demo.js). "Make this for real" opens the Design Lab on that piece.
+  Styles: assets/make-try.css. Params: shots (help assets URL), api (the hub), lab_url, start_url.
+{%- endcomment -%}
+{{ 'make-try.css' | asset_url | stylesheet_tag }}
+
+<section class="mk3__pad mkt" id="see-it-work" aria-labelledby="mkt-walk-h">
+  <div class="mk3__half">
+    <div><span class="mk3__mono">see it work · real screens</span><h2 id="mkt-walk-h">a hoodie, start to factory. <span>click through it.</span></h2></div>
+    <p><b>This is the Design Lab, not a mock-up.</b> A base from the recipe menu, a chest pocket and a stone wash, its flats checked and its pattern drafted, then the tech pack a factory signs off. Click the green ring to go on.</p>
+  </div>
+  <div class="mkt-walk" data-src="{{ shots }}make-walk.json" data-base="{{ shots }}" hidden>
+    <div class="mkt-screen">
+      <div class="mkt-bar" aria-hidden="true"><i></i><i></i><i></i><span class="mkt-url">hub.thefuturebasics.com/lab</span></div>
+      <div class="mkt-view">
+        <img class="mkt-img" alt="" width="1800" height="1125" decoding="async">
+        <button type="button" class="mkt-hot" aria-label="Next step"></button>
+        <span class="mkt-cursor" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26"><path d="M4 2l15 9-6.5 1.6L9.6 19z" fill="#141416" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+      </div>
+    </div>
+    <div class="mkt-side">
+      <p class="mk3__mono mkt-count" aria-live="polite"></p>
+      <h3 class="mkt-title"></h3>
+      <p class="mkt-text"></p>
+      <div class="mkt-nav">
+        <button type="button" class="mkt-arrow" data-go="-1" aria-label="Back a step">←</button>
+        <button type="button" class="mkt-arrow" data-go="1" aria-label="Next step">→</button>
+        <button type="button" class="mkt-play" aria-pressed="true">pause</button>
+      </div>
+      <ol class="mkt-steps"></ol>
+      <a class="mk3__btn" href="{{ lab_url }}&utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_walk">open the design lab</a>
+    </div>
+  </div>
+</section>
+
+<section class="mk3__pad mkt" id="build-one" aria-labelledby="mkt-build-h">
+  <div class="mk3__half">
+    <div><span class="mk3__mono">build one now · no sign-up</span><h2 id="mkt-build-h">pick it. <span>see the flats.</span></h2></div>
+    <p><b>The same recipe menu the Lab opens with.</b> Choose a base, a few add-ons and a colour: the flats below are drawn by the Lab for that piece, with what its tech pack would say, and its pattern checked to sew together at every size.</p>
+  </div>
+  <div class="mkt-build" data-api="{{ api }}" data-lab="{{ lab_url }}" hidden>
+    <div class="mkt-picks">
+      <fieldset><legend class="mk3__mono">1 · the base</legend><div class="mkt-chips" data-role="bases"></div></fieldset>
+      <fieldset><legend class="mk3__mono">2 · add-ons <small>up to four</small></legend><div class="mkt-addons" data-role="addons"></div></fieldset>
+      <fieldset><legend class="mk3__mono">3 · the colours</legend><div class="mkt-systems" data-role="systems"></div><div class="mkt-dots" data-role="dots"></div></fieldset>
+    </div>
+    <div class="mkt-out">
+      <div class="mkt-flat">
+        <div class="mkt-toggle" role="group" aria-label="View"><button type="button" data-view="front" aria-pressed="true">front</button><button type="button" data-view="back" aria-pressed="false">back</button></div>
+        <img class="mkt-flat-img" alt="" width="900" height="900" decoding="async">
+        <span class="mkt-wait" aria-hidden="true"></span>
+      </div>
+      <div class="mkt-spec" aria-live="polite"></div>
+      <div class="mk3__actions">
+        <a class="mk3__btn mkt-real" href="{{ lab_url }}">make this for real</a>
+        <a class="mk3__btn mk3__btn--ghost mkt-pack" href="{{ start_url }}?utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_build">download its tech pack <i>free</i></a>
+      </div>
+      <p class="mk3__fine">the tech pack is a pdf to keep, no sign-up: flats, graded measurements, construction and the pattern check · the design lab is $499 for 90 days</p>
+    </div>
+  </div>
+</section>
+
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches, esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // ---- see it work ----
+  const W = document.querySelector('.mkt-walk');
+  if (W) fetch(W.dataset.src).then(r => r.ok ? r.json() : Promise.reject()).then(m => {
+    const steps = m.steps || []; if (!steps.length) return;
+    const $ = s => W.querySelector(s), img = $('.mkt-img'), hot = $('.mkt-hot'), cur = $('.mkt-cursor'), play = $('.mkt-play'), list = $('.mkt-steps');
+    const src = s => /^https?:/.test(s.img) ? s.img : W.dataset.base + s.img;
+    let at = 0, auto = !reduce, timer = null;
+    list.innerHTML = steps.map((s, i) => `<li><button type="button" data-step="${i}">${esc(s.title)}</button></li>`).join('');
+    const put = (i, user) => {
+      at = (i + steps.length) % steps.length; const s = steps[at], h = s.hot;
+      img.src = src(s); img.alt = `${s.title}: ${s.text}`;
+      Object.assign(hot.style, { left: h.x + '%', top: h.y + '%', width: h.w + '%', height: h.h + '%' });
+      Object.assign(cur.style, { left: (h.x + h.w * .55) + '%', top: (h.y + h.h * .6) + '%' });
+      $('.mkt-count').textContent = `step ${at + 1} of ${steps.length}`; $('.mkt-title').textContent = s.title; $('.mkt-text').textContent = s.text;
+      list.querySelectorAll('button').forEach((b, j) => b.setAttribute('aria-current', j === at ? 'step' : 'false'));
+      const nx = steps[(at + 1) % steps.length]; new Image().src = src(nx); // the next screen is ready before it is needed
+      if (user) stop(); else go();
+    };
+    const go = () => { clearTimeout(timer); if (auto) timer = setTimeout(() => put(at + 1), 4600); };
+    const stop = () => { auto = false; clearTimeout(timer); play.setAttribute('aria-pressed', 'false'); play.textContent = 'play'; };
+    hot.addEventListener('click', () => put(at + 1, true));
+    W.addEventListener('click', e => { const g = e.target.closest('[data-go]'), s = e.target.closest('[data-step]'); if (g) put(at + Number(g.dataset.go), true); if (s) put(Number(s.dataset.step), true); });
+    play.addEventListener('click', () => { auto = !auto; play.setAttribute('aria-pressed', String(auto)); play.textContent = auto ? 'pause' : 'play'; if (auto) put(at + 1); else clearTimeout(timer); });
+    if (reduce) { play.setAttribute('aria-pressed', 'false'); play.textContent = 'play'; }
+    // the first step shows at once; it starts playing when it comes into view, not before
+    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); go(); } }, { threshold: .15 });
+    W.hidden = false; const was = auto; auto = false; put(0); auto = was; io.observe(W);
+  }).catch(() => { W.closest('section').hidden = true; });
+
+  // ---- build one now ----
+  const B = document.querySelector('.mkt-build'); if (!B) return;
+  const api = B.dataset.api.replace(/\/$/, ''), $ = s => B.querySelector(s), S = { base: 'hoodie', addons: ['chest-pocket'], system: 'earth', colour: 0, view: 'front' };
+  let M = null, seq = 0, last = null;
+  const paint = () => {
+    const base = M.bases.find(b => b.id === S.base) || M.bases[0], sys = M.systems.find(s => s.id === S.system) || M.systems[0];
+    $('[data-role=bases]').innerHTML = M.bases.map(b => `<button type="button" data-base="${b.id}" aria-pressed="${b.id === S.base}" title="${esc(b.note)}">${esc(b.label.toLowerCase())}</button>`).join('');
+    const groups = [...new Set(base.addons.map(a => a.group))];
+    $('[data-role=addons]').innerHTML = groups.map(g => `<div><span class="mk3__mono">${esc(g)}</span><div class="mkt-chips">${base.addons.filter(a => a.group === g).map(a => `<button type="button" data-addon="${a.id}" aria-pressed="${S.addons.includes(a.id)}">${esc(a.label.toLowerCase())}</button>`).join('')}</div></div>`).join('');
+    $('[data-role=systems]').innerHTML = M.systems.map(s => `<button type="button" data-sys="${s.id}" aria-pressed="${s.id === S.system}"><span>${s.colours.map(c => `<i style="background:${c.hex}"></i>`).join('')}</span>${esc(s.name.toLowerCase())}</button>`).join('');
+    $('[data-role=dots]').innerHTML = sys.colours.map((c, i) => `<button type="button" data-colour="${i}" aria-pressed="${i === S.colour}" aria-label="${esc(c.name)}" title="${esc(c.name)}" style="background:${c.hex}"></button>`).join('');
+  };
+  const load = async () => {
+    const n = ++seq, q = `base=${S.base}&addons=${encodeURIComponent(S.addons.join(','))}&system=${S.system}&colour=${S.colour}`;
+    B.classList.add('is-busy');
+    try {
+      const r = await fetch(`${api}/v1/public/make/piece?${q}`), j = await r.json(); if (n !== seq) return;
+      if (!r.ok) throw new Error(j.error || 'That piece could not be drawn');
+      last = j; const s = j.spec, img = $('.mkt-flat-img'), view = j.images[S.view] ? S.view : 'front';
+      img.onload = () => { if (n === seq) B.classList.remove('is-busy'); }; img.src = api + j.images[view]; img.alt = `The ${view} flat of a ${s.label.toLowerCase()} in ${s.colour.name.toLowerCase()}: ${s.built.join(', ').toLowerCase()}`;
+      B.querySelectorAll('[data-view]').forEach(b => { b.disabled = !j.images[b.dataset.view]; b.setAttribute('aria-pressed', String(b.dataset.view === view)); });
+      $('.mkt-spec').innerHTML = `<div class="mkt-spec-head"><b>${esc(s.label.toLowerCase())}</b><span>${esc(s.fit.toLowerCase())} fit · ${esc(s.colour.name.toLowerCase())} · ${esc(s.colour.system.toLowerCase())}</span></div>
+        ${s.pattern ? `<p class="mkt-sews${s.pattern.sews ? '' : ' is-off'}"><i></i>${s.pattern.sews ? `sews together: ${esc(s.pattern.seams)} seams walked, ${s.pattern.pieces} pattern pieces, graded ${esc(s.sizes[0])}–${esc(s.sizes.at(-1))}` : 'needs a look before it sews'}</p>` : ''}
+        <dl><dt>built with</dt><dd>${s.built.map(esc).join(' · ').toLowerCase()}</dd>
+        ${s.details.length ? `<dt>details</dt><dd>${s.details.map(esc).join(' · ').toLowerCase()}</dd>` : ''}
+        <dt>measured · M</dt><dd>${s.measurements.map(m => `${esc(m.label.toLowerCase())} <b>${esc(m.value)}</b>`).join(' · ')}</dd>
+        ${s.pattern?.trims?.length ? `<dt>trims</dt><dd>${s.pattern.trims.map(esc).join(' · ').toLowerCase()}</dd>` : ''}</dl>`;
+      // the free tech pack: the same pdf a Lab piece's pack prints; the first one for a piece takes a few seconds, so the button says so
+      const pk = $('.mkt-pack'); if (j.techpack) { pk.href = api + j.techpack; }
+      const real = $('.mkt-real'); real.href = `${B.dataset.lab}${B.dataset.lab.includes('?') ? '&' : '?'}recipe=${encodeURIComponent(j.recipe)}&utm_source=thefuturebasics&utm_medium=site&utm_campaign=make_build`;
+    } catch (e) { if (n === seq) { B.classList.remove('is-busy'); $('.mkt-spec').innerHTML = `<p class="mkt-err">${esc(e.message || 'The Lab could not be reached just now.')}</p>`; } }
+  };
+  B.addEventListener('click', e => {
+    const pk = e.target.closest('.mkt-pack');
+    if (pk && last?.techpack) { e.preventDefault(); if (pk.dataset.busy) return; pk.dataset.busy = '1'; const was = pk.innerHTML; pk.textContent = 'making the pdf…';
+      fetch(pk.href).then(r => r.ok ? r.blob() : r.json().then(j => Promise.reject(new Error(j.error)))).then(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `${last.spec.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-tech-pack.pdf`; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); window.dataLayer?.push({ event: 'make_techpack_download', piece: last.recipe }); })
+        .catch(err => { $('.mkt-spec').insertAdjacentHTML('beforeend', `<p class="mkt-err">${esc(err.message || 'The tech pack could not be made just now.')}</p>`); })
+        .finally(() => { delete pk.dataset.busy; pk.innerHTML = was; }); return; }
+    const t = e.target.closest('button'); if (!t || !M) return;
+    if (t.dataset.base) { S.base = t.dataset.base; const ok = M.bases.find(b => b.id === S.base).addons.map(a => a.id); S.addons = S.addons.filter(a => ok.includes(a)); }
+    else if (t.dataset.addon) { const a = t.dataset.addon; S.addons = S.addons.includes(a) ? S.addons.filter(x => x !== a) : [...S.addons, a].slice(-4); }
+    else if (t.dataset.sys) { S.system = t.dataset.sys; S.colour = 0; }
+    else if (t.dataset.colour) S.colour = Number(t.dataset.colour);
+    else if (t.dataset.view) { S.view = t.dataset.view; if (last) { B.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); $('.mkt-flat-img').src = api + last.images[S.view]; } return; }
+    else return;
+    paint(); load();
+  });
+  fetch(`${api}/v1/public/make/menu`).then(r => r.ok ? r.json() : Promise.reject()).then(m => { M = m; B.hidden = false; paint(); load(); }).catch(() => { B.closest('section').hidden = true; });
+})();
+</script>

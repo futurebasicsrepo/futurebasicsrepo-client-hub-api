@@ -8,8 +8,68 @@ The Make page lives in the live Shopify theme. The files here are what goes into
 | `assets-make-v4.css` | `assets/make-v4.css` (new): the section's styles |
 | `templates-page.make.json` | `templates/page.make.json` |
 | `sections-make-v3.liquid` | `sections/make-v3.liquid`: the previous version, kept for rolling back |
+| `sections-make-v5.liquid` | `sections/make-v5.liquid` (new): v4 with the two pieces below; `templates-page.make.json` now points at it |
+| `snippets-make-try.liquid` | `snippets/make-try.liquid` (new): see it work and build one now |
+| `assets-make-try.css` | `assets/make-try.css` (new): their styles |
+| `sections-compare.liquid` | `sections/compare.liquid` (new): an honest comparison page |
+| `sections-guide.liquid` | `sections/guide.liquid` (new): a guide page (the page's own body, a contents list, the free tech pack) |
+| `assets-compare.css` | `assets/compare.css` (new): both pages' styles |
+| `templates-page.compare-techpacker.json` | `templates/page.compare-techpacker.json` (new): Future Basics and Techpacker |
+| `templates-page.compare-onbrand.json` | `templates/page.compare-onbrand.json` (new): Future Basics and Onbrand |
+| `templates-page.guide.json` | `templates/page.guide.json` (new) |
+| `page-what-goes-in-a-tech-pack.html` | the body of the page "What goes in a tech pack" (page editor, HTML view) |
 
 The `systems` section (`sections/make-systems.liquid`) is unchanged and stays between the two halves.
+
+## v5: see it work, build one now (November 2026)
+
+v4 as it is, with two pieces under the graphics strip and a link to each under the hero's buttons:
+
+- **See it work:** the Design Lab used for real, one click at a time. Seven screens taken in the Lab are followed by two screens of a tech pack already made:
+  - a hoodie picked from the recipe menu;
+  - a chest pocket and a stone wash added;
+  - its colours;
+  - the Studio;
+  - its flats and their check;
+  - its pattern, sewing together XS to XXL;
+  - its pieces laid out to cut;
+  - the factory's callouts;
+  - the spec sheet.
+
+  A green ring marks the spot each click lands on. It plays by itself once it is on screen; a visitor clicks the ring, the arrows or a step to go on. Nothing plays for people who ask for less motion. The screens and the spots come from `hub.thefuturebasics.com/help/assets/make-walk.json`. To take them again when the Lab's screens change, use a client token for a demo room with the Lab open, never a client's: `node scripts/make-walkthrough.mjs --base <hub> --token <that token>`. The spots are measured off the elements themselves.
+- **Build one now:** the recipe menu without signing in.
+  - What you pick: one of 9 staple bases, up to 4 add-ons that suit it, and a colour system and colour.
+  - What it shows: the real flats, front and back, as pictures (the purchased flat sketches are never sent), and what its tech pack would say: how it is built, the details added, the measurements at M, the trims, and the pattern checked to sew together at every size.
+  - Where it comes from: `GET /v1/public/make/menu`, `/piece` and `/flat.webp` on the hub (`src/make-demo.js`). No AI, kept in memory by piece, with a per-address hourly limit on new pieces (`MAKE_DEMO_LIMIT`, 240).
+  - **Make this for real** opens `join?for=lab&recipe=…`. The join page keeps the piece; the Lab opens on it in the recipe menu, once.
+- The hub's address is a section setting (`api_url`). If the hub cannot be reached, both pieces stay hidden and the page reads as v4.
+
+Publish as for v4: merge and deploy the hub first, so the endpoints and `make-walk.json` are live, then load the five files onto a copy of the live theme, preview, and publish the copy. Roll back by pointing `templates/page.make.json` at `make-v4` (both sections).
+
+## The free tech pack, comparison and guide pages (November 2026)
+
+**Build one now** gains **download its tech pack**: the PDF of the piece the visitor built, made by the hub
+(`GET /v1/public/make/techpack.pdf`, `src/make-demo.js`) from the same flats, graded measurements, construction and pattern check a Lab
+piece's pack takes, through the same PDF (`src/tp-pdf.js`). No sign-up. It counts against the same hourly limit as a new piece, and each
+piece's PDF is kept once made. A download pushes `make_techpack_download` to the data layer when the theme has one.
+
+Three pages send people to it:
+
+| Page (handle) | Template | Title |
+| --- | --- | --- |
+| `future-basics-vs-techpacker` | `page.compare-techpacker` | Future Basics or Techpacker? |
+| `future-basics-vs-onbrand` | `page.compare-onbrand` | Future Basics or Onbrand? |
+| `what-goes-in-a-tech-pack` | `page.guide` | What goes in a tech pack (body: `page-what-goes-in-a-tech-pack.html`) |
+
+The guide's pictures are pages of a real free pack, served by the hub (`src/help-assets/guide-pack-*.webp`).
+
+**Rules for the comparison pages.** Every fact about the other tool comes from its own site, is listed under sources, and is dated
+(`as_of`). Where their site does not say something, the page says so ("not mentioned on its pricing page"), never that they cannot do it.
+Each page says who should pick them. Re-read their pricing pages each quarter and update the rows and the date; change a claim about us
+only when the product changes (and the video brief with it).
+
+To publish: upload the files above to an unpublished copy of the theme, create the three pages with those handles and templates (the guide's
+body pasted in), check them on the copy's preview, then publish the copy. Link the guide and the comparisons from the footer.
 
 ## v4: the Design Lab leads, production follows (November 2026)
 

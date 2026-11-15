@@ -1,0 +1,13 @@
+{
+  "sections": {
+    "main": {
+      "type": "guide",
+      "settings": {
+        "eyebrow": "guide · tech packs",
+        "lede": "<p>What a factory needs to make your product, section by section, with the pages of a real tech pack. And how to get one free.</p>",
+        "make_url": "/pages/make"
+      }
+    }
+  },
+  "order": ["main"]
+}

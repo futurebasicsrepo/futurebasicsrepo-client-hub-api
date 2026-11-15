@@ -95,6 +95,8 @@
 <script>
 // /join?for=lab: the same room, opened for the Design Lab, and the hub opens on the Lab when the room is ready
 (()=>{if(new URLSearchParams(location.search).get('for')!=='lab')return;document.title='Open the Design Lab — Future Basics';
+  // a piece built on the Make page ("Make this for real"): kept until the Lab opens, which opens on it (src/lab.html → src/lab-recipe.html)
+  {const r=new URLSearchParams(location.search).get('recipe');if(r&&/^[a-z0-9-]{2,40}\.[a-z0-9+-]{1,200}\.[a-z0-9-]{2,40}\.\d{1,2}$/.test(r))try{localStorage.setItem('fb.pendingRecipe',r)}catch{}}
   const h=document.querySelector('.hero h1'),l=document.querySelector('.hero .lede'),m=document.querySelector('.hero .meta');
   if(m)m.textContent='Design Lab · your own room';if(h)h.innerHTML='Open the <em>Design Lab</em>.';
   if(l)l.textContent='Design a line on your iPad and hand the factory a file it can sew: line plans, concepts, the studio, flats drawn from 382 professional sketches, materials and trims, separations and embroidery files, and the tech pack. Your room opens in a minute, with no password; the Lab is $499 for 90 days, with 40 AI generations included.';
