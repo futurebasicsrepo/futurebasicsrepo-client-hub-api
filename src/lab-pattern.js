@@ -67,11 +67,33 @@ const FABRIC_NAMES = { self: 'Self (main fabric)', rib: 'Rib', shearling: 'Shear
 export const fabricName = f => FABRIC_NAMES[f] || f;
 function piece(id, name, sew, o = {}) {
   const s = tidy(sew), b = boundsOf(s);
-  return { id, name, fabric: o.fabric || 'self', cut: o.cut ?? 1, ...(o.cut === 0 && /-2$/.test(id) ? { twin: true } : {}), pair: Boolean(o.pair), fold: Boolean(o.fold), sew: s, grain: o.grain || [[(b.x0 + b.x1) / 2, b.y0 + b.h * .2], [(b.x0 + b.x1) / 2, b.y1 - b.h * .2]], notches: o.notches || [], notes: o.notes || [], place: { view: 'front', x: 0, y: 0, rot: 0, flip: false, z: 0, ...(o.place || {}) }, sa: o.sa ?? null, marks: o.marks || [], ...(o.shown ? { shown: tidy(o.shown) } : {}), ...(o.component ? { component: true } : {}), ...(o.hidden ? { hidden: true } : {}), ...(o.neck ? { neck: o.neck } : {}) };
+  return { id, name, fabric: o.fabric || 'self', cut: o.cut ?? 1, ...(o.cut === 0 && /-2$/.test(id) ? { twin: true } : {}), pair: Boolean(o.pair), fold: Boolean(o.fold), sew: s, grain: o.grain || [[(b.x0 + b.x1) / 2, b.y0 + b.h * .2], [(b.x0 + b.x1) / 2, b.y1 - b.h * .2]], notches: o.notches || [], notes: o.notes || [], place: { view: 'front', x: 0, y: 0, rot: 0, flip: false, z: 0, ...(o.place || {}) }, sa: o.sa ?? null, marks: o.marks || [], ...(o.shown ? { shown: tidy(o.shown) } : {}), ...(o.component ? { component: true } : {}), ...(o.hidden ? { hidden: true } : {}), ...(o.neck ? { neck: o.neck } : {}), ...(o.mouth ? { mouth: o.mouth } : {}) };
 }
 // the other one of a pair: drawn on the product and in the exploded view, never cut twice (its cut count is on the first)
 const twin = (id, name, sew, place) => ({ ...piece(id, name, sew, { cut: 0, place }), twin: true });
 const cutWords = p => `Cut ${p.cut}${p.fold ? ' on the fold' : ''}${p.pair ? ' (a pair)' : ''}`;
+// Zip chest pockets (a hoodie's, a jacket's, a coat's): the mouth a ¼ in window framed by a self facing (fused, ½ in turned in at each end), the
+// zip set behind it, a pocketing bag hanging from the zip tape. One or a pair; `sides`: the breast each goes on (+1 the wearer's left). The
+// check walks each zip against its window and asks for the zip, the bag and the fusing (src/lab-pattern-check.js).
+const ZIP_POCKET = 5;
+function zipChestPockets(n, { x, y, sides = [1, -1] }) {
+  const zl = ZIP_POCKET, k = Math.min(n, 2), w = zl + 1.25, win = [[0, -.125], [zl + .25, -.125], [zl + .25, .125], [0, .125]], pieces = [];
+  const at = sg => ({ view: 'front', x: sg > 0 ? x : -x - (zl + .25), y, z: 3 });
+  for (let i = 0; i < k; i++) pieces.push(piece(i ? 'zip-pocket-2' : 'zip-pocket', 'Zip pocket facing', rect(w, 2), { cut: i ? 0 : k, mouth: { zip: true }, shown: win, notes: ['Self, fused: the mouth a ¼ in window, ½ in turned in at each end; the zip set behind it, topstitched round'], place: at(sides[i]) }));
+  pieces.push(piece('zip-pocket-fuse', 'Zip pocket facing fusing', rect(w, 2), { fabric: 'fusing', cut: k, hidden: true, notes: ['Fused to the facing'], place: { ...at(sides[0]), z: -2 } }),
+    piece('zip-pocket-bag', 'Zip pocket bag', rect(zl + 1.5, 7), { fabric: 'pocketing', cut: 2 * k, hidden: true, notes: ['Two to each zip pocket: one sewn to each tape of the zip, then to each other round'], place: { ...at(sides[0]), z: -1 } }));
+  return { pieces, trims: [{ item: 'Pocket zip', spec: `#3 coil, closed-end, ${zl} in`, qty: k, where: k > 1 ? 'Zip chest pockets' : 'Zip chest pocket' }] };
+}
+// A dress's slant side pockets: the mouth slanted from the front down towards the side seam, a self facing behind it (so the bag never shows
+// at the mouth) and the bag in pocketing, two layers each side, caught in the side seam. The check walks the facing against the bag along
+// the mouth, the edge they are sewn together by.
+const SLANT = { w: 4, h: 5.5 };
+function slantSidePockets({ x, y }) {
+  const { w, h } = SLANT, mouth = { a: [0, 0], b: [w, h] }, line = [[0, -.06], [w, h - .06], [w, h + .06], [0, .06]];
+  return [piece('side-pocket', 'Slant pocket facing', [[0, 0], [w, h], [w, h + 2.5], [-2, 2.5], [-2, 0]], { cut: 2, pair: true, mouth: { ...mouth, with: 'side-pocket-bag' }, shown: line, notes: ['Self, behind the slanted mouth, so the bag never shows'], place: { view: 'front', x, y, z: 3 } }),
+    twin('side-pocket-2', 'Slant pocket facing', line, { view: 'front', x: -x, y, flip: true, z: 3 }),
+    piece('side-pocket-bag', 'Slant pocket bag', [[0, 0], [w, h], [w, h + 4.5], [-3.5, h + 4.5], [-3.5, 0]], { fabric: 'pocketing', cut: 4, pair: true, mouth, hidden: true, notes: ['Two to each side: one stitched to the mouth, one to the facing; caught in the side seam'], place: { view: 'front', x, y, z: -1 } })];
+}
 export { cutWords };
 
 // ---- garments, from the flats ----
@@ -159,6 +181,7 @@ function tailoredPieces(S, m, o, style, K) {
     : [piece('flap', 'Pocket flap', rect(6.25, 2.5), { cut: 4, pair: true, notes: ['Self and lining; over a jetted pocket, set level at the waist'], shown: flap, place: { view: 'front', x: half * .2, y: waistY + 3.2, z: 3 } }),
       { ...twin('flap-2', 'Pocket flap', flap, { view: 'front', x: -half * .2 - 6.25, y: waistY + 3.2, z: 3 }), shown: flap }]),
     piece('pocket-bag', 'Pocket bag', rect(7.5, 15), { fabric: 'pocketing', cut: 6, hidden: true, notes: ['Two to each flap pocket, two for the chest welt'], place: { view: 'front', x: half * .3, y: waistY + 3, z: -3 } }));
+  if ((K.pockets || []).includes('zip-chest')) { const z = zipChestPockets((K.pockets || []).filter(x => x === 'zip-chest').length, { x: half * .26, y: UA[1] - 3.2, sides: [-1, 1] }); pieces.push(...z.pieces); trims.push(...z.trims); }
   // a belt (a trench): with its loops and buckle, at the waist
   if (K.belt) { const bl = r8(m.chest * 2 + 16), band = [[-half - .6, 0], [half + .6, 0], [half + .6, 1.75], [-half - .6, 1.75]];
     pieces.push(piece('belt', 'Belt', rect(bl, 4), { cut: 1, notes: ['Folded to 1¾ in, fused, edge-stitched; a pointed end'], shown: band, place: { view: 'front', x: 0, y: waistY - .9, z: 7 } }), { ...piece('belt-back', 'Belt', rect(bl, 4), { cut: 0, shown: band, place: { view: 'back', x: 0, y: waistY - .9, z: 7 } }), of: 'belt', twin: true, copy: true },
@@ -399,6 +422,10 @@ function topPieces(S, m, o, style) {
     for (const [k, sg] of [[0, 1], [1, -1]].slice(0, Math.min(chest, 2))) pieces.push(piece(k ? 'chest-pocket-2' : 'chest-pocket', 'Chest pocket', cp, { cut: k ? 0 : Math.min(chest, 2), notes: ['1 in turn-back at the opening, topstitched on', ...(flapped ? ['Flap above, one button'] : [])], place: at(sg) }));
     if (flapped) { const fp = [[-.25, -.1], [pw + .25, -.1], [pw + .25, 1.6], [pw / 2, 2.4], [-.25, 1.6]];
       for (const [k, sg] of [[0, 1], [1, -1]].slice(0, Math.min(chest, 2))) pieces.push(piece(k ? 'chest-flap-2' : 'chest-flap', 'Pocket flap', fp, { cut: k ? 0 : Math.min(chest, 2) * 2, notes: ['Outer and facing, the outer fused; buttonhole at the point'], place: { ...at(sg), y: at(sg).y - 2.3, z: 4 } })); } }
+  // zip chest pockets: on the wearer's left, or on the right when a chest pocket is there
+  if (count('zip-chest')) { const z = zipChestPockets(count('zip-chest'), { x: half * .28, y: Math.max(m.neckDropFront + 4, UA[1] - 4), sides: chest ? [-1, 1] : [1, -1] }); pieces.push(...z.pieces); trims.push(...z.trims); }
+  // a dress's slant side pockets, at the hip
+  if (style === 'dress' && count('slash')) pieces.push(...slantSidePockets({ x: half - 5.2, y: Math.max(UA[1] + 2.5, Math.min(L * .32, UA[1] + 8)) }));
   // cargo pockets on a jacket: bellows pockets with flaps, low on the front
   if (count('cargo')) { const pw = Math.min(6.5, half * .5), ph = pw * .95, cg = [[0, 0], [pw, 0], [pw, ph], [0, ph]], fl = [[-.2, -1.1], [pw + .2, -1.1], [pw + .2, 1.6], [-.2, 1.6]], at = sg => ({ view: 'front', x: sg > 0 ? half * .2 : -half * .2 - pw, y: L - ph - 2, z: 3 });
     pieces.push(piece('cargo', 'Cargo pocket', rect(pw + 2, ph + 1), { cut: 2, pair: true, shown: cg, notes: ['1 in bellows each side and at the bottom'], place: at(1) }), { ...piece('cargo-2', 'Cargo pocket', rect(pw + 2, ph + 1), { cut: 0, shown: cg, place: at(-1) }), twin: true },
@@ -548,6 +575,8 @@ function topPieces(S, m, o, style) {
   // stripes and contrast panels
   if (K.panels === 'sleeve-stripe' && m.sleeve > 0) { trims.push({ item: 'Stripe tape', spec: '1¼ in woven tape (three stripes: ¼ in each with ¼ in gaps)', qty: `${r8((m.sleeve + 2) * 2)} in`, where: 'Down the outside of each sleeve, shoulder to cuff' }); for (const q of pieces.filter(x => x.id === 'sleeve')) q.notes.push('Stripe tape down the outside, centred on the top notch'); }
   if (K.panels === 'side-panel') { pieces.push(piece('side-panel', 'Side panel', rect(3.5, r8(L - UA[1])), { cut: 2, fabric: 'contrast', notes: ['Contrast; the front and back each take 1¾ in less at the side seam'], hidden: true, place: { view: 'front', x: half - 1.75, y: UA[1], z: -1 } })); }
+  // a button-down collar: a buttonhole in each point, the buttons under them on the front
+  if (K.buttondown && K.collar === 'shirt') { const c = pieces.find(q => q.id === 'collar' && q.cut); if (c) c.notes.push('Button-down: a buttonhole in each point'); trims.push({ item: 'Collar buttons', spec: '14 L (9 mm) four-hole, as the front buttons', qty: 2, where: 'On the front, under the collar points' }); }
   pieces.trims = trims;
   // the back view shows what wraps round to it, as the back flat draws it: the sleeves and cuffs, the hem band, and a shearling collar's back.
   // They are the same pieces seen from behind (not cut again): each names the piece it shows (`of`), so the cutting layout takes them from it

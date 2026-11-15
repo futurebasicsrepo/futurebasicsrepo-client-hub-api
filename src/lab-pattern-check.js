@@ -340,6 +340,16 @@ export function outlineFaults(pat) {
 }
 // what every garment is made with, beyond its pieces: each feature the pattern has calls for the parts and trims a factory needs to make it
 // (a fly calls for its zip and a waist button, a woven collar for its fusing, a hood for its lining); → [{ need, for }] for the ones missing
+// a pocket's mouth: a zip in the window it is set in (the window ¼ to ½ in longer, the zip's stops just inside each end), and a slant pocket's
+// facing walked against its bag along the mouth, the edge each is sewn to the other by
+function mouthEdge(q) { const P = q.sew, n = P.length, i = near(P, q.mouth.a), j = near(P, q.mouth.b); return i >= 0 && j >= 0 && (Math.abs(i - j) === 1 || Math.abs(i - j) === n - 1) ? dist(P[i], P[j]) : null; }
+function pocketSeams(pat) {
+  const out = [], zip = (() => { const t = (pat.trims || []).find(x => x.item === 'Pocket zip'), v = t && /(\d+(?:\.\d+)?) in/.exec(t.spec); return v ? Number(v[1]) : null; })();
+  for (const q of pat.pieces || []) { if (!q.cut || !q.mouth) continue;
+    if (q.mouth.zip) out.push(seam(`${q.name}: the zip in its mouth`, zip, boundsOf(q.sew).w - 1, { ease: [0, .5], why: 'the window ¼ to ½ in longer than the zip, its stops just inside each end' }));
+    else if (q.mouth.with) { const o = (pat.pieces || []).find(x => x.id === q.mouth.with && x.cut && x.mouth); out.push(seam(`${q.name} to its bag along the mouth`, mouthEdge(q), o ? mouthEdge(o) : null)); } }
+  return out;
+}
 export function missingComponents(pat) {
   if (pat.kind === 'plush') { const T = (pat.trims || []).map(t => t.item), out = [], need = (ok, what, why) => { if (!ok) out.push({ need: what, for: why }); }; // built from parts or on a fixed body type: the same list
     need(T.some(t => /fill/i.test(t)), 'Fibre fill', 'a stuffed toy'); need(T.includes('Thread'), 'Thread', 'every plush'); need(T.includes('Law label'), 'Law label', 'every stuffed toy sold (the fill content and registration)');
@@ -378,6 +388,9 @@ export function missingComponents(pat) {
   if (ids.has('cuff') && pat.style === 'shirt') need(ids.has('sleeve-placket'), 'Sleeve plackets', 'a buttoned shirt cuff opens at a placket');
   if (ids.has('hood')) { need(ids.has('hood-lining'), 'Hood lining', 'the hood'); if (pc('hood').notes.some(n => /drawcord channel/i.test(n))) { need(has(/drawcord/i), 'Drawcord', 'the hood'); need(has(/eyelet/i), 'Eyelets', 'the drawcord'); } }
   if (pat.construction?.opening === 'zip' || ids.has('zip-placket') || ids.has('zip-guard')) need(has(/zip/i), 'A zip', 'the zip opening');
+  if (ids.has('zip-pocket')) { need(has(/^Pocket zip$/), 'A pocket zip', 'a zip pocket'); need(ids.has('zip-pocket-bag'), 'Zip pocket bag', 'a zip pocket'); need(ids.has('zip-pocket-fuse'), 'Zip pocket facing fusing', 'the facing round a zip pocket\'s mouth'); }
+  if (ids.has('side-pocket')) need(ids.has('side-pocket-bag'), 'Slant pocket bag', 'a slant pocket');
+  if (pat.construction?.buttondown) need(has(/^Collar buttons$/), 'Collar buttons', 'a button-down collar');
   if (pat.style === 'bra') need(has(/elastic/i), 'Elastic', 'a bra');
   if (pat.style === 'cap') { need(has(/top button/i), 'Top button', 'the crown, where the panels meet'); need(has(/strap|snap|buckle|closure/i), 'A back closure', 'the back opening'); need(has(/eyelet/i), 'Eyelets', 'a six-panel cap');
     need(has(/seam tape/i), 'Crown seam tape', 'the crown seams'); need(ids.has('front-buckram'), 'Front panel buckram', 'a structured front'); need(ids.has('brim-board'), 'Brim board', 'the brim'); need(ids.has('sweatband'), 'Sweatband', 'the head opening'); }
@@ -393,6 +406,7 @@ export function constructionCheck(pat, { m = null, style = '', width = 58, edges
   const knit = (pat.sa || 0) < .45, K = pat.construction || {};
   RUNS = edges ? [] : null;
   let r; try { r = pat.kind === 'plush' && pat.build ? checkPlush(pat) : pat.kind === 'plush' ? checkPlushShape(pat) : pat.kind === 'bag' ? checkBag(pat) : ['cap', 'bucket'].includes(pat.style) ? checkHeadwear(pat, m || {}) : pat.style === 'beanie' ? checkBeanie(pat, m || {}) : pat.style === 'tote' ? checkTote(pat, m || {}) : pat.block?.front?.at?.crotch || pat.block?.front?.skirt || (m && ('inseam' in m || 'sweep' in m)) ? checkBottom(pat, m || {}, K) : checkTop(pat, m || {}, style || pat.style, knit); } finally { RUNS = null; }
+  if (pat.kind === 'garment' && r?.seams) r.seams.push(...pocketSeams(pat)); // a zip pocket's zip, a slant pocket's facing and bag
   const lay = layoutOf(pat, { width }), table = lay.map(g => ({ fabric: g.name, width: g.width, length: g.length, yards: g.yards, efficiency: g.efficiency, pieces: g.items.length, fits: g.items.every(it => it.b.w <= g.width + 1e-6) }));
   const all = [...r.seams, ...r.meas], made = all.filter(x => x.ok !== null), cuts = outlineFaults(pat), missing = missingComponents(pat);
   return { ...r, table, cuts, missing, ok: made.length > 0 && made.every(x => x.ok) && table.every(t => t.fits) && !cuts.length && !missing.length, passed: made.filter(x => x.ok).length, made: made.length, total: all.length };

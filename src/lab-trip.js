@@ -18,7 +18,7 @@
 //                                                        (src/lab-trip-baseline.json; test/lab-trip.test.js, scripts/flats-roundtrip.mjs)
 // Pure: no I/O. Graphics are carried as layers over the picture (the Studio lays them at their size), not drawn by the image model.
 import { STYLES, FITS, DETAILS, templateOf, describe, describeEdit, sideOf, defaultDetail, defaultParams, fitToTemplate, measurementsFor, partOf } from './lab-flats.js';
-import { constructionOf, constructionWords, cleanConstruction, fromEdits, SLEEVES, COLLARS, OPENINGS, POCKETS, WAISTS, LEGS, PANELS, HEMS, ANKLES, BACK_POCKETS } from './lab-construction.js';
+import { constructionOf, constructionWords, cleanConstruction, fromEdits, BUTTON_DOWN, SLEEVES, COLLARS, OPENINGS, POCKETS, WAISTS, LEGS, PANELS, HEMS, ANKLES, BACK_POCKETS } from './lab-construction.js';
 import { necklineOf, takesNeckline, necklineMeasures, NECKLINE_IDS } from './lab-neck.js';
 import { washOf, cleanWash, cleanDistress, distressParts, WASH_IDS, STRENGTHS, DISTRESS_FOCUS } from './lab-wash.js';
 
@@ -28,7 +28,7 @@ const one = (k, v) => constructionWords({ [k]: v })[0] || '';
 // opening, a drawcord on trousers the waist): src/lab-construction.js fromEdits, one detail at a time
 function covers(e, p) {
   const k = fromEdits({ ...p, edits: [e] }), out = [];
-  for (const x of k.pockets || []) out.push(`pocket:${x}`); if (k.opening) out.push('opening'); if (k.waist) out.push('waist'); if (k.pleats) out.push('pleats'); if (k.backPockets) out.push('back-pockets');
+  for (const x of k.pockets || []) out.push(`pocket:${x}`); if (k.buttondown) out.push('buttondown'); if (k.opening) out.push('opening'); if (k.waist) out.push('waist'); if (k.pleats) out.push('pleats'); if (k.backPockets) out.push('back-pockets');
   return out;
 }
 
@@ -38,6 +38,7 @@ function buildDetails(k, style) {
   if (k.sleeve && k.sleeve !== 'set') add('sleeve', 'both', one('sleeve', k.sleeve));
   if (k.hood) add('hood', 'both', 'Hood');
   if (k.collar && !['none', 'rib'].includes(k.collar)) add('collar', 'both', one('collar', k.collar));
+  if (k.buttondown) add('buttondown', 'front', 'Button-down collar');
   if (k.opening && k.opening !== 'none') add('opening', 'front', one('opening', k.opening));
   if (k.yoke?.front) add('yoke-front', 'front', 'Front yoke'); if (k.yoke?.back) add('yoke-back', 'back', 'Back yoke');
   const pk = {}; for (const x of k.pockets || []) pk[x] = (pk[x] || 0) + 1;
@@ -131,6 +132,7 @@ export const BUILD_SCHEMA = { type: 'object', additionalProperties: false, requi
   pleats: { type: 'integer' }, panels: { type: 'string', enum: PANELS }, quilted: { type: 'boolean' }, belt: { type: 'boolean' }, lined: { type: 'boolean' },
   hem: { type: 'string', enum: HEMS }, ankle: { type: 'string', enum: ANKLES }, beltLoops: { type: 'boolean' },
   backPockets: { type: 'boolean', description: 'trousers or shorts: pockets on the back' }, backPocket: { type: 'string', enum: BACK_POCKETS },
+  buttondown: { type: 'boolean', description: 'a shirt collar whose points button down to the front' },
   breasted: { type: 'string', enum: ['single', 'double'], description: 'with a lapel collar: one row of buttons or a wide overlap with two rows' }, lapel: { type: 'string', enum: ['notch', 'peak'], description: 'with a lapel collar: a notch (a step down at the collar) or a peak (the lapel points up past the collar)' } } };
 // how it is finished: what a picture shows besides how it is built, and what the flats keep of it
 export const LOOK_SCHEMA = { type: 'object', additionalProperties: false, required: ['neckline', 'wash', 'washStrength', 'distress', 'distressFocus', 'cropped', 'contrast'], properties: {
@@ -173,8 +175,11 @@ export function buildEdits(read, p) {
     else if (top && x === 'patch-hip') put('pocket-patch', { x: half * .45, y: L * .7, w: 6, h: 6.5 }, 'front', true);
     else if (top && x === 'flap-welt') put('pocket-flap', { x: half * .45, y: L * .66, w: 5.5, h: 2.25 }, 'front', true);
     else if (top && x === 'welt') put('pocket-welt', {}, 'front', true);
+    else if (top && x === 'zip-chest') for (let i = 0; i < need; i++) put('pocket-zip', i ? { x: -defaultDetail('pocket-zip', p).x } : {});
+    else if (p.style === 'dress' && x === 'slash') put('pocket-slant', {}, 'front', true);
     else if (PAIR[x] && bottom) put(PAIR[x], {}, 'front', true);
   }
+  if (top && k.buttondown && !have.buttondown && have.collar === 'shirt') for (const sg of [1, -1]) put('button', { x: sg * BUTTON_DOWN.x, y: BUTTON_DOWN.y, w: .46, h: .46 });
   if (top && k.opening && k.opening !== 'none' && (!have.opening || have.opening === 'none')) {
     if (k.opening === 'zip') put('zip');
     else if (k.opening === 'half-zip' || k.opening === 'quarter-zip') { const h = k.opening === 'half-zip' ? 10 : 7, d = defaultDetail('zip', p); put('zip', { h, y: d.y - d.h / 2 + h / 2 }); }
@@ -206,9 +211,10 @@ export function readBack(p, read = cleanConstruction(constructionOf(p)), look = 
   const q = { ...base, options: { ...(base.options || {}), construction: read } };
   return applyLook({ ...q, edits: buildEdits(read, q) }, look);
 }
-// what a picture cannot give back, by design: the exact line of a stitch, a part's own artwork from the sketch pack, a zip pocket or a dress's
-// side pocket or a skirt's zip (drawn and listed, not drafted, so not read), a button on a collar point, a redrawn area, the colour of one panel. They stay
-// on the flats; a picture read back draws the flats anew
+// what a picture cannot give back, by design: the exact line of a stitch, a part's own artwork from the sketch pack, a skirt's zip (drawn
+// and listed, not drafted, so not read), a redrawn area, the colour of one panel. A zip pocket, a pocket, a button that the construction
+// accounts for (its `covers`: a zip chest pocket, a dress's side pockets, a button-down collar's buttons) is drafted, so it is read back. They
+// stay on the flats; a picture read back draws the flats anew
 export const notReadBack = (d, p = {}) => ['stitch', 'redrawn', 'ai'].includes(d.group) || (d.group === 'colour' && d.key.startsWith('edit:')) || (/^(Zip pocket|Button|Slant pocket|.*\((pocket|zip|collar|trim|button)\))/.test(d.label) && !d.covers)
   || (STYLES[p.style]?.kind === 'bottom' && /^Zip on/.test(d.label)); // a zip on a skirt or trousers is its closure, drawn and listed, not drafted
 export function tripLoss(p, p2) {
