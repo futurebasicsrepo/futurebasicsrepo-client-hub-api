@@ -8,7 +8,13 @@ import sharp from 'sharp';
 
 const WIDTH = 1400; // pixels across the page: enough for a clean edge at the size flats are drawn and printed
 
-export async function bodyMask(svg, { width = WIDTH, dark = 175, close = 2 } = {}) {
+// A sketch drawn in very light, thin lines lets the outside leak in through its outline, and the body comes out a sliver of the drawing: such
+// a mask is made again counting lighter lines and closing wider gaps, and the fuller of the two kept
+export async function bodyMask(svg, opts = {}) {
+  const a = await maskOnce(svg, opts); if ('dark' in opts || 'close' in opts || a.cover >= .35) return a.png;
+  const b = await maskOnce(svg, { ...opts, dark: 235, close: 3 }); return b.cover > a.cover * 1.3 ? b.png : a.png;
+}
+async function maskOnce(svg, { width = WIDTH, dark = 175, close = 2 } = {}) {
   const { data, info } = await sharp(Buffer.isBuffer(svg) ? svg : Buffer.from(String(svg)), { density: 300 }).resize({ width }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const W = info.width, H = info.height, n = W * H;
   // a line: a dark, visible pixel. Light greys (fold shading) and white fills count as open space.
@@ -30,13 +36,16 @@ export async function bodyMask(svg, { width = WIDTH, dark = 175, close = 2 } = {
     if (x > 0) seed(i - 1); if (x < W - 1) seed(i + 1); if (i >= W) seed(i - W); if (i < n - W) seed(i + W);
   }
   // the body: whatever the outside did not reach; the thickened walls are given back to the outside where they touch it, so the edge sits on the line
-  const rgba = Buffer.alloc(n * 4);
+  const rgba = Buffer.alloc(n * 4); let body0 = 0, x0 = W, y0 = H, x1 = 0, y1 = 0;
+  for (let i = 0; i < n; i++) if (line[i]) { const x = i % W, y = (i - x) / W; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   for (let i = 0; i < n; i++) {
     let body = !out[i];
     if (body && wall[i] && !line[i]) { const x = i % W; body = !((x > 0 && out[i - 1]) || (x < W - 1 && out[i + 1]) || (i >= W && out[i - W]) || (i < n - W && out[i + W])); }
-    if (body) { const p = i * 4; rgba[p] = rgba[p + 1] = rgba[p + 2] = 255; rgba[p + 3] = 255; }
+    if (body) { const p = i * 4; rgba[p] = rgba[p + 1] = rgba[p + 2] = 255; rgba[p + 3] = 255; body0++; }
   }
-  return sharp(rgba, { raw: { width: W, height: H, channels: 4 } }).png({ compressionLevel: 9, palette: true, colours: 2 }).toBuffer(); // two colours: white body, transparent outside
+  // how much of the drawing's box the body fills (a garment fills about half of it or more)
+  const cover = x1 > x0 && y1 > y0 ? body0 / ((x1 - x0 + 1) * (y1 - y0 + 1)) : 0;
+  return { cover, png: await sharp(rgba, { raw: { width: W, height: H, channels: 4 } }).png({ compressionLevel: 9, palette: true, colours: 2 }).toBuffer() }; // two colours: white body, transparent outside
 }
 
 // one mask per sketch file: the one made ahead of time in src/flat-templates/masks (npm run flat-masks), else made now and kept

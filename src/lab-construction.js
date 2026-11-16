@@ -17,7 +17,7 @@ import { TEMPLATE_CONSTRUCTION } from './lab-template-construction.js';
 export const SLEEVES = ['set', 'raglan', 'drop', 'none'];
 export const COLLARS = ['none', 'rib', 'shirt', 'stand', 'polo', 'lapel', 'shearling', 'funnel'];
 export const OPENINGS = ['none', 'zip', 'half-zip', 'quarter-zip', 'buttons', 'snaps', 'placket'];
-export const POCKETS = ['kangaroo', 'split-kangaroo', 'welt', 'flap-welt', 'chest', 'chest-flap', 'zip-chest', 'patch-hip', 'cargo', 'five-pocket', 'slash'];
+export const POCKETS = ['kangaroo', 'split-kangaroo', 'welt', 'flap-welt', 'chest', 'chest-flap', 'zip-chest', 'patch-hip', 'cargo', 'five-pocket', 'slash', 'zip-side'];
 // where a button-down collar's buttons sit on a shirt's flats (the recipe menu draws them there, and a picture read draws them back)
 export const BUTTON_DOWN = { x: 2.2, y: 5.45 };
 export const WAISTS = ['fixed', 'elastic', 'drawcord'];
@@ -75,9 +75,15 @@ export function fromName(name, style) {
     const pl = /( two | double )?pleat(ed)?/.exec(n); if (pl) c.pleats = S.skirt ? 3 : pl[1] ? 2 : 1;
     if (has(/ side stripe | three stripe /)) c.panels = 'side-stripe';
     else if (has(/ paneled | contrast panel /)) c.panels = 'side-panel';
+    // what a sketch's name says it is cut with: rib cuffs on a jogger, a curved (dolphin) hem on running shorts, a carpenter's rule pocket and
+    // hammer loop, zip pockets at the side instead of slash pockets
+    if (has(/ cuffed |jogger/) && style !== 'shorts') c.ankle = 'cuff';
+    if (has(/ curved hem | split hem | dolphin /) && style === 'shorts') c.hem = 'curved';
+    if (has(/carpenter| utility /)) c.utility = true;
     const pk = [];
     if (has(/ cargo /)) pk.push('cargo');
     if (has(/jean|denim|jorts|five pocket|carpenter/)) pk.push('five-pocket');
+    if (has(/ zip pocket /) && !pk.includes('five-pocket')) pk.push('zip-side');
     if (pk.length) c.pockets = pk;
   }
   return c;
@@ -168,6 +174,11 @@ export function constructionOf(p) {
   const set = cleanConstruction(p.options?.construction), named = t ? cleanConstruction(fromName(`${t.id} ${t.label}`, p.style)) : {}, base = styleDefaults(p.style, p.options || {});
   const seen = t ? cleanConstruction(TEMPLATE_CONSTRUCTION[t.id]) : {};
   const out = { ...base, ...named, ...seen, ...set }, ed = cleanConstruction(fromEdits(p));
+  // a detail the sketch's name states outright wins over its reading, which had no word for it (zip side pockets were read as slash pockets)
+  // or missed it (a curved hem read straight); the reading stands for everything the name only suggests
+  if (!set.pockets && named.pockets?.includes('zip-side')) out.pockets = [...(out.pockets || []).filter(k => k !== 'slash' && k !== 'zip-side'), 'zip-side'];
+  if (!set.hem && named.hem === 'curved') out.hem = 'curved';
+  if (!set.ankle && named.ankle === 'cuff' && / cuffed /.test(` ${t.id} ${t.label} `.toLowerCase().replace(/[^a-z0-9]+/g, ' '))) out.ankle = 'cuff';
   // a detail on the flats adds to the sketch's own (a chest pocket on a plain tee is drafted); what was set by hand on the Pattern page stays as set
   if (ed.pockets && !set.pockets) out.pockets = unionPockets(out.pockets, ed.pockets);
   for (const k of ['opening', 'waist']) if (ed[k] && !set[k] && (!out[k] || out[k] === 'none' || out[k] === 'fixed')) out[k] = ed[k];
@@ -189,7 +200,7 @@ export function constructionWords(c) {
   if (c.opening && c.opening !== 'none') w.push({ zip: 'Full zip', 'half-zip': 'Half zip', 'quarter-zip': 'Quarter zip', buttons: 'Button front', snaps: 'Snap front', placket: 'Button placket' }[c.opening]);
   if (c.yoke?.front || c.yoke?.back) w.push(`${[c.yoke.front && 'front', c.yoke.back && 'back'].filter(Boolean).join(' and ')} yoke`.replace(/^./, s => s.toUpperCase()));
   const pk = {}; for (const x of c.pockets || []) pk[x] = (pk[x] || 0) + 1;
-  for (const [k, n] of Object.entries(pk)) { const nm = { kangaroo: 'kangaroo pocket', 'split-kangaroo': 'split kangaroo pocket', welt: 'welt pockets', 'flap-welt': 'flap pockets', chest: 'chest pocket', 'chest-flap': 'flap chest pocket', 'zip-chest': 'zip chest pocket', 'patch-hip': 'patch hip pocket', cargo: 'cargo pockets', 'five-pocket': 'five-pocket', slash: 'slash pockets' }[k]; w.push(`${n > 1 ? `${n} ` : ''}${n > 1 && !/s$/.test(nm) ? nm + 's' : nm}`.replace(/^./, s => s.toUpperCase())); }
+  for (const [k, n] of Object.entries(pk)) { const nm = { kangaroo: 'kangaroo pocket', 'split-kangaroo': 'split kangaroo pocket', welt: 'welt pockets', 'flap-welt': 'flap pockets', chest: 'chest pocket', 'chest-flap': 'flap chest pocket', 'zip-chest': 'zip chest pocket', 'patch-hip': 'patch hip pocket', cargo: 'cargo pockets', 'five-pocket': 'five-pocket', slash: 'slash pockets', 'zip-side': 'zip side pockets' }[k]; w.push(`${n > 1 ? `${n} ` : ''}${n > 1 && !/s$/.test(nm) ? nm + 's' : nm}`.replace(/^./, s => s.toUpperCase())); }
   if (c.waist && c.waist !== 'fixed') w.push(c.waist === 'drawcord' ? 'Elastic waist with drawcord' : 'Elastic waist');
   if (c.backPockets === false) w.push('No back pockets');
   if (c.beltLoops) w.push('Belt loops');
