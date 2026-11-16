@@ -69,7 +69,14 @@ Each page says who should pick them. Re-read their pricing pages each quarter an
 only when the product changes (and the video brief with it).
 
 To publish: upload the files above to an unpublished copy of the theme, create the three pages with those handles and templates (the guide's
-body pasted in), check them on the copy's preview, then publish the copy. Link the guide and the comparisons from the footer.
+body pasted in), check them on the copy's preview, then publish the copy. Link the guide and the comparisons from the footer. A section's
+schema name may be at most 25 characters, or Shopify refuses the file.
+
+**Where it stands (16 November 2026).** On the Future Basics store, the theme copy "Future Basics — Storefront (make v5: see it work, free
+tech pack)" holds every file above, checked against these copies. The three pages exist, unpublished, with their templates. The hub
+answers only `thefuturebasics.com` (`ALLOWED_ORIGINS`), so on the copy's preview link (`the-future-basics.myshopify.com`) the see-it-work and
+build-one-now sections stay hidden; they show once the copy is published on the real domain. A comparison page can be looked at on the
+preview as `/pages/make?view=compare-techpacker` (or `compare-onbrand`). To go live: publish the theme copy, then publish the three pages.
 
 ## v4: the Design Lab leads, production follows (November 2026)
 
