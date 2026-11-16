@@ -139,7 +139,7 @@ function checkBottom(pat, m, K) {
     if (wbP && !el) seams.push(seam('Waistband onto the waist', 2 * waist, lengthOf(wbP), { ease: [1, 2.25], why: 'the waist round plus 1–2¼ in to overlap at the zip' }));
     const sp = y => { const q = spanAt(F.sew, y); return q ? q[1] - q[0] : null; };
     meas.push(measure('Waist (flat)', waist, m.waist, .5)); meas.push(measure('Hip (flat)', sp(F.at.hipR[1]), m.hip, .5));
-    meas.push(measure('Sweep, the hem (flat)', dist(F.at.hemL, F.at.hemR), Math.max(m.sweep, m.hip) * (K.leg === 'flare' ? 1.45 : 1), .5));
+    meas.push(measure('Sweep, the hem (flat)', dist(F.at.hemL, F.at.hemR), Math.max(m.sweep, m.hip) * (F.flare ?? (K.leg === 'flare' ? 1.45 : 1)), .5));
     meas.push(measure('Length from the top of the waistband', F.at.hemR[1] + (m.waistband || 0), m.length, .5));
     return { seams, meas };
   }
@@ -157,7 +157,7 @@ function checkBottom(pat, m, K) {
   const hipY = Math.min(7, F.at.crotch[1] * .7), hf = spanAt(F.sew, hipY), hb = spanAt(Bk.sew, hipY); // 7 in down, or the hip line of a short rise
   meas.push(measure('Hip, 7 in below the waistband, or at the hip line (flat)', hf && hb ? (hf[1] - hf[0]) + (hb[1] - hb[0]) + pw : null, m.hip, .5));
   meas.push(measure('Front rise, waistband included', edge(F, 'cfTop', 'crotch') + (m.waistband || 0), m.rise, .375));
-  meas.push(measure('Inseam', edge(F, 'crotch', 'hemIn'), m.inseam, .5));
+  meas.push(measure('Inseam', edge(F, 'crotch', 'hemIn') + (F.cuff || 0), m.inseam, .5)); // with its ankle cuff, if it has one
   const ty = F.at.crotch[1] + 1, tf = spanAt(F.sew, ty), tb = spanAt(Bk.sew, ty);
   meas.push(measure('Thigh, 1 in below the crotch (flat)', tf && tb ? ((tf[1] - tf[0]) + (tb[1] - tb[0]) + pw) / 2 : null, m.thigh, .5));
   meas.push(measure('Leg opening (flat)', (dist(F.at.hemIn, F.at.hemOut) + dist(Bk.at.hemIn, Bk.at.hemOut) + pw) / 2, m.legOpening, .375)); // straight across the hem, as it is laid flat and measured

@@ -122,7 +122,8 @@ const OVERLAY = () => {
   // the drawing as a still, without the cursor, for the "draw it yourself" card
   await p.evaluate(() => { for (const id of ['__cur', '__cap']) document.getElementById(id).style.visibility = 'hidden'; });
   const still = await p.screenshot(); await p.evaluate(() => { for (const id of ['__cur', '__cap']) document.getElementById(id).style.visibility = ''; });
-  await sharp(still).extract({ left: 0, top: 0, width: Math.round(1200 * 4 / 3), height: 1200 }).resize(1200, 900).webp({ quality: 80 }).toFile(join(DEST, 'make-way-scratch.webp'));
+  // the drawing filling the card: the tool rail and the brush's size beside it, the page and the tee (from 150 px down, 933 × 700 px of the 1440 × 900 screen)
+  await sharp(still).extract({ left: 0, top: 200, width: 1244, height: 933 }).resize(1200, 900).webp({ quality: 82 }).toFile(join(DEST, 'make-way-scratch.webp'));
   await cap('Its flats and pattern follow. Then a tech pack your factory signs off.'); await p.waitForTimeout(3200);
   await cdp.send('Page.stopScreencast'); await p.waitForTimeout(300);
   console.log('frames', frames.length, 'chapters', JSON.stringify(mark), 'errors', errs.slice(0, 3));

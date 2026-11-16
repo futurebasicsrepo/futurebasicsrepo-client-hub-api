@@ -3,7 +3,7 @@
   --paper:#f7f7f5;--card:#fff;--ink:#141416;--dim:#6b6b72;--line:rgba(20,20,22,.14);--green:#48f39a;--deep:#17603a;--panel:#ecece8;
   --sans:'Space Grotesk',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace;
   --pad:clamp(20px,4vw,58px);
-  background:var(--paper);color:var(--ink);font-family:var(--sans);overflow-x:hidden
+  background:var(--paper);color:var(--ink);font-family:var(--sans);overflow-x:clip
 }
 .mk3 *{box-sizing:border-box}.mk3 a{color:inherit;text-decoration:none}.mk3 img{display:block;max-width:100%}
 .mk3 h1,.mk3 h2,.mk3 h3,.mk3 p{margin:0}
@@ -254,3 +254,6 @@
   .mk3__sub{display:grid}.mk3__btn{width:100%}.mk3__type--wide{grid-column:auto}.mk3__type--wide .mk3__type-img{aspect-ratio:4/3}
 }
 @media(prefers-reduced-motion:reduce){.mk3 *,.mk3 *:before,.mk3 *:after{animation:none!important;transition:none!important}.mk3__reel{overflow-x:auto}.mk3__seps{--mk3-gap:clamp(60px,9vw,120px);--mk3-tilt:1;--mk3-show:1}}
+/* the page's wrapper clips what runs off its sides without becoming a scroll box of its own (overflow-x:hidden made it one, 47px
+   taller inside than out, and an iPhone swipe stuck in it); a browser without clip hides both ways, which a finger cannot scroll */
+@supports not (overflow:clip){.mk3{overflow:hidden}}

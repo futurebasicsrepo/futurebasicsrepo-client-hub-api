@@ -235,7 +235,16 @@ export function legsFromDrawing(p, size = p.size || 'M') {
   // or through the thigh, whichever is fuller (the pattern is about 0.95 of the hip across the front, and 0.465 of it through one thigh), by
   // at most a fifth; a sketch drawn slimmer than the body keeps the measurement (a sketch is drawn slim)
   const room = Math.max(L.hip / (m.hip * .953), L.thigh / (m.hip * .465)), hip = room > 1.05 ? r8(Math.max(m.hip, Math.min(m.hip * room, m.hip * 1.2, L.hip / .953 * 1.04))) : null;
-  return { legOpening: r8(c((hip || m.hip) * .46 * L.hem / L.thigh / .9, 4.5, 16)), kneeRatio: L.knee ? Math.round(c(L.knee / L.hem, .8, 1.7) * 100) / 100 : null, hip, drawn: L };
+  return { legOpening: r8(c((hip || m.hip) * .46 * L.hem / L.thigh / .9, 4.5, 16)), kneeRatio: L.knee ? Math.round(c(L.knee / L.hem, .65, 1.7) * 100) / 100 : null, hip, drawn: L };
+}
+// a skirt's hem against its hip, read off its front drawing (30% and 96% of the way down): 1 is straight, about 1.2 an A-line. null when the
+// sketch draws no outline, or draws something under it (a skort's shorts) that makes the hem read narrower than its hip
+export function skirtFlare(p) {
+  const S = STYLES[p.style]; if (!S?.skirt) return null; const t = templateOf(p), v = t?.views?.front, c = v?.clip;
+  if (!Array.isArray(c) || c.length < 6 || !(v.hemY > v.topY)) return null; const H = v.hemY - v.topY;
+  const across = y => { const xs = []; for (let i = 0; i < c.length; i++) { const [x1, y1] = c[i], [x2, y2] = c[(i + 1) % c.length]; if ((y1 <= y) !== (y2 <= y)) xs.push(x1 + (y - y1) / (y2 - y1) * (x2 - x1)); } return xs.length ? Math.max(...xs) - Math.min(...xs) : null; };
+  const hip = across(v.topY + H * .3), hem = across(v.hemY - H * .04), r = hip && hem ? hem / hip : null;
+  return r && r >= .9 ? Math.round(Math.min(r, 2.2) * 100) / 100 : null;
 }
 // the legs of a pair of trousers or shorts made as its sketch draws them (Follow the drawing on the Pattern page); the rest is kept
 export function followDrawing(p) {
@@ -316,6 +325,9 @@ export function fitToTemplate(p, asDrawn = false) {
     for (const k of ['shoulder', 'armhole', 'sleeve', 'sleeveOpening']) if (k in b0) m[k] = r8(b0[k] + (/^sleeve/.test(k) && !b0.sleeve ? 0 : tp[k] || 0)); // no sleeve at the start: none traced
     return { ...p, m, options: { ...o, ...(Number.isFinite(tp.sleeveAngle) && m.sleeve > 0 ? { sleeveAngle: tp.sleeveAngle } : {}) } };
   }
+  // a skirt's sweep as its sketch draws it: its hem against its hip (a flared skirt is drawn flared as far as it is meant to be, an A-line
+  // a little, a pencil skirt straight); never narrower than the hip, as the skirt has to walk
+  if (!asDrawn && S.kind === 'bottom' && S.skirt) { const r = skirtFlare(p); if (r) return { ...p, m: { ...m, sweep: r8(Math.max(m.hip, m.hip * r)) }, options: { ...(p.options || {}), sweepDrawn: true } }; }
   if (!asDrawn && !FITTING && S.kind === 'bottom' && !S.skirt) { FITTING = true; try { const f = { ...p, m }, g = followDrawing(f); return g; } finally { FITTING = false; } }
   return { ...p, m };
 }
