@@ -69,7 +69,14 @@ Each page says who should pick them. Re-read their pricing pages each quarter an
 only when the product changes (and the video brief with it).
 
 To publish: upload the files above to an unpublished copy of the theme, create the three pages with those handles and templates (the guide's
-body pasted in), check them on the copy's preview, then publish the copy. Link the guide and the comparisons from the footer.
+body pasted in), check them on the copy's preview, then publish the copy. Link the guide and the comparisons from the footer. A section's
+schema name may be at most 25 characters, or Shopify refuses the file.
+
+**Where it stands (16 November 2026).** On the Future Basics store, the theme copy "Future Basics — Storefront (make v5: see it work, free
+tech pack)" holds every file above, checked against these copies. The three pages exist, unpublished, with their templates. The hub
+answers only `thefuturebasics.com` (`ALLOWED_ORIGINS`), so on the copy's preview link (`the-future-basics.myshopify.com`) the see-it-work and
+build-one-now sections stay hidden; they show once the copy is published on the real domain. A comparison page can be looked at on the
+preview as `/pages/make?view=compare-techpacker` (or `compare-onbrand`). To go live: publish the theme copy, then publish the three pages.
 
 ## v4: the Design Lab leads, production follows (November 2026)
 
@@ -91,6 +98,8 @@ The page leads with the tools and what they lead to, and ends with Future Basics
 The screenshots are real screens from the live Lab, taken signed in to the Future Basics room with made-up demo pieces (deleted afterwards). They are served by the hub: `src/help-assets/make-*.webp`, at `https://hub.thefuturebasics.com/help/assets/<file>`. The line plan uses `lab-plan.jpg`, a real screen already in the help guide. The factory sign-off screenshot (`make-pack-callouts.webp`) is the current factory view of a made-up demo pack, shot on a local copy of the app because a tech pack cannot be deleted from production. The pattern screenshot comes from the same local demo piece.
 
 Numbers on the page (26 bases, 31 add-ons, 382 sketches, prices) are the same as `docs/marketing/video-brief.md`. Update both when they change.
+
+The screen recording at the top of "see it work" (`make-lab-session.mp4`, about 73 seconds, 2 MB) is the Lab in use, recorded as it runs with a cursor and a caption per step: the hoodie from the recipe menu to its pattern laid out on the cloth, then a pocket tee drawn with the brush on a blank page over its outline, filled and topstitched (the drawing is sped up 1.7×). It is in the store's Files like the sew-out, so it shows even where the hub's walkthrough data cannot load; its poster (`make-lab-session-poster.webp`) and the "draw it yourself" picture (`make-way-scratch.webp`) come from the same run. To record it again: `node scripts/make-recording.cjs --base <hub> --token <a demo room's client token>`, then upload the video to Files under the same name. The bags and footwear cards (`make-type-bags.webp`, `make-type-footwear.webp`) are six bags and six shoes from the Lab's library, each in a colourway of its own: `node scripts/make-type-cards.mjs`.
 
 The sew-out video (`make-sewout-v3.mp4`) is in the store's Files (Content → Files) and the section loads it with `file_url`. The demo pieces in the screenshots (the Lane Six hoodie and the Future Tour tee) carry real Future Basics graphics from the Lab's library; they were made, separated and digitized on a local copy of the app.
 

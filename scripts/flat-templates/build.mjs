@@ -9,12 +9,14 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlink
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { maskOf, views, outlineOf } from './shapes.mjs';
+import { maskOf, views, outlineOf, measure, collarOf, chestFixes } from './shapes.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..'), HERE = dirname(fileURLToPath(import.meta.url)), sharp = createRequire(join(ROOT, 'package.json'))('sharp');
 const SRC = process.argv[2]; if (!SRC) { console.error('usage: build.mjs <download folder>'); process.exit(1); }
 const tsv = f => readFileSync(join(HERE, f), 'utf8').split('\n').filter(l => l && !l.startsWith('#')).map(l => l.split('\t'));
 // [source file, style, name, template id, range]
 const PICK = tsv('catalogue.tsv');
+// chests read by eye where the walk out from the centre stops at a panel line (chest-fixes.tsv; chests.mjs applies them to the templates already made)
+const FIXES = chestFixes();
 // the sample-size measurements each style is drawn to (the same as src/lab-flats.js, size M, regular fit), for the first look of each drawing
 const KIND = { tee: 'top', longsleeve: 'top', crewneck: 'top', hoodie: 'top', ziphoodie: 'top', jacket: 'top', shirt: 'top', shirtss: 'top', polo: 'top', tank: 'top', vest: 'top', coat: 'top', dress: 'top', bodysuit: 'top', swimsuit: 'top', bra: 'top', cami: 'top', bikini: 'bikini', pants: 'bottom', shorts: 'bottom', skirt: 'bottom', leggings: 'bottom', cap: 'cap', bucket: 'cap' };
 
@@ -28,54 +30,6 @@ function frontBack(comps) {
   if (!best || best.diff > .35) return { front: comps.sort((p, q) => q.a - p.a)[0], back: null };
   const [f, k] = (best.a.x0 + best.a.y0 * .6) <= (best.b.x0 + best.b.y0 * .6) ? [best.a, best.b] : [best.b, best.a];
   return { front: f, back: k };
-}
-// one view measured, in SVG units: the centre line, and for a top the body width under the arms, the shoulder line and the hem;
-// for a bottom the waistband width, its top and the hem; for a cap the crown width and the brim seam
-function measure(M, lab, c, kind, collar) {
-  const { m, W } = M, rows = [];
-  for (let y = c.y0; y <= c.y1; y++) { const runs = []; let s = -1; for (let x = c.x0; x <= c.x1 + 1; x++) { const on = x <= c.x1 && m[y * W + x] && lab[y * W + x] === c.n; if (on && s < 0) s = x; if (!on && s >= 0) { runs.push([s, x - 1]); s = -1; } } rows.push({ y, runs }); }
-  const cf = (c.x0 + c.x1) / 2, central = r => r.runs.find(([a, b]) => a <= cf && b >= cf) || null, wd = r => { const q = central(r); return q ? q[1] - q[0] + 1 : 0; };
-  const pick = (a, f) => { const v = a.filter(Boolean).sort((p, q) => p - q); return v[Math.floor(v.length * f)] || 0; };
-  const U = v => +(v / M.k).toFixed(2), X = v => +(v / M.k + M.vb[0]).toFixed(2), Y = v => +(v / M.k + M.vb[1]).toFixed(2);
-  const out = { box: [X(c.x0), Y(c.y0), U(c.x1 - c.x0 + 1), U(c.y1 - c.y0 + 1)], cf: X(cf) };
-  // the hem: the lowest row on the centre line for a top; for a bottom the legs part below the crotch, so the lowest row of either leg
-  let hem = rows.length - 1; while (hem > 0 && !(kind === 'bottom' ? rows[hem].runs.length : wd(rows[hem]))) hem--;
-  if (kind === 'top') {
-    // the body's width is between its side seams: walking out from the centre line along each row of the lower body, the first dark line
-    // either side is a side seam (or the outline, where the sleeves hang free); a pocket or a zip stops it short, so take a high percentile
-    // a placket, a zip or a row of buttons near the centre would stop the walk short, so a body narrower than 45% of the view (sleeves
-    // included) is measured again starting further out
-    const first = rows.findIndex(r => wd(r) > 0), span = hem - first;
-    const chestFrom = f => { const off = Math.round((c.x1 - c.x0) * f), side = (y, dir) => { for (let x = Math.round(cf) + dir * off; x >= c.x0 && x <= c.x1; x += dir) if (M.dark[y * W + x] || !m[y * W + x]) return x; return dir < 0 ? c.x0 : c.x1; }, ws = [];
-      for (let i = first + Math.round(span * .35); i < hem - Math.round(span * .08); i++) ws.push(side(rows[i].y, 1) - side(rows[i].y, -1)); return pick(ws, .6); };
-    let chest = 0; for (const f of [.03, .1, .16, .22]) { chest = chestFrom(f); if (chest >= (c.x1 - c.x0) * .45) break; }
-    let sh = rows.findIndex(r => wd(r) >= chest * .8); if (sh < 0) sh = 0;
-    // the high point of the shoulder: under a hood or a tall collar it is hidden, so it is found from the shoulder line; on a crew or a
-    // v-neck it is just under the back neck seen over the front (an inch is about chest / 22 on the drawing)
-    const inch = chest / 22, hps = collar === 'hood' ? rows[sh].y - inch * .5 : collar === 'tall' ? Math.min(rows[sh].y, c.y0 + inch * 1.6) : Math.min(rows[sh].y, c.y0 + inch * .35);
-    Object.assign(out, { chest: U(chest), hpsY: Y(hps), shoulderY: Y(rows[sh].y), hemY: Y(rows[hem].y), topY: Y(c.y0) });
-  } else if (kind === 'bikini') {
-    // a bikini is drawn as its top over its bottom: the top's width is the widest row of the upper piece, the set runs from the top of the
-    // straps to the bottom of the brief
-    const gap = rows.findIndex((r, i) => i > rows.length * .15 && !r.runs.length), upper = rows.slice(0, gap > 0 ? gap : Math.round(rows.length * .5));
-    const ws = upper.map(r => r.runs.length ? r.runs[r.runs.length - 1][1] - r.runs[0][0] + 1 : 0), widest = ws.indexOf(Math.max(...ws));
-    Object.assign(out, { chest: U(ws[widest]), hpsY: Y(c.y0), shoulderY: Y(c.y0), hemY: Y(rows[hem].y), topY: Y(c.y0) });
-  } else if (kind === 'bottom') {
-    // the top of the waistband: the first row nearly as wide as the band (a belt loop, a label or a drawcord above it does not count)
-    const bandW = Math.max(...rows.slice(0, Math.round(rows.length * .15)).map(wd)); let top = 0; while (top < rows.length && wd(rows[top]) < bandW * .8) top++;
-    const band = rows.slice(top + 2, top + 2 + Math.max(3, Math.round(rows.length * .02))).map(wd);
-    Object.assign(out, { waist: U(pick(band, .5)), topY: Y(rows[top].y), hemY: Y(rows[hem].y) });
-  } else {
-    // the crown is the widest part above the brim; the brim seam is where the width falls away under it
-    const ws = rows.map(r => r.runs.length ? r.runs[r.runs.length - 1][1] - r.runs[0][0] + 1 : 0), widest = ws.indexOf(Math.max(...ws));
-    Object.assign(out, { width: U(ws[widest]), seamY: Y(rows[widest].y), topY: Y(c.y0), hemY: Y(rows[hem].y) });
-  }
-  // the view's own outline, so a neighbouring view or a drawcord that reaches into its box is not drawn with it (scripts/flat-templates/shapes.mjs)
-  const clip = outlineOf(M, lab, c); if (clip) out.clip = clip;
-  // the drawing's own proportions: a top's length from its chest, a bottom's from its waist, so a piece drawn from it starts at its length
-  if (out.chest && out.hemY > out.hpsY) out.ratio = +((out.hemY - out.hpsY) / out.chest).toFixed(3);
-  if (out.waist && out.hemY > out.topY) out.ratio = +((out.hemY - out.topY) / out.waist).toFixed(3);
-  return out;
 }
 // a bikini's views: its top and bottom are separate pieces, the front ones on the left and the back ones on the right
 function sideGroups(comps, lab, W) {
@@ -133,8 +87,8 @@ for (const [file, style, label, id, range] of mine) {
     const L = part(c.x0, X, 9101), R = part(X + 1, c.x1, 9102);
     if (Math.abs((L.y1 - L.y0) - (R.y1 - R.y0)) / Math.max(L.y1 - L.y0, R.y1 - R.y0) < .4) { fb.front = L; fb.back = R; }
   }
-  const collar = /hoodie/.test(style) || /hood/i.test(label) ? 'hood' : ['jacket', 'coat', 'shirt', 'shirtss', 'polo'].includes(style) || /collar|mock|funnel|turtle|high-neck|stand/i.test(label) ? 'tall' : 'crew';
-  const mk = kind === 'bikini' ? 'bikini' : kind, v = { front: measure(M, lab, fb.front, mk, collar) }; if (fb.back) v.back = measure(M, lab, fb.back, mk, collar);
+  const collar = collarOf(style, label), fix = FIXES.get(id) || {};
+  const mk = kind === 'bikini' ? 'bikini' : kind, v = { front: measure(M, lab, fb.front, mk, collar, fix.front) }; if (fb.back) v.back = measure(M, lab, fb.back, mk, collar, fix.back);
   const ok = view => kind === 'cap' ? view.width > 0 && view.seamY : (kind === 'bottom' ? view.waist > 0 : view.chest > 0) && view.ratio > .25 && view.ratio < 6;
   if (!ok(v.front)) { skipped.push([id, 'measure ' + JSON.stringify({ chest: v.front.chest, waist: v.front.waist, ratio: v.front.ratio })]); continue; }
   if (v.back && !ok(v.back)) delete v.back;

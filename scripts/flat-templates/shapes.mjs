@@ -83,3 +83,63 @@ export function outlineOf(M, lab, c) {
   let far = 0, fd = -1; for (let i = 0; i < P.length; i++) { const dd = Math.hypot(P[i][0] - P[0][0], P[i][1] - P[0][1]); if (dd > fd) { fd = dd; far = i; } }
   return [...simplify(P.slice(0, far + 1), .8), ...simplify([...P.slice(far), P[0]], .8).slice(1, -1)];
 }
+// one view measured, in SVG units: the centre line, and for a top the body width under the arms, the shoulder line and the hem;
+// for a bottom the waistband width, its top and the hem; for a cap the crown width and the brim seam
+export function measure(M, lab, c, kind, collar, fix = null) {
+  const { m, W } = M, rows = [];
+  for (let y = c.y0; y <= c.y1; y++) { const runs = []; let s = -1; for (let x = c.x0; x <= c.x1 + 1; x++) { const on = x <= c.x1 && m[y * W + x] && lab[y * W + x] === c.n; if (on && s < 0) s = x; if (!on && s >= 0) { runs.push([s, x - 1]); s = -1; } } rows.push({ y, runs }); }
+  const cf = (c.x0 + c.x1) / 2, central = r => r.runs.find(([a, b]) => a <= cf && b >= cf) || null, wd = r => { const q = central(r); return q ? q[1] - q[0] + 1 : 0; };
+  const pick = (a, f) => { const v = a.filter(Boolean).sort((p, q) => p - q); return v[Math.floor(v.length * f)] || 0; };
+  const U = v => +(v / M.k).toFixed(2), X = v => +(v / M.k + M.vb[0]).toFixed(2), Y = v => +(v / M.k + M.vb[1]).toFixed(2);
+  const out = { box: [X(c.x0), Y(c.y0), U(c.x1 - c.x0 + 1), U(c.y1 - c.y0 + 1)], cf: X(cf) };
+  // the hem: the lowest row on the centre line for a top; for a bottom the legs part below the crotch, so the lowest row of either leg
+  let hem = rows.length - 1; while (hem > 0 && !(kind === 'bottom' ? rows[hem].runs.length : wd(rows[hem]))) hem--;
+  if (kind === 'top') {
+    // the body's width is between its side seams: walking out from the centre line along each row of the lower body, the first dark line
+    // either side is a side seam (or the outline, where the sleeves hang free); a pocket or a zip stops it short, so take a high percentile
+    // a placket, a zip or a row of buttons near the centre would stop the walk short, so a body narrower than 45% of the view (sleeves
+    // included) is measured again starting further out
+    const first = rows.findIndex(r => wd(r) > 0), span = hem - first;
+    const chestFrom = f => { const off = Math.round((c.x1 - c.x0) * f), side = (y, dir) => { for (let x = Math.round(cf) + dir * off; x >= c.x0 && x <= c.x1; x += dir) if (M.dark[y * W + x] || !m[y * W + x]) return x; return dir < 0 ? c.x0 : c.x1; }, ws = [];
+      for (let i = first + Math.round(span * .35); i < hem - Math.round(span * .08); i++) ws.push(side(rows[i].y, 1) - side(rows[i].y, -1)); return pick(ws, .6); };
+    // a chest read by eye (chest-fixes.tsv) where the walk would stop at a panel line or a princess seam instead of the side seam
+    let chest = 0; if (fix?.chest) chest = fix.chest * M.k; else for (const f of [.03, .1, .16, .22]) { chest = chestFrom(f); if (chest >= (c.x1 - c.x0) * .45) break; }
+    let sh = rows.findIndex(r => wd(r) >= chest * .8); if (sh < 0) sh = 0;
+    // the high point of the shoulder: under a hood or a tall collar it is hidden, so it is found from the shoulder line; on a crew or a
+    // v-neck it is just under the back neck seen over the front (an inch is about chest / 22 on the drawing)
+    const inch = chest / 22, hps = collar === 'hood' ? rows[sh].y - inch * .5 : collar === 'tall' ? Math.min(rows[sh].y, c.y0 + inch * 1.6) : Math.min(rows[sh].y, c.y0 + inch * .35);
+    Object.assign(out, { chest: U(chest), hpsY: Y(hps), shoulderY: Y(rows[sh].y), hemY: Y(rows[hem].y), topY: Y(c.y0) });
+  } else if (kind === 'bikini') {
+    // a bikini is drawn as its top over its bottom: the top's width is the widest row of the upper piece, the set runs from the top of the
+    // straps to the bottom of the brief
+    const gap = rows.findIndex((r, i) => i > rows.length * .15 && !r.runs.length), upper = rows.slice(0, gap > 0 ? gap : Math.round(rows.length * .5));
+    const ws = upper.map(r => r.runs.length ? r.runs[r.runs.length - 1][1] - r.runs[0][0] + 1 : 0), widest = ws.indexOf(Math.max(...ws));
+    Object.assign(out, { chest: U(ws[widest]), hpsY: Y(c.y0), shoulderY: Y(c.y0), hemY: Y(rows[hem].y), topY: Y(c.y0) });
+  } else if (kind === 'bottom') {
+    // the top of the waistband: the first row nearly as wide as the band (a belt loop, a label or a drawcord above it does not count)
+    const bandW = Math.max(...rows.slice(0, Math.round(rows.length * .15)).map(wd)); let top = 0; while (top < rows.length && wd(rows[top]) < bandW * .8) top++;
+    const band = rows.slice(top + 2, top + 2 + Math.max(3, Math.round(rows.length * .02))).map(wd);
+    Object.assign(out, { waist: U(pick(band, .5)), topY: Y(rows[top].y), hemY: Y(rows[hem].y) });
+  } else {
+    // the crown is the widest part above the brim; the brim seam is where the width falls away under it
+    const ws = rows.map(r => r.runs.length ? r.runs[r.runs.length - 1][1] - r.runs[0][0] + 1 : 0), widest = ws.indexOf(Math.max(...ws));
+    Object.assign(out, { width: U(ws[widest]), seamY: Y(rows[widest].y), topY: Y(c.y0), hemY: Y(rows[hem].y) });
+  }
+  // the view's own outline, so a neighbouring view or a drawcord that reaches into its box is not drawn with it (scripts/flat-templates/shapes.mjs)
+  const clip = outlineOf(M, lab, c); if (clip) out.clip = clip;
+  // the drawing's own proportions: a top's length from its chest, a bottom's from its waist, so a piece drawn from it starts at its length
+  if (out.chest && out.hemY > out.hpsY) out.ratio = +((out.hemY - out.hpsY) / out.chest).toFixed(3);
+  if (out.waist && out.hemY > out.topY) out.ratio = +((out.hemY - out.topY) / out.waist).toFixed(3);
+  return out;
+}
+// what a top's collar is, for where its high point of the shoulder is found
+export const collarOf = (style, label) => /hoodie/.test(style) || /hood/i.test(label) ? 'hood' : ['jacket', 'coat', 'shirt', 'shirtss', 'polo'].includes(style) || /collar|mock|funnel|turtle|high-neck|stand/i.test(label) ? 'tall' : 'crew';
+// the chests read by eye (chest-fixes.tsv): template id → { front: { chest }, back: { chest } }, in SVG units
+export function chestFixes() {
+  const out = new Map();
+  for (const l of readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'chest-fixes.tsv'), 'utf8').split('\n')) {
+    if (!l.trim() || l.startsWith('#')) continue; const [id, view, chest] = l.split('\t'); const n = Number(chest); if (!id || !view || !(n > 0)) continue;
+    out.set(id, { ...(out.get(id) || {}), [view]: { chest: n } });
+  }
+  return out;
+}

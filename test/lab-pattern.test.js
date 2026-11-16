@@ -230,3 +230,17 @@ test('a tailored jacket is cut as a tailor cuts it: lapel, collar, side body, tw
   assert.equal(db.trims.find(t => t.item === 'Front buttons').qty, 6);
   assert.ok(garmentPattern({ ...defaultParams('jacket') }).pieces.some(q => q.id === 'hem-rib'), 'a zip jacket keeps its rib');
 });
+
+test('a long sleeve on the product is drawn as its flat draws it: down beside the body, not as narrow as its opening all the way up', async () => {
+  const { cookRecipe } = await import('../src/lab-recipe.js');
+  // (a shirt's and a jacket's set-in sleeve hangs nearly straight, its end just clear of the body: drawn as before)
+  for (const base of ['hoodie', 'crewneck', 'ziphoodie', 'longsleeve']) {
+    const p = cookRecipe({ base }).params, pat = garmentPattern(p, 'M'), sl = pat.pieces.find(q => q.id === 'sleeve'), P = placed(sl, sl.shown);
+    const across = y => { const xs = []; for (let i = 0; i < P.length; i++) { const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length]; if ((y1 <= y) !== (y2 <= y)) xs.push(x1 + (y - y1) / (y2 - y1) * (x2 - x1)); } return xs.length >= 2 ? Math.max(...xs) - Math.min(...xs) : 0; };
+    const ys = P.map(q => q[1]), y0 = pat.block.front.at.ua[1], y1 = Math.max(...ys), w = across((y0 + y1) / 2);
+    // halfway down from the underarm the drawn sleeve is clearly wider than its opening (it was the opening's width all the way up), and no
+    // wider than the sleeve that is cut, laid flat
+    assert.ok(w > p.m.sleeveOpening * 1.15, `${base}: the sleeve drawn ${w.toFixed(2)} in across halfway down, its opening ${p.m.sleeveOpening} in`);
+    assert.ok(w <= boundsOf(sl.sew).w / 2 + .5, `${base}: drawn ${w.toFixed(2)} in, wider than the cut sleeve laid flat (${(boundsOf(sl.sew).w / 2).toFixed(2)} in)`);
+  }
+});

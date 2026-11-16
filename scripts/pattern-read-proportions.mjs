@@ -48,6 +48,9 @@ for (const t of T) {
   if (sleeved) knobs.push(['sleeve', m0.sleeve, Math.max(short ? 2.5 : 14, m0.sleeve - 1.5), m0.sleeve + 1.5, 1], ['sleeveAngle', short ? 45 : 6, short ? 20 : 0, short ? 75 : 25, short ? 10 : 4]);
   const cur = Object.fromEntries(knobs.map(([k, v]) => [k, v])), make = c => { const { sleeveAngle, ...mm } = c; return { ...p0, m: { ...p0.m, ...mm }, options: { ...p0.options, ...(sleeved ? { sleeveAngle } : {}) } }; };
   const start = score(make(cur)); let best = start;
+  // the sleeve's angle is scanned across its whole range first: a long sleeve drawn at any angle too small to clear the body is opened until it
+  // does, so every small angle scores the same and a search stepping out from the start never leaves that plateau
+  if (sleeved) { const [, , lo, hi] = knobs.find(k => k[0] === 'sleeveAngle'); for (let a = lo; a <= hi; a += 2) { const sc = score(make({ ...cur, sleeveAngle: a })); if (sc > best + 1e-4) { best = sc; cur.sleeveAngle = a; } } }
   for (let round = 0; round < 3; round++) for (const [k, , lo, hi, s0] of knobs) {
     let s = s0 / (round + 1);
     while (s >= .25) { let moved = false; for (const dir of [1, -1]) { const v = Math.min(Math.max(cur[k] + dir * s, lo), hi); if (v === cur[k]) continue; const sc = score(make({ ...cur, [k]: v })); if (sc > best + 1e-4) { best = sc; cur[k] = v; moved = true; break; } } if (!moved) s /= 2; }
