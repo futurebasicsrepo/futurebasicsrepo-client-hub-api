@@ -97,6 +97,7 @@ already has show as "on the sketch".
     their Pantone C and a report.
 - A board shows the picture, flats, colourways and sizes side by side.
 - **Freehand pattern edits:** in the pattern, draw over a piece to redraw an edge, cut it in two along a new seam, or draw a new piece; **Built with** shows what the pattern is drafted from (raglan, yoke, cargo, double knee…) and can read it from a freehand drawing. Trousers and shorts are measured against their sketch, leg by leg, and **Follow the drawing** cuts the legs as they are drawn.
+- **One-tap fixes:** every problem the flats check finds with a logo or graphic has a button beside it: **Move it clear** (over a seam, a pocket, a zip, another graphic), **Fit it in**, **Make it fit** (wider than the technique makes), **Make it bigger**, **Use one that fits**. It changes it the least it takes, says what it did ("Logo moved 2⅜ in toward the wearer's right"), and Undo takes it back.
 - **A new graphic, right on the flats:** open the graphic studio from the panel, draw or make it with AI, and **Put it on the garment**; or upload your own artwork.
 - **Make the turns from the flats** draws the piece on a model from four sides, every logo and graphic in place, and **Make the walk** films the model walking in it, right on the board; tap a turn to see it full screen and zoom in on the details, and **Edit** it: drag the logo into place on the photo, paint over a part and say what to change, and Apply works it into the cloth.
 - **iPad and Apple Pencil:** pressure, palm rejection, pinch, pan and a two-finger turn of the picture and the flat (it snaps square; Fit straightens it). Undo and redo sit at the top of the tool rail, and the rail can show each tool's name and what it does. The brush has eight tips (round, pencil, ink pen, marker, airbrush, calligraphy, chalk, spray) and the eraser a hard and a soft one, each with its own size on a big slider beside the canvas. It can be kept on the home screen like an app.
@@ -202,6 +203,7 @@ Labels chosen on a garment are drawn on its flats where they are sewn, with thei
 - Tap the flat to pin anything the pack does not name.
 - A verdict (approved, approved with changes, another sample, rejected), then **Hand over to the tech pack**: the fixes become corrections in the next version, and the pins become callouts the factory sees in its language.
 - The next sample's form opens with the last one's fixes at the top.
+- **The pattern learns from the samples:** once two samples in a fabric come back the same way (a fleece 3% short after its wash), the next pattern cut in that fabric is cut 3% longer to land on spec. The Pattern page says so in **Learned from samples**, with a switch, and the tech pack tells the factory.
 
 **What makes it good on camera:** the "What goes into the tech pack" list writing itself as the room ticks through the lines.
 
