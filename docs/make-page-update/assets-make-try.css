@@ -5,6 +5,9 @@
 .mkt button:focus-visible{outline:2px solid var(--deep);outline-offset:3px}
 
 /* ---- see it work ---- */
+.mkt-film{margin:0 0 clamp(28px,4vw,52px)}.mkt-film figcaption{margin-top:10px}
+.mkt-video{display:block;width:100%;height:auto;aspect-ratio:1440/900;background:var(--panel)}
+.mkt-sub{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 16px}.mkt-sub h3{margin:0}
 .mkt-walk{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,340px);gap:clamp(18px,3vw,40px);align-items:start}
 .mkt-screen{border:1px solid var(--line);border-radius:18px;background:var(--card);overflow:hidden;box-shadow:0 30px 60px -30px rgba(20,20,22,.35)}
 .mkt-bar{display:flex;align-items:center;gap:7px;height:34px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--panel)}

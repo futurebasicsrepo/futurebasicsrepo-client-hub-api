@@ -99,6 +99,8 @@ The screenshots are real screens from the live Lab, taken signed in to the Futur
 
 Numbers on the page (26 bases, 31 add-ons, 382 sketches, prices) are the same as `docs/marketing/video-brief.md`. Update both when they change.
 
+The screen recording at the top of "see it work" (`make-lab-session.mp4`, about 73 seconds, 2 MB) is the Lab in use, recorded as it runs with a cursor and a caption per step: the hoodie from the recipe menu to its pattern laid out on the cloth, then a pocket tee drawn with the brush on a blank page over its outline, filled and topstitched (the drawing is sped up 1.7×). It is in the store's Files like the sew-out, so it shows even where the hub's walkthrough data cannot load; its poster (`make-lab-session-poster.webp`) and the "draw it yourself" picture (`make-way-scratch.webp`) come from the same run. To record it again: `node scripts/make-recording.cjs --base <hub> --token <a demo room's client token>`, then upload the video to Files under the same name. The bags and footwear cards (`make-type-bags.webp`, `make-type-footwear.webp`) are six bags and six shoes from the Lab's library, each in a colourway of its own: `node scripts/make-type-cards.mjs`.
+
 The sew-out video (`make-sewout-v3.mp4`) is in the store's Files (Content → Files) and the section loads it with `file_url`. The demo pieces in the screenshots (the Lane Six hoodie and the Future Tour tee) carry real Future Basics graphics from the Lab's library; they were made, separated and digitized on a local copy of the app.
 
 ## To publish

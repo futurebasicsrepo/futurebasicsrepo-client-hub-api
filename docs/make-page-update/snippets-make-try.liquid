@@ -1,7 +1,9 @@
 {%- comment -%}
   The Make page's two "try it" pieces, rendered by sections/make-v5.liquid under the graphics strip:
-    see it work   — the Design Lab used for real, one click at a time: a hoodie from the recipe menu to its pattern, then its tech pack.
-                    Screens and the spot each click lands on come from the hub (help/assets/make-walk.json, made by scripts/make-walkthrough.mjs).
+    see it work   — first a screen recording of the Design Lab in use (Shopify Files: make-lab-session.mp4, made by scripts/make-recording.cjs):
+                    a hoodie from the recipe menu to its cut pattern, then a tee drawn on a blank page. It plays muted once it is on screen,
+                    and only with its controls for people who ask for less motion. Under it, the same hoodie one click at a time to its tech pack:
+                    screens and the spot each click lands on come from the hub (help/assets/make-walk.json, made by scripts/make-walkthrough.mjs).
                     It plays by itself; a visitor clicks the spot, the arrows or a step to go on. Nothing plays for people who ask for less motion.
     build one now — the recipe menu without signing in: a base, add-ons and colours, and the real flats and what the tech pack would say,
                     from the hub (GET /v1/public/make/…, src/make-demo.js). "Make this for real" opens the Design Lab on that piece.
@@ -11,9 +13,17 @@
 
 <section class="mk3__pad mkt" id="see-it-work" aria-labelledby="mkt-walk-h">
   <div class="mk3__half">
-    <div><span class="mk3__mono">see it work · real screens</span><h2 id="mkt-walk-h">a hoodie, start to factory. <span>click through it.</span></h2></div>
-    <p><b>This is the Design Lab, not a mock-up.</b> A base from the recipe menu, a chest pocket and a stone wash, its flats checked and its pattern drafted, then the tech pack a factory signs off. Click the green ring to go on.</p>
+    <div><span class="mk3__mono">see it work · recorded in the lab</span><h2 id="mkt-walk-h">a hoodie, start to factory. <span>watch it made.</span></h2></div>
+    <p><b>This is the Design Lab, not a mock-up.</b> A base from the recipe menu, a chest pocket and a stone wash, its flats checked and its pattern drafted and laid out on the cloth. Then a tee drawn on a blank page, over its outline at real size.</p>
   </div>
+  <figure class="mkt-film">
+    <div class="mkt-screen">
+      <div class="mkt-bar" aria-hidden="true"><i></i><i></i><i></i><span class="mkt-url">hub.thefuturebasics.com/lab</span></div>
+      <video class="mkt-video" src="{{ 'make-lab-session.mp4' | file_url }}" poster="{{ shots }}make-lab-session-poster.webp" width="1440" height="900" muted loop playsinline preload="metadata" controls aria-label="A screen recording of the Design Lab: a hoodie picked from the recipe menu with a chest pocket and a vintage wash, opened in the Studio as measured flats, its pattern drafted, exploded and laid out on the cloth; then a pocket tee drawn on a blank page, filled and topstitched"></video>
+    </div>
+    <figcaption class="mk3__fine">Recorded in the Lab as it runs, one take: nothing is mocked up. The drawing is sped up 1.7×.</figcaption>
+  </figure>
+  <div class="mkt-sub" hidden><h3>then its tech pack</h3><span class="mk3__mono">click through it, one screen at a time</span></div>
   <div class="mkt-walk" data-src="{{ shots }}make-walk.json" data-base="{{ shots }}" hidden>
     <div class="mkt-screen">
       <div class="mkt-bar" aria-hidden="true"><i></i><i></i><i></i><span class="mkt-url">hub.thefuturebasics.com/lab</span></div>
@@ -66,6 +76,10 @@
 </section>
 
 <script>
+(() => { // the recording: plays muted once it is on screen; with less motion asked for, it waits for its controls
+  const v = document.querySelector('.mkt-video'); if (!v || matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) return;
+  new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) v.play().catch(() => {}); else v.pause(); }), { threshold: .35 }).observe(v);
+})();
 (() => {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches, esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   // ---- see it work ----
@@ -94,8 +108,8 @@
     if (reduce) { play.setAttribute('aria-pressed', 'false'); play.textContent = 'play'; }
     // the first step shows at once; it starts playing when it comes into view, not before
     const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); go(); } }, { threshold: .15 });
-    W.hidden = false; const was = auto; auto = false; put(0); auto = was; io.observe(W);
-  }).catch(() => { W.closest('section').hidden = true; });
+    W.hidden = false; if (W.previousElementSibling?.matches('.mkt-sub')) W.previousElementSibling.hidden = false; const was = auto; auto = false; put(0); auto = was; io.observe(W);
+  }).catch(() => { if (!document.querySelector('.mkt-video')) W.closest('section').hidden = true; }); // the recording stays when the screens cannot load
 
   // ---- build one now ----
   const B = document.querySelector('.mkt-build'); if (!B) return;
