@@ -70,7 +70,7 @@
   </section>
 
   {%- comment -%} ───────── see it work · build one now ───────── {%- endcomment -%}
-  {%- render 'make-try', shots: shots, api: api, lab_url: lab_url, start_url: start_url -%}
+  {%- render 'make-try', shots: shots, api: api, lab_url: lab_url, start_url: start_url, lab_video: section.settings.lab_video -%}
 
   {%- comment -%} ───────── 01 · ways to design ───────── {%- endcomment -%}
   <section class="mk3__pad" id="design-lab">
@@ -324,6 +324,7 @@ v.forEach(function(x){io.observe(x);});})();
     { "type": "text", "id": "start_url", "label": "Tech pack start link", "default": "https://hub.thefuturebasics.com/start" },
     { "type": "text", "id": "lab_url", "label": "Design Lab link", "default": "https://hub.thefuturebasics.com/join?for=lab" },
     { "type": "text", "id": "api_url", "label": "Hub address (see it work, build one now)", "default": "https://hub.thefuturebasics.com" },
+    { "type": "video", "id": "lab_video", "label": "See it work: the screen recording", "info": "A video from Content → Files. Left empty, the Lab recording uploaded in November 2026 plays." },
     { "type": "text", "id": "hero_title", "label": "Hero title" },
     { "type": "text", "id": "hero_accent", "label": "Hero title, second line" },
     { "type": "richtext", "id": "hero_lede", "label": "Hero text" },

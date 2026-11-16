@@ -7,8 +7,19 @@
                     It plays by itself; a visitor clicks the spot, the arrows or a step to go on. Nothing plays for people who ask for less motion.
     build one now — the recipe menu without signing in: a base, add-ons and colours, and the real flats and what the tech pack would say,
                     from the hub (GET /v1/public/make/…, src/make-demo.js). "Make this for real" opens the Design Lab on that piece.
-  Styles: assets/make-try.css. Params: shots (help assets URL), api (the hub), lab_url, start_url.
+  Styles: assets/make-try.css. Params: shots (help assets URL), api (the hub), lab_url, start_url, lab_video (the section's video setting).
+  The recording is a Shopify video (uploaded from Content → Files), so it is played from its own mp4, the widest one Shopify made of it;
+  file_url finds only plain files, not videos.
 {%- endcomment -%}
+{%- liquid
+  assign lab_src = 'https://cdn.shopify.com/videos/c/o/v/2b47e76649c3421aab0549597c53854a.mp4'
+  if lab_video
+    assign mp4 = lab_video.sources | where: 'mime_type', 'video/mp4' | sort: 'width' | last
+    if mp4
+      assign lab_src = mp4.url
+    endif
+  endif
+-%}
 {{ 'make-try.css' | asset_url | stylesheet_tag }}
 
 <section class="mk3__pad mkt" id="see-it-work" aria-labelledby="mkt-walk-h">
@@ -19,7 +30,7 @@
   <figure class="mkt-film">
     <div class="mkt-screen">
       <div class="mkt-bar" aria-hidden="true"><i></i><i></i><i></i><span class="mkt-url">hub.thefuturebasics.com/lab</span></div>
-      <video class="mkt-video" src="{{ 'make-lab-session.mp4' | file_url }}" poster="{{ shots }}make-lab-session-poster.webp" width="1440" height="900" muted loop playsinline preload="metadata" controls aria-label="A screen recording of the Design Lab: a hoodie picked from the recipe menu with a chest pocket and a vintage wash, opened in the Studio as measured flats, its pattern drafted, exploded and laid out on the cloth; then a pocket tee drawn on a blank page, filled and topstitched"></video>
+      <video class="mkt-video" src="{{ lab_src }}" poster="{{ shots }}make-lab-session-poster.webp" width="1440" height="900" muted loop playsinline preload="metadata" controls aria-label="A screen recording of the Design Lab: a hoodie picked from the recipe menu with a chest pocket and a vintage wash, opened in the Studio as measured flats, its pattern drafted, exploded and laid out on the cloth; then a pocket tee drawn on a blank page, filled and topstitched"></video>
     </div>
     <figcaption class="mk3__fine">Recorded in the Lab as it runs, one take: nothing is mocked up. The drawing is sped up 1.7×.</figcaption>
   </figure>
