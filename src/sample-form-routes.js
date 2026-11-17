@@ -11,6 +11,7 @@
 //                                               sample asked for). Publishing it is the usual Publish on the tech pack.
 // A client reaches only their own room's products; a client preview is read-only (authenticate refuses its writes).
 import './sample-review.js';
+import { forgetLearned } from './lab-sample-learn.js';
 import './sample-form.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -117,6 +118,7 @@ export function registerSampleFormRoutes(app, d) {
   });
 
   app.post('/v1/sample-reviews/:id/handover', { preHandler: authenticate }, async (req, reply) => {
+    forgetLearned(); // a finished review is something the pattern learns from (src/lab-sample-learn.js)
     const ctx = await loadReview(req, reply); if (!ctx) return reply;
     const { r, row, pack } = ctx;
     if (r.status === 'applied') return bad(reply, 'This review is already in the pack', 409);
@@ -147,6 +149,7 @@ export function registerSampleFormRoutes(app, d) {
   });
 
   app.post('/v1/sample-reviews/:id/apply', { preHandler: authenticate }, async (req, reply) => {
+    forgetLearned(); // a finished review is something the pattern learns from (src/lab-sample-learn.js)
     if (!admin(req)) return bad(reply, 'Future Basics writes a review into the pack. Hand it over and we will.', 403);
     const ctx = await loadReview(req, reply); if (!ctx) return reply;
     const { r, row, pack } = ctx;

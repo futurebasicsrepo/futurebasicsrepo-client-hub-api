@@ -14,6 +14,7 @@
 // The check ("can it be made"): every placement is on the piece and clear of seams, ribs, zips, pockets and collars (the drawing alone); within the
 // technique's size; and its artwork, at the size it is placed, holds the technique's finest line, needs no more inks than the technique is priced for,
 // has no smooth shading a screen cannot print, and, for embroidery, how many stitches it takes.
+import { learnedGroups, allowanceFor, allowanceWords, conceptFabric } from './lab-sample-learn.js';
 import { footwearChecks, footwearPattern, sizeRun } from './lab-footwear.js';
 import { plushPattern, followTheDrawing, garmentPattern } from './lab-pattern.js';
 import { constructionCheck } from './lab-pattern-check.js';
@@ -92,7 +93,7 @@ export function artFindings(q, info, rules, tech) {
   const out = [], name = q.name, emb = tech.base === 'embroidery';
   if (info.fine > .03) {
     const scale = info.holds ? rules.minLineMm / info.holds : 2, bigger = Math.min(q.w * scale, rules.maxW);
-    out.push({ level: info.fine > .15 ? 'fail' : 'warn', code: 'FINE_DETAIL', text: `About ${pct(info.fine)} of ${name} is finer than ${rules.minLineMm} mm at ${fmt(q.w)} wide, so it will ${emb ? 'not hold stitches' : 'fill in or break up'}. ${bigger > q.w * 1.05 && bigger <= rules.maxW ? `Make it at least ${fmt(bigger)} wide, ` : ''}thicken the thin lines, or choose a technique that holds finer detail${emb ? ' (a woven patch or a print)' : ' (a heat transfer)'}.` });
+    out.push({ level: info.fine > .15 ? 'fail' : 'warn', code: 'FINE_DETAIL', ...(bigger > q.w * 1.05 && bigger <= rules.maxW ? { grow: Math.round(bigger * 8) / 8 } : {}), text: `About ${pct(info.fine)} of ${name} is finer than ${rules.minLineMm} mm at ${fmt(q.w)} wide, so it will ${emb ? 'not hold stitches' : 'fill in or break up'}. ${bigger > q.w * 1.05 && bigger <= rules.maxW ? `Make it at least ${fmt(bigger)} wide, ` : ''}thicken the thin lines, or choose a technique that holds finer detail${emb ? ' (a woven patch or a print)' : ' (a heat transfer)'}.` });
   }
   if (rules.maxColors && info.inks > rules.maxColors) out.push({ level: 'warn', code: 'INKS', text: `${name} has about ${info.inks} ${emb ? 'thread' : 'ink'} colours; ${tech.name} is usually priced for up to ${rules.maxColors}. Each extra ${emb ? 'thread is another change' : 'ink is another screen'} and costs more.` });
   if (info.gradient && tech.base === 'screen print' && tech.finish?.effect !== 'halftone') out.push({ level: 'warn', code: 'GRADIENT', text: `${name} has smooth shading or many tones. A screen prints flat colours, so it needs halftone dots (the Halftone print technique) or a heat transfer.` });
@@ -813,9 +814,13 @@ export function registerLabFlatsRoutes(app, d) {
     const goods = S.kind === 'goods'; // a product type has no fit and one size, and is not cut from cloth: the pack does not say it is
     // how it is built (src/lab-construction.js): as set on the Pattern page, else as the flats say (the picture's read, the sketch, the details added)
     const set = ['top', 'bottom'].includes(S.kind) ? (await pool.query(`select spec->'construction' k from lab_patterns where concept_id=$1 and kind='garment'`, [c.id]).catch(() => ({ rows: [] }))).rows[0]?.k : null;
+    // what the samples in its fabric taught (src/lab-sample-learn.js), unless switched off on the Pattern page: the line the factory cuts by
+    const learnOff = ['top', 'bottom'].includes(S.kind) ? (await pool.query(`select spec->'learn' k from lab_patterns where concept_id=$1 and kind='garment'`, [c.id]).catch(() => ({ rows: [] }))).rows[0]?.k === false : true;
+    const learned = !learnOff ? allowanceFor(await learnedGroups(pool), conceptFabric(c), p.style) : null, allowLine = learned && learned.scope !== 'waiting' ? allowanceWords(learned) : '';
     const built = ['top', 'bottom'].includes(S.kind) ? constructionWords(constructionOf(set && typeof set === 'object' ? { ...p, options: { ...(p.options || {}), construction: set } } : p)) : [];
     const construction = [{ area: 'Drawing', detail: goods ? `${S.label}, drawn from its measurements; one size.` : `${FITS[p.fit] || p.fit} fit ${S.label.toLowerCase()}, drawn from the ${tpl ? `"${tpl.label}" flat sketch` : 'measurements'}; sample size M.` },
       ...(built.length ? [{ area: 'How it is built', detail: `${built.join('; ')}.` }] : []),
+      ...(allowLine ? [{ area: 'Pattern allowance', detail: allowLine }] : []),
       ...pl.map(q => ({ area: `${sideOf(q, p)} · ${q.name}`, detail: `${techFor(list, q, p.style).name}, ${fmtCm(q.w)} × ${fmtCm(q.h)}: ${describe(q, p)}.${q.grade ? ` Artwork by size: ${gradeWords(q)}.` : ''}` })),
       ...pl.filter(q => q.inks).map(q => ({ area: `Inks by colourway · ${q.name}`, detail: Object.entries(q.inks).map(([cw, m]) => `on ${(cleanColourways(c.spec?.colourways).find(x => x.hex === cw)?.name) || cw}: ${Object.entries(m).filter(([a, b2]) => a !== b2).map(([a, b2]) => `${pantoneOf(a)} changed to ${pantoneOf(b2)}`).join(', ') || 'as drawn'}`).join('; ') })),
       ...(p.crop ? [{ area: 'Cropped body', detail: `Cropped ${fmtCm(p.crop)} shorter than the sketch's body, taken out above the hem band so the band and hem finish stay as drawn; the sleeves keep their length. Body length (sample M) ${fmtCm(p.m.length)}.` }] : []),

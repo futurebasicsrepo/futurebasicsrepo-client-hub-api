@@ -27,6 +27,7 @@ import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { readFileSync } from 'node:fs';
 import { registerLabLastRoutes } from './lab-last-routes.js';
+import { learnedGroups, allowanceFor, allowPattern, conceptFabric } from './lab-sample-learn.js';
 import { loftLast, stlOf, orient } from './lab-last3d.js';
 import { flatsSheet, viewsMarkup } from './lab-footwear-views.js';
 import { plushSheet, plushViews } from './lab-plush-views.js';
@@ -64,7 +65,7 @@ const cleanGarment = (s = {}) => ({ sa: [.25, .375, .5, .625].includes(Number(s.
 const bagNum = (v, a, z) => { const n = Number(v); return Number.isFinite(n) && n >= a && n <= z ? Math.round(n * 4) / 4 : null; };
 export const cleanBagSpec = (s = {}, name = '') => { const t = BAG_KINDS.includes(s?.type) ? s.type : BAG_KINDS.find(k => new RegExp(k === 'drawstring' ? 'top.?loader|drawstring' : k === 'briefcase' ? 'brief|work bag|laptop' : k === 'pouch' ? 'pouch|crossbody' : k === 'waist' ? 'waist|belt bag|fanny|bum bag' : k, 'i').test(name)) || 'tote';
   return { type: t, ...(bagNum(s?.w, 2, 40) ? { w: bagNum(s.w, 2, 40) } : {}), ...(bagNum(s?.h, 2, 40) ? { h: bagNum(s.h, 2, 40) } : {}), ...(bagNum(s?.d, .5, 24) ? { d: bagNum(s.d, .5, 24) } : {}), width: WIDTHS.includes(Number(s?.width)) ? Number(s.width) : 58 }; };
-export const cleanPatternSpec = (kind, s) => { const base = kind === 'bag' ? cleanBagSpec(s || {}) : kind === 'plush' ? cleanPlush(s || {}) : kind === 'footwear' ? cleanFootwear(s || {}) : (g => { const k = cleanConstruction(s?.construction); return Object.keys(k).length ? { ...g, construction: k } : g; })(cleanGarment(s || {})), edits = cleanPatternEdits(s?.edits); return edits ? { ...base, edits } : base; };
+export const cleanPatternSpec = (kind, s) => { const base = kind === 'bag' ? cleanBagSpec(s || {}) : kind === 'plush' ? cleanPlush(s || {}) : kind === 'footwear' ? cleanFootwear(s || {}) : (g => { const k = cleanConstruction(s?.construction); return Object.keys(k).length ? { ...g, construction: k } : g; })(cleanGarment(s || {})), edits = cleanPatternEdits(s?.edits), learn = kind === 'garment' && s?.learn === false ? { learn: false } : {}; return edits ? { ...base, ...learn, edits } : { ...base, ...learn }; };
 
 // a footwear concept's style from its words, until it is chosen
 export const guessShoe = c => { const t = [c.name, c.spec?.silhouette, c.spec?.description].join(' ').toLowerCase(); return /chelsea/.test(t) ? 'chelsea' : /hik(e|er|ing)/.test(t) ? 'hiker' : /high[- ]?top|basketball/.test(t) ? 'hightop' : /\bboots?\b/.test(t) ? 'boot' : /loafer|penny|moc/.test(t) ? 'loafer' : /derby|oxford|blucher|dress shoe/.test(t) ? 'derby' : /run|trainer|jog/.test(t) ? 'runner' : 'sneaker'; };
@@ -84,6 +85,9 @@ export function registerLabPatternRoutes(app, d) {
     const kind = kindOf(c, flat?.style);
     const spec0 = kind === 'bag' ? cleanBagSpec(row?.kind === 'bag' ? row.spec : c.spec?.bag, c.name) : kind === 'plush' ? cleanPlush(row?.kind === 'plush' ? row.spec : plushProposal(plushDefaults(c.spec?.plush?.shape || 'bear'), null, c.spec?.plush).spec) : kind === 'footwear' ? cleanFootwear(row?.kind === 'footwear' ? row.spec : { ...fwDefaults(c.spec?.footwear?.style || guessShoe(c)), ...(c.spec?.footwear || {}) }) : cleanGarment(row?.spec);
     const ed = cleanPatternEdits(row?.spec?.edits), spec = ed ? { ...spec0, edits: ed } : spec0;
+    if (kind === 'garment' && row?.spec?.learn === false) spec.learn = false;
+    // what the samples in its fabric have taught (src/lab-sample-learn.js): the cut pattern allows for it unless it is switched off
+    const learned = kind === 'garment' && flat ? allowanceFor(await learnedGroups(pool), conceptFabric(c), flat.style) : null;
     // a shoe drawn in the Studio: its colours come from the outside drawing when that was changed after the pattern was last saved (the last
     // edit wins), so recolouring a panel there recolours the pattern here
     let coloursFrom = null; // (and drawingColoursOf below gives them back for the reading)
@@ -91,7 +95,7 @@ export function registerLabPatternRoutes(app, d) {
       const dr = (await pool.query(`select drawing, updated_at from lab_shoe_drawings where concept_id=$1 and view='lateral' and status='ready' and drawing is not null`, [c.id])).rows[0];
       if (dr && (!row || new Date(dr.updated_at) > new Date(row.updated_at))) { const dc = drawingColours(dr.drawing); if (Object.keys(dc).length) { spec.colours = { ...(spec.colours || {}), ...dc }; coloursFrom = { source: 'drawing', at: dr.updated_at, parts: Object.keys(dc) }; } }
     }
-    return { c, kind, flat, spec, saved: Boolean(row), savedFlat: Boolean(f), updatedAt: row?.updated_at || null, coloursFrom };
+    return { c, kind, flat, spec, learned, saved: Boolean(row), savedFlat: Boolean(f), updatedAt: row?.updated_at || null, coloursFrom };
   }
   const drawingColoursOf = L => Object.fromEntries((L.coloursFrom?.parts || []).map(k => [k, L.spec.colours?.[k]]).filter(([, v]) => v));
   const save = async (L, spec0, actor) => { const spec = cleanPatternSpec(L.kind, spec0); await pool.query(`insert into lab_patterns(concept_id, kind, spec, updated_by) values($1,$2,$3,$4) on conflict(concept_id) do update set kind=excluded.kind, spec=excluded.spec, updated_by=excluded.updated_by, updated_at=now()`, [L.c.id, L.kind, spec, actor]); return spec; };
@@ -102,7 +106,10 @@ export function registerLabPatternRoutes(app, d) {
   const hrefsFor = async spec => { const out = {}; for (const l of spec?.logos || []) { if (l.mark && !out[`mark:${l.mark}`]) { out[`mark:${l.mark}`] = `data:image/svg+xml;base64,${Buffer.from(logoSvg(l.mark === 'cue' ? 'mark' : l.mark)).toString('base64')}`; out[`mark:${l.mark}:light`] = `data:image/svg+xml;base64,${Buffer.from(logoSvg(l.mark === 'cue' ? 'mark' : l.mark, { fill: '#ffffff' })).toString('base64')}`; }
     if (l.art && !out[`art:${l.art}`]) { const png = (await pool.query('select png from lab_art where id=$1', [l.art]).catch(() => ({ rows: [] }))).rows[0]?.png; if (png) out[`art:${l.art}`] = `data:image/png;base64,${Buffer.from(png).toString('base64')}`; } } return out; };
   const looksOf = L => { const m = partLooks(L.c.spec?.materials); return { colours: { ...(L.spec?.colours || {}), ...m.colours }, tex: m.tex }; };
-  const patternOf = (L, size) => applyEdits(draft(L, size), L.spec.edits);
+  // the pattern as it is cut: as drafted, with its hand edits, and allowing for what the samples in its fabric taught (the check reads it as drafted)
+  const allowOf = L => (L.learned && L.learned.scope !== 'waiting' && L.spec?.learn !== false ? L.learned : null);
+  const patternOf = (L, size) => allowPattern(applyEdits(draft(L, size), L.spec.edits), allowOf(L));
+  const learnedView = L => (L.learned ? { ...L.learned, on: L.spec?.learn !== false && L.learned.scope !== 'waiting' } : null);
   // does the pattern make the product? (src/lab-pattern-check.js) Run every time a garment or a bag's pattern is drafted for the page, saved or
   // exported: its seams walked, the made piece measured against its spec, every component its features call for, every outline clean, and the
   // same at each size of its run. Pieces edited by hand on the Pattern page are not walked (the check reads the pattern as drafted), so it says so.
@@ -148,7 +155,7 @@ export function registerLabPatternRoutes(app, d) {
     const pat = patternOf(L, L.flat?.size), check = checkOf(L, pat), extra = pat ? { ...(check ? { check } : {}), yardage: yardage(pat, Number(L.spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat) } : {}), ...(pat.kind === 'footwear' ? footExtra(L.spec, pat) : {}) } : {};
     const hasImage = L.kind === 'footwear' || L.kind === 'plush' ? Boolean((await pool.query('select image is not null h from lab_concepts where id=$1', [L.c.id])).rows[0]?.h) : false;
     const materials = (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.part); // what goes on the product's parts, drawn on its flats
-    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage, productId: L.c.product_id || null }, marks: L.kind === 'plush' || L.kind === 'footwear' ? Object.fromEntries(Object.keys(MARKS).flatMap(k => [[k, logoSvg(k === 'cue' ? 'mark' : k)], [`${k}:light`, logoSvg(k === 'cue' ? 'mark' : k, { fill: '#ffffff' })]])) : undefined, colourways: (Array.isArray(L.c.spec?.colourways) ? L.c.spec.colourways : []).filter(c => /^#[0-9a-f]{6}$/i.test(String(c?.hex || ''))).slice(0, 8).map(c => ({ name: clip(c.name, 60), hex: String(c.hex).toLowerCase() })), materials, allMaterials: (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.kind === 'fabric' && !p.part), parts: partsFor(L.c.category), kind: L.kind, ...(L.kind === 'none' && notSewn(L.flat?.style) ? { why: notSewn(L.flat.style) } : {}), flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, coloursFrom: L.coloursFrom || null, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
+    return { concept: { id: L.c.id, name: L.c.name, category: L.c.category, status: L.c.status, hasImage, productId: L.c.product_id || null }, learned: learnedView(L), marks: L.kind === 'plush' || L.kind === 'footwear' ? Object.fromEntries(Object.keys(MARKS).flatMap(k => [[k, logoSvg(k === 'cue' ? 'mark' : k)], [`${k}:light`, logoSvg(k === 'cue' ? 'mark' : k, { fill: '#ffffff' })]])) : undefined, colourways: (Array.isArray(L.c.spec?.colourways) ? L.c.spec.colourways : []).filter(c => /^#[0-9a-f]{6}$/i.test(String(c?.hex || ''))).slice(0, 8).map(c => ({ name: clip(c.name, 60), hex: String(c.hex).toLowerCase() })), materials, allMaterials: (Array.isArray(L.c.spec?.materials) ? L.c.spec.materials : []).filter(p => p.kind === 'fabric' && !p.part), parts: partsFor(L.c.category), kind: L.kind, ...(L.kind === 'none' && notSewn(L.flat?.style) ? { why: notSewn(L.flat.style) } : {}), flat: L.flat, flatSaved: L.savedFlat, spec: L.spec, saved: L.saved, updatedAt: L.updatedAt, coloursFrom: L.coloursFrom || null, options, ...(L.kind === 'soon' ? { soon: SOON[L.c.category] } : {}), ...extra };
   });
   app.put('/v1/lab/concepts/:id/pattern', { preHandler: pre, bodyLimit: 4_000_000 }, async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);
@@ -156,7 +163,7 @@ export function registerLabPatternRoutes(app, d) {
     const spec = await save(L, req.body?.spec, actorOf(req));
     const pat = patternOf({ ...L, spec }, L.flat?.size);
     const check = checkOf({ ...L, spec }, pat);
-    return { ok: true, spec, ...(check ? { check } : {}), yardage: yardage(pat, Number(spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat), checks: pat.checks } : {}), ...(pat.kind === 'footwear' ? footExtra(spec, pat) : {}) };
+    return { ok: true, spec, learned: learnedView({ ...L, spec }), ...(check ? { check } : {}), yardage: yardage(pat, Number(spec.width) || 58), ...(pat.kind === 'plush' ? { fillGrams: fillGrams(pat), checks: pat.checks } : {}), ...(pat.kind === 'footwear' ? footExtra(spec, pat) : {}) };
   });
   const file = ext => async (req, reply) => {
     const L = await load(req.params.id); if (!L) return bad(reply, 'Not found', 404);

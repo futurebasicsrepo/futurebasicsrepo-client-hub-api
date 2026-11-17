@@ -378,15 +378,16 @@ export function registerLabConceptRoutes(app, d) {
     if (r.status !== 'approved') return bad(reply, 'Approve the concept first', 409);
     if (r.closeness?.verdict === 'too_close' && clip(r.override_reason, 400).length < 10) return bad(reply, 'The check says this is too close to what inspired it, and no reason was written down. Reopen it and approve it again.', 409);
     if (!createProduct) return bad(reply, 'Tech packs cannot be started from here on this service', 501);
-    // a concept from a client's line becomes a tech pack in the client's own room; our own line's go to the Future Basics room
-    const lp = r.plan_id ? (await pool.query('select client_id, brand from lab_plans where id=$1', [r.plan_id])).rows[0] : null, forClient = lp?.client_id || null;
+    // a concept from a client's line, or a client's own piece on no line (from the recipe menu, a sketch), becomes a tech pack in the client's own
+    // room; our own line's go to the Future Basics room
+    const lp = r.plan_id ? (await pool.query('select client_id, brand from lab_plans where id=$1', [r.plan_id])).rows[0] : null, forClient = lp?.client_id || r.client_id || null; // a room's own piece off any line plan is the room's too
     const room = (await pool.query(forClient ? `select id from clients where id=$1 and archived_at is null` : `select id from clients where slug='future-basics' and status='active'`, forClient ? [forClient] : [])).rows[0];
     if (!room) return bad(reply, forClient ? 'The client this line is for has no active room' : 'The Future Basics room is not active', 409);
     // claim it first, so two clicks make one product; give the claim back if the product cannot be made
     const claimed = await pool.query(`update lab_concepts set status='tech_pack', updated_at=now() where id=$1 and product_id is null and status='approved' returning id`, [r.id]);
     if (!claimed.rowCount) return bad(reply, 'This concept already has a tech pack', 409);
     const photo = (await pool.query('select image from lab_concepts where id=$1', [r.id])).rows[0]?.image;
-    let product; try { product = await createProduct({ clientId: room.id, title: r.name, descriptionHtml: productBrief({ name: r.name, category: r.category, programName: r.program_name, spec: r.spec, twist: r.twist, priceCents: r.price_cents, costCents: r.cost_cents, qty: r.qty }, { name: r.plan_name, season: r.season }), vendor: (forClient && lp.brand?.name) || 'Future Basics', productType: PRODUCT_TYPES[r.category] || null, referencePhotos: photo ? [dataUrl(photo)] : [], actorId: actorOf(req) }); }
+    let product; try { product = await createProduct({ clientId: room.id, title: r.name, descriptionHtml: productBrief({ name: r.name, category: r.category, programName: r.program_name, spec: r.spec, twist: r.twist, priceCents: r.price_cents, costCents: r.cost_cents, qty: r.qty }, { name: r.plan_name, season: r.season }), vendor: (forClient && lp?.brand?.name) || 'Future Basics', productType: PRODUCT_TYPES[r.category] || null, referencePhotos: photo ? [dataUrl(photo)] : [], actorId: actorOf(req) }); }
     catch (e) { await pool.query(`update lab_concepts set status='approved' where id=$1 and product_id is null`, [r.id]); return bad(reply, `The product could not be made: ${clip(e.message, 200)}`, 502); }
     await pool.query(`update lab_concepts set product_id=$2, updated_at=now() where id=$1`, [r.id, product.id]);
     let art = 0; if (attachArtwork) { try { art = await attachArtwork(product.id, (await artworkFiles({ category: r.category, spec: r.spec }, { arts: await artsFor(r.spec) })).filter(a => !forClient || !/^Future Basics /.test(a.name))); } catch (e) { log.warn?.({ err: e.message }, 'design lab artwork not attached'); } }

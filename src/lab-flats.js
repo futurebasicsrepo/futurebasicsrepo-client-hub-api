@@ -565,9 +565,9 @@ function describeAt(q, p) {
   return `${fmtCm(top)} below the top edge, ${across ? 'centred' : `centre ${fmtCm(q.x)} off centre`}`;
 }
 // the checks that need only the drawing: on the piece, clear of seams, ribs, zips and pockets, inside what the technique can make
-export function placementChecks(q, p, rules = {}) {
+export function placementChecks(q, p, rules = {}, g = geometry(p, q.view)) { // g: the view's geometry, when the caller has it already (fixPlacement tries many spots)
   // a product type's print area ends at an edge, not a seam: artwork keeps an eighth inside it (a garment keeps the room a hoop or a pallet needs)
-  const goods = STYLES[p.style].kind === 'goods', g = geometry(p, q.view), box = corners(q), out = [], reg = regionOf(q, g), clear = goods ? Math.min(rules.minClear ?? .75, .125) : rules.minClear ?? .75;
+  const goods = STYLES[p.style].kind === 'goods', box = corners(q), out = [], reg = regionOf(q, g), clear = goods ? Math.min(rules.minClear ?? .75, .125) : rules.minClear ?? .75;
   // a technique made on something else (embroidery on a mug, a pad print on a towel) cannot make it, wherever it is put
   // (rules.madeOn: what the chosen technique is made on, given when it is one from the library)
   if (Array.isArray(rules.madeOn) && !techniqueFits({ surfaces: rules.madeOn }, p.style)) out.push({ level: 'fail', code: 'TECHNIQUE', text: `${q.name} is set to ${rules.techniqueName || 'a technique'}, which is not made on ${/^[aeiou]/i.test(STYLES[p.style].label) ? 'an' : 'a'} ${STYLES[p.style].label.toLowerCase()}. Choose a technique from its list.` });
@@ -580,6 +580,53 @@ export function placementChecks(q, p, rules = {}) {
   if (rules.maxH && q.h > rules.maxH + 1e-6) out.push({ level: 'fail', code: 'TOO_TALL', text: `${q.name} is ${fmt(q.h)} tall; ${rules.techniqueName || 'this technique'} goes up to ${fmt(rules.maxH)}.` });
   if (STYLES[p.style].kind === 'cap' && q.view === 'front' && (q.w > 4.75 || q.h > 2.5)) out.push({ level: 'warn', code: 'CAP_SIZE', text: `A cap front takes up to about 4¾ in × 2½ in; ${q.name} is ${fmt(q.w)} × ${fmt(q.h)}.` });
   return out;
+}
+// ---- one tap to fix what the check found ----
+// What each finding's button says. A designer who is not a pattern maker reads "The logo sits over the side seam" and wants it moved, not
+// told how far: the button moves it (or sizes it, or picks a technique that can make it) the least it takes, and the change can be undone.
+export const FIX_LABEL = { OFF_PIECE: 'Move it onto the piece', OVER_EDGE: 'Fit it in', NEAR_SEAM: 'Move it clear', OVERLAP: 'Move it clear', TOO_WIDE: 'Make it fit', TOO_TALL: 'Make it fit',
+  CAP_SIZE: 'Make it fit', TECHNIQUE: 'Use one that fits', TINY: 'Make it bigger', FINE_DETAIL: 'Make it bigger' };
+export const fixLabel = f => FIX_LABEL[f?.code] || (/^KEEPOUT_/.test(f?.code || '') ? 'Move it clear' : null);
+const FIX_OFFSETS = new Map(), fixOffsets = reach => { if (!FIX_OFFSETS.has(reach)) { const o = []; for (let x = -reach; x <= reach + 1e-9; x += .125) for (let y = -reach; y <= reach + 1e-9; y += .125) { const d = Math.hypot(x, y); if (d <= reach + 1e-9 && (d <= 3 || (Math.abs(x * 4 - Math.round(x * 4)) < 1e-9 && Math.abs(y * 4 - Math.round(y * 4)) < 1e-9))) o.push([x, y, d]); }
+  o.sort((a, b) => a[2] - b[2] || Math.abs(a[0]) - Math.abs(b[0]) || a[1] - b[1]); FIX_OFFSETS.set(reach, o); } return FIX_OFFSETS.get(reach); };
+const FIX_REACH = { OFF_PIECE: 14 }, FIX_SCALES = [1, .95, .9, .85, .8, .75, .7, .65, .6, .55, .5];
+// → { set: { x, y, w, h } | { techniqueId, technique }, words } or null when nothing nearby fixes it (the designer is told to choose)
+// q: the placement; finding: one of its findings ({ code, grow? }); rules: its technique's rules (as placementChecks takes them);
+// others: the other placements on the piece (a fix does not land on one); techniques: [{ id, name, base, madeOn }] for a TECHNIQUE fix
+export function fixPlacement(q, p, finding, { rules = {}, others = [], techniques = [] } = {}) {
+  const code = finding?.code; if (!code || !fixLabel(finding)) return null;
+  if (code === 'TECHNIQUE') { const t = techniques.find(x => techniqueFits({ surfaces: x.madeOn }, p.style)); return t ? { set: { techniqueId: t.id, technique: t.base }, words: `${q.name} is made as ${t.name} now.` } : null; }
+  const g = geometry(p, q.view), same = others.filter(o => o.id !== q.id && o.view === q.view);
+  const all = c => [...placementChecks(c, p, rules, g).filter(x => x.code !== 'TECHNIQUE'), ...same.filter(o => boxesMeet(c, o)).map(() => ({ level: 'warn', code: 'OVERLAP' }))];
+  const count = (f, lv) => f.filter(x => x.level === lv).length, was = all(q), mine = was.filter(x => x.code === code);
+  const roomF = count(was, 'fail') - count(mine, 'fail'), roomW = count(was, 'warn') - count(mine, 'warn');
+  // a spot fixes it when the finding is gone and nothing else got worse: no more failures, no more warnings, than were left beside it
+  const fixes = c => { const f = all(c); return !f.some(x => x.code === code) && count(f, 'fail') <= Math.max(0, roomF) && count(f, 'warn') <= Math.max(0, roomW); };
+  // its size: as it is, else smaller (an edge, a seam, a technique's limit), else bigger (too small to read, detail too fine to hold)
+  const maxW = rules.maxW || Infinity, maxH = rules.maxH || Infinity, cap = STYLES[p.style].kind === 'cap' && q.view === 'front' ? Math.min(4.75 / q.w, 2.5 / q.h) : Infinity;
+  const fitK = Math.min(1, maxW / q.w, maxH / q.h, cap);
+  const grow = code === 'TINY' ? Math.max(.75 / q.w, .3 / q.h) : code === 'FINE_DETAIL' && finding.grow > q.w ? finding.grow / q.w : 0;
+  const scales = grow ? [Math.min(grow, maxW / q.w, maxH / q.h)].filter(k => k > 1) : ['TOO_WIDE', 'TOO_TALL', 'CAP_SIZE'].includes(code) ? [fitK] : FIX_SCALES.map(k => Math.min(k, fitK));
+  const reach = FIX_REACH[code] || 8, home = regionOf(q, g);
+  for (const k of [...new Set(scales)]) {
+    const w = r8(q.w * k), h = r8(q.h * k); if (w < .25 || h < .25) continue;
+    // the nearest spot first (an eighth of an inch apart close by, a quarter further out); a graphic on the body stays on the body
+    // off the piece altogether: from where it is, else from the nearest spot inside each part of the piece (its own height kept where it can be)
+    const from = [[q.x, q.y], ...(code === 'OFF_PIECE' ? Object.values(g.regions).filter(r => r.length).map(r => { const b = bounds(r); const cl = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi)); return [r8(cl(q.x, b.x0 + q.w / 2, b.x1 - q.w / 2)), r8(cl(q.y, b.y0 + q.h / 2, b.y1 - q.h / 2))]; }).sort((a, b) => Math.hypot(a[0] - q.x, a[1] - q.y) - Math.hypot(b[0] - q.x, b[1] - q.y)) : [])];
+    for (const [ox, oy] of from) for (const [dx, dy] of fixOffsets(ox === q.x && oy === q.y ? reach : 6)) {
+      const c = { ...q, x: r8(ox + dx), y: r8(oy + dy), w, h };
+      if (home && code !== 'OFF_PIECE' && regionOf(c, g) !== home) continue;
+      if (fixes(c)) return { set: { x: c.x, y: c.y, w, h }, words: fixWords(q, c) };
+    }
+  }
+  return null;
+}
+function fixWords(q, c) {
+  const dx = c.x - q.x, dy = c.y - q.y, out = [];
+  if (c.w !== q.w) out.push(`${c.w < q.w ? 'made smaller' : 'made bigger'}, to ${fmt(c.w)} × ${fmt(c.h)}`);
+  const mv = [Math.abs(dy) > 1e-6 ? `${fmt(Math.abs(dy))} ${dy > 0 ? 'down' : 'up'}` : '', Math.abs(dx) > 1e-6 ? `${fmt(Math.abs(dx))} ${(dx > 0) === (q.view !== 'back') ? "toward the wearer's left" : "toward the wearer's right"}` : ''].filter(Boolean);
+  if (mv.length) out.push(`moved ${mv.join(' and ')}`);
+  return `${q.name} ${out.join(' and ') || 'stays where it is'}.`;
 }
 // two things placed on top of each other on the same side
 export const boxesMeet = (a, b) => a.view === b.view && Math.abs(a.x - b.x) * 2 < a.w + b.w && Math.abs(a.y - b.y) * 2 < a.h + b.h;

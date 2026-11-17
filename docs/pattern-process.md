@@ -126,6 +126,17 @@ A new kind of garment, a new pocket or collar, or a new add-on is not done until
 6. **Prove it.** Run `npm run pattern:proof`, then open the cards for the styles it touches. Look at the cutting table as well as the numbers.
 7. **Document it** in `docs/design-lab.md`. Update `src/platform-map.js` if a file, route or flow step changed, and the video brief if a client-visible tool changed (see `CLAUDE.md`).
 
+## What the samples teach the pattern
+
+Every sample that comes back is measured point by point against its spec on the sample review form. `src/lab-sample-learn.js` reads those measurements and learns how each fabric behaves:
+
+- **What it reads.** Every review handed over or applied from the sample form, read against the pack version the sample was made to. Reviews typed straight into a pack's sampling table count too, once each. Points of measure are split by the way they run on the cloth: lengths (body, sleeve, inseam, rise) and widths (chest, waist, hip, sweep, thigh, openings). Ribs, bands, collars, plackets, pockets, zips and anything under 3 in are left out. A point more than 15% off its spec is taken as a typing slip or a mis-made sample, not shrinkage.
+- **How it groups them.** By the main fabric (its library code, else its name, from the pack's BOM or the concept's materials). Samples in the same fabric *and* style come first. Every sample in the fabric is the fallback.
+- **When it acts.** Two or more samples, at least three in four running the same way, by 1% or more. It never allows more than 8% either way. A sample cut with an allowance already in it is read back to what the fabric did, so the allowance does not chase itself.
+- **What it changes.** Only what is cut. The main-fabric pieces are scaled about their own middle, along the grain by the length allowance and across it by the width allowance. Linings, ribs, trims, components and pieces edited by hand are left alone. The Pattern page draws the cut pieces, and the downloads (SVG, DXF, AAMA) and yardage use them. The tech pack gets a **Pattern allowance** construction line saying what was cut and why.
+- **What it never changes.** The spec, the tolerances and the construction check. The check measures the pattern as drafted against the spec, so a fabric that runs short can never be used to excuse a pattern that is drafted short.
+- **Turning it off.** The **Learned from samples** box on the Pattern page has a switch. It is saved with the pattern (`lab_patterns.spec.learn = false`), and the tech pack then carries no allowance line.
+
 ## Other kinds of product
 
 The construction check covers garments, bags, caps, bucket hats, beanies and totes, and plush: built from parts (`src/lab-plush-parts.js`) and on the seven fixed body types. The other kinds are drafted and checked their own way. Each is reached from the same Pattern or Engineering page and lands in the same factory package.

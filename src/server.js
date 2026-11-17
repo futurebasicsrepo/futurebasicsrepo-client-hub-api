@@ -85,6 +85,7 @@ import { createLabAccess } from './lab-access.js';
 import { registerLabSelfServeRoutes } from './lab-selfserve-routes.js';
 import { registerRoomTeamRoutes } from './room-team-routes.js';
 import { registerSampleFormRoutes } from './sample-form-routes.js';
+import { registerMcpRoutes } from './mcp-routes.js';
 import { registerTeamChatRoutes } from './team-chat-routes.js';
 import { registerWorkspaceRoutes } from './workspace-routes.js';
 import { registerOrderQuoteRoutes } from './order-quote-routes.js';
@@ -820,6 +821,8 @@ registerLabTripRoutes(app, { pool, authenticate, adminOnly }); // staff only (no
 registerLabClientRoutes(app, { pool, authenticate, adminOnly, log: app.log, sheetSvg: id => labFlats.sheetSvg(id), notifyStaff, notifyClientContact, hubUrl: () => clientHubUrl, learn: learnLabTaste });
 registerRoomTeamRoutes(app, { pool, authenticate, clientHubUrl, sendHubEmail, hubEmailShell, emailEscape, replyTo: intakeNotificationEmail, forgetUser, log: app.log });
 registerSampleFormRoutes(app, { pool, authenticate, normalizeTechPack, notifyStaff, emailEscape, hubButton, workHubUrl, log: app.log });
+// the Design Lab connector (src/mcp-routes.js): a room's own AI tool designs through the same routes and gate as the pages, on an AI access key
+registerMcpRoutes(app, { pool, secret, authenticate, hubUrl: () => clientHubUrl, log: app.log });
 // live nudges for open pages (src/live.js): team chat hears a new message at once
 const live = createLive({ pool, log: app.log });
 app.addHook('onClose', async () => { await live.close(); });
@@ -937,6 +940,7 @@ app.get('/lab/lab-plush-parts.js', (_req, reply) => reply.header('cache-control'
 app.get('/lab/lab-last-shell.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-last-shell.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-pattern.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-pattern.js', import.meta.url), 'utf8')));
 app.get('/lab/lab-construction.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-construction.js', import.meta.url), 'utf8'))); // how a garment is built: read by the pattern in the browser
+app.get('/lab/lab-sample-learn.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-sample-learn.js', import.meta.url), 'utf8'))); // what the samples taught: the Pattern page cuts its pieces with it
 app.get('/lab/lab-template-construction.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-template-construction.js', import.meta.url), 'utf8'))); // how a garment is built: read by the pattern in the browser
 app.get('/lab/lab-template-proportions.js', (_req, reply) => reply.header('cache-control', 'no-cache').type('application/javascript; charset=utf-8').send(readFileSync(new URL('./lab-template-proportions.js', import.meta.url), 'utf8'))); // each top's widths and sleeve traced off its sketch: read by the flats in the browser
 // the engineering page (hard goods and electronics) runs inside Design in the same frame as the pattern; its engineering is shared (src/lab-assembly.js)

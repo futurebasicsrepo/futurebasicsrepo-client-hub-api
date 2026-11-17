@@ -2617,6 +2617,22 @@ export async function migrate() {
     alter table tech_packs add column if not exists updated_by uuid references users(id) on delete set null;
     create unique index if not exists sample_reviews_live_idx on sample_reviews(tech_pack_id,stage) where status<>'applied';
     create index if not exists sample_reviews_product_idx on sample_reviews(product_id,updated_at desc);
+    -- AI access keys (src/mcp-routes.js): a room's key for its own AI tool (Claude Code, Claude Desktop, Cursor…) to use the Design Lab through the
+    -- connector at /mcp. Only a hash is kept (the key is shown once); every call runs as the person who made it, inside their room, through
+    -- the same routes and the same Lab gate as the pages.
+    create table if not exists ai_keys (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      user_id uuid not null references users(id) on delete cascade,
+      name text not null default '',
+      prefix text not null,
+      hash text not null unique,
+      calls integer not null default 0,
+      created_at timestamptz not null default now(),
+      last_used_at timestamptz,
+      revoked_at timestamptz
+    );
+    create index if not exists ai_keys_client_idx on ai_keys(client_id,created_at desc);
     -- Team chat inside a room (src/team-chat-routes.js): channels for the room's team; Future Basics reads and writes only in channels the team
     -- brought it into (staff_in), by adding it or by mentioning @futurebasics.
     create table if not exists team_channels (
