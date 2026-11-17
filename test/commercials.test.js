@@ -111,3 +111,19 @@ test('mixed currencies are detectable so the endpoint can refuse them', () => {
   const currencies = [...new Set(eurProducts.map(p => latestProductQuote(p.id, eurQuotes)?.currency).filter(Boolean))];
   assert.deepEqual(currencies.sort(), ['EUR', 'USD']);
 });
+
+test('the invoice stage: a comped setup or freight stays on the invoice at $0, and a discount comes off the order', () => {
+  const full = draftOrderLinesForProducts(products, quotes, 'USD');
+  const p = full.summary[0], setup = p.setupCents, freight = p.freightCents;
+  const adj = draftOrderLinesForProducts(products, quotes, 'USD', { comp: [`${p.productId}:setup`, `${p.productId}:freight`, 'p-nope:setup'], discount: { label: 'Launch discount', cents: 10000 } });
+  assert.equal(adj.lineItems.length, full.lineItems.length, 'comped lines are kept, not dropped');
+  const titled = t => adj.lineItems.find(l => l.title === t);
+  assert.equal(titled(`Setup — ${p.title} (comped)`).originalUnitPriceWithCurrency.amount, '0.00');
+  assert.equal(titled(`Freight — ${p.title} (comped)`).originalUnitPriceWithCurrency.amount, '0.00');
+  assert.equal(adj.summary[0].setupComped, true); assert.equal(adj.summary[0].lineTotalCents, p.lineTotalCents - setup - freight);
+  assert.equal(adj.amountCents, full.amountCents - setup - freight - 10000);
+  assert.deepEqual(adj.appliedDiscount, { title: 'Launch discount', description: 'Launch discount', value: 100, valueType: 'FIXED_AMOUNT' });
+  const huge = draftOrderLinesForProducts(products, quotes, 'USD', { discount: { cents: 99999999 } });
+  assert.equal(huge.amountCents, 0, 'a discount never takes the order below nothing'); assert.equal(huge.discount.label, 'Discount');
+  assert.equal(draftOrderLinesForProducts(products, quotes, 'USD').appliedDiscount, null);
+});

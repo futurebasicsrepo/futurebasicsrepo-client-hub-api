@@ -95,6 +95,14 @@ export const DRAFT_ORDER_CREATE = `mutation CreateClientDraftOrder($input: Draft
   }
 }`;
 
+// the same draft order with new lines or a discount: its number and the client's payment link stay
+export const DRAFT_ORDER_UPDATE = `mutation UpdateClientDraftOrder($id: ID!, $input: DraftOrderInput!) {
+  draftOrderUpdate(id: $id, input: $input) {
+    draftOrder { id name invoiceUrl status totalPriceSet { shopMoney { amount currencyCode } } }
+    userErrors { field message }
+  }
+}`;
+
 export const DRAFT_INVOICE_SEND = `mutation SendClientDraftInvoice($id: ID!, $email: EmailInput) {
   draftOrderInvoiceSend(id: $id, email: $email) {
     draftOrder { id name invoiceUrl status }

@@ -1841,6 +1841,9 @@ app.put('/v1/admin/products/:id/configuration',{preHandler:[authenticate,adminOn
     [product.id,supplierId||null,blankName||null,material||null,construction||null,decorationMethod||null,decorationLocations,
       artworkWidthIn||null,artworkHeightIn||null,colorways,sizes,JSON.stringify(variantPlan),packaging||null,fulfillment||null,moq||null,
       sampleRequired!==false,leadTimeDays||null,notes||null,status])).rows[0];
+  // the sampling fee (cents): quoted once with the product while a sample is required; left as it was when the form does not send it
+  const fee=req.body?.sampleFeeCents;if(fee!==undefined){const n=Math.round(Number(fee));if(!Number.isFinite(n)||n<0||n>10000000)return reply.code(400).send({error:'The sampling fee must be an amount of $0 or more'});
+    Object.assign(config,(await pool.query('update product_configurations set sample_fee_cents=$2 where product_id=$1 returning sample_fee_cents',[product.id,n])).rows[0]||{})}
   await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,product.id,req.auth.sub,'configuration',`Updated production configuration · ${status}`]);
   return config;
 });
@@ -2261,9 +2264,10 @@ app.post('/v1/admin/projects/:id/invoice-preview',{preHandler:[authenticate,admi
   if(ctx.error)return reply.code(ctx.code).send({error:ctx.error});
   if(!ctx.products.length)return reply.code(400).send({error:'None of those products belong to this project'});
   if(ctx.currencies.length>1)return reply.code(400).send({error:`Selected products are quoted in different currencies (${ctx.currencies.join(', ')}). Invoice them separately.`});
-  const {summary,skipped,amountCents}=draftOrderLinesForProducts(ctx.products,ctx.quotes,ctx.currency);
+  // the invoice stage: setup or freight comped (kept on the invoice at $0) and a discount (src/commercials.js)
+  const {summary,skipped,amountCents,discount}=draftOrderLinesForProducts(ctx.products,ctx.quotes,ctx.currency,{comp:req.body?.comp,discount:req.body?.discount});
   return {projectId:ctx.project.id,projectName:ctx.project.name,clientName:ctx.project.client_name,
-    hasCustomer:Boolean(ctx.project.shopify_customer_id),currency:ctx.currency,amountCents,
+    hasCustomer:Boolean(ctx.project.shopify_customer_id),currency:ctx.currency,amountCents,discount,
     productCount:summary.length,lineItems:summary,skipped,
     estimatedCount:summary.filter(l=>l.estimated).length,noVariantCount:summary.filter(l=>!l.hasVariant).length};
 });
@@ -2275,9 +2279,9 @@ app.post('/v1/admin/projects/:id/draft-invoice',{preHandler:[authenticate,adminO
   if(!ctx.products.length)return reply.code(400).send({error:'None of those products belong to this project'});
   if(ctx.project.archived_at||['archive','archived'].includes(ctx.project.status))return reply.code(409).send({error:'Restore this project before invoicing it'});
   if(ctx.currencies.length>1)return reply.code(400).send({error:`Selected products are quoted in different currencies (${ctx.currencies.join(', ')}). Invoice them separately.`});
-  const {lineItems,summary,skipped,amountCents}=draftOrderLinesForProducts(ctx.products,ctx.quotes,ctx.currency);
+  const {lineItems,summary,skipped,amountCents,discount,appliedDiscount}=draftOrderLinesForProducts(ctx.products,ctx.quotes,ctx.currency,{comp:req.body?.comp,discount:req.body?.discount});
   if(!lineItems.length)return reply.code(400).send({error:'None of the selected products have units and a wholesale price yet'});
-  const input={lineItems,customerId:ctx.project.shopify_customer_id||undefined,
+  const input={lineItems,...(appliedDiscount?{appliedDiscount}:{}),customerId:ctx.project.shopify_customer_id||undefined,
     note:req.body?.note||`Future Basics — ${ctx.project.name} combined invoice`,
     tags:['future-basics-client-hub','fb-project-invoice',`client-${String(ctx.project.client_slug||ctx.project.client_name).toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
   const result=requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE,{input})).draftOrderCreate),draft=result.draftOrder;
@@ -2287,7 +2291,8 @@ app.post('/v1/admin/projects/:id/draft-invoice',{preHandler:[authenticate,adminO
       status='draft',external_url=excluded.external_url,shopify_draft_order_id=excluded.shopify_draft_order_id,
       shopify_draft_order_status=excluded.shopify_draft_order_status,product_ids=excluded.product_ids returning *`,
     [ctx.project.client_id,ctx.project.id,draft.name,amountCents,ctx.currency,draft.invoiceUrl,draft.id,draft.status,ctx.products.filter(p=>summary.some(s=>s.productId===p.id)).map(p=>p.id)])).rows[0];
-  await pool.query('insert into activities(client_id,actor_id,type,summary) values($1,$2,$3,$4)',[ctx.project.client_id,req.auth.sub,'commerce',`Created combined draft invoice ${draft.name} · ${summary.length} product${summary.length===1?'':'s'}`]);
+  const comped=summary.flatMap(l=>[l.setupComped?`setup on ${l.title}`:'',l.freightComped?`freight on ${l.title}`:''].filter(Boolean));
+  await pool.query('insert into activities(client_id,actor_id,type,summary) values($1,$2,$3,$4)',[ctx.project.client_id,req.auth.sub,'commerce',`Created combined draft invoice ${draft.name} · ${summary.length} product${summary.length===1?'':'s'}${comped.length?` · comped ${comped.join(', ')}`:''}${discount?` · ${discount.label} −$${(discount.cents/100).toFixed(2)}`:''}`]);
   return reply.code(201).send({invoice,draftOrder:{id:draft.id,name:draft.name,status:draft.status,invoiceUrl:draft.invoiceUrl},
     lineItems:summary,skipped,amountCents,currency:ctx.currency});
 });

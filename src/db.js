@@ -905,6 +905,8 @@ export async function migrate() {
       status text not null default 'draft',
       updated_at timestamptz not null default now()
     );
+    -- what a sample of the product costs the client (the sampling fee): quoted once with the product while a sample is required (src/order-quote-routes.js)
+    alter table product_configurations add column if not exists sample_fee_cents integer not null default 0;
     create table if not exists price_tiers (
       id uuid primary key default gen_random_uuid(),
       product_id uuid not null references products(id) on delete cascade,
@@ -2033,6 +2035,8 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    -- the invoice an accepted quote becomes: other lines comped ({comped: [their place]}) and a discount ({discount: {label, cents}}) (src/order-quotes.js invoiceOf)
+    alter table order_quotes add column if not exists invoice_adjust jsonb;
     create index if not exists order_quotes_client_idx on order_quotes (client_id, created_at desc);
     -- price ladders: a set of quantity price tiers saved once (a tee at 50/100/250/500, say) and put on any product (src/product-sheet-routes.js)
     create table if not exists price_ladders (

@@ -23,6 +23,19 @@ const SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'
 export const sizeRank = k => { const i = SIZE_ORDER.indexOf(normSize(k)); return i < 0 ? 99 : i; };
 export const sizesWords = sizes => Object.entries(sizes || {}).filter(([, n]) => Number(n) > 0).sort((a, b) => sizeRank(a[0]) - sizeRank(b[0])).map(([k, n]) => `${n} ${k}`).join(', ');
 
+// The fees a product carries besides its price per piece, as the quote builder adds them (one line each, beside the product's own tier's setup
+// and freight): its sampling fee while a sample is required, the setup of each decoration designed for it in the Lab (screens, digitising,
+// a mould: the estimate, or the supplier's when calibrated), and the tooling and freight of its last one-product quote, used when its tiers
+// carry none. → { sampleCents, toolingCents, freightCents, decorations: [{ id, label, cents }] }
+export function productFees(p) {
+  const n = v => { const x = Math.round(Number(v)); return Number.isFinite(x) && x > 0 ? x : 0; };
+  const decorations = (Array.isArray(p?.decorations) ? p.decorations : []).filter(d => d && !d.unpriced && n(d.setupCents) > 0)
+    .map((d, i) => ({ id: String(d.id || `d${i}`).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || `d${i}`, label: clean(`${d.name || 'Decoration'}${d.technique ? ` (${d.technique})` : ''}`).slice(0, 50), cents: n(d.setupCents) }));
+  return { sampleCents: p?.sample_required === false ? 0 : n(p?.sample_fee_cents), toolingCents: n(p?.legacy?.tooling), freightCents: n(p?.legacy?.freight), decorations };
+}
+// which of a quote's other lines the builder keeps in step with a product (its tier's setup and freight, its sampling, a decoration's setup)
+export const AUTO_FEE = /^[0-9a-f-]{36}:(setup_cents|freight_cents|sample|decor:[A-Za-z0-9_-]{1,40})$/;
+
 // The tier a quantity falls in (the highest minimum at or under it; below every minimum, the smallest tier with a warning)
 export function tierFor(tiers, qty) {
   const list = [...(tiers || [])].sort((a, b) => (a.min_quantity ?? a.minQuantity) - (b.min_quantity ?? b.minQuantity)); if (!list.length) return null;
@@ -64,7 +77,7 @@ export function cleanQuote(input = {}, products = []) {
     if (Object.keys(sizes).length && sizesTotal(sizes) !== quantity) errors.push(`${p.title}: the sizes add up to ${sizesTotal(sizes)}, not ${quantity}`);
     lines.push({ productId: p.id, title: clean(l.title) || p.title, quantity, sizes, unitCents: unit, totalCents: unit * quantity, unitCostCents: cents(l.unitCostCents), tierId: l.tierId || null, note: clean(l.note).slice(0, 300) });
   }
-  const extras = (Array.isArray(input.extras) ? input.extras : []).map(x => ({ label: clean(x.label).slice(0, 80), cents: cents(x.cents) })).filter(x => x.label && x.cents > 0);
+  const extras = (Array.isArray(input.extras) ? input.extras : []).map(x => ({ label: clean(x.label).slice(0, 80), cents: cents(x.cents), ...(AUTO_FEE.test(String(x.auto || '')) ? { auto: String(x.auto) } : {}) })).filter(x => x.label && x.cents > 0); // auto: a fee the builder keeps in step with its product (productFees)
   if (!lines.length && !errors.length) errors.push('Pick at least one product');
   const subtotal = lines.reduce((a, l) => a + l.totalCents, 0), extrasCents = extras.reduce((a, x) => a + x.cents, 0);
   const cost = lines.every(l => l.unitCostCents != null) ? lines.reduce((a, l) => a + l.unitCostCents * l.quantity, 0) : null;
@@ -72,8 +85,31 @@ export function cleanQuote(input = {}, products = []) {
   return errors.length ? { error: errors[0], errors } : { value: { lines, extras, subtotalCents: subtotal, totalCents: subtotal + extrasCents, costCents: cost, marginPct: cost != null && subtotal ? Math.round((subtotal - cost) / subtotal * 1000) / 10 : null, notes: clean(input.notes).slice(0, 2000), validUntil } };
 }
 
+// The invoice an accepted quote becomes: its products and other lines as quoted, less what Future Basics comps (an other line struck off: it
+// stays on the invoice at $0, marked comped, so the client sees what was given) and a discount line. Quoted prices never change; only the
+// invoice does. → { extras: [{ label, cents, comped }], subtotalCents, extrasCents, compedCents, discount: { label, cents } | null, totalCents, adjusted }
+export function invoiceOf(q) {
+  const adj = q?.invoice_adjust || q?.invoiceAdjust || {}, comped = new Set(Array.isArray(adj.comped) ? adj.comped : []);
+  const extras = (q?.extras || []).map((x, i) => ({ label: x.label, cents: Number(x.cents) || 0, comped: comped.has(i) }));
+  const subtotal = Number(q?.subtotal_cents ?? q?.subtotalCents ?? (q?.lines || []).reduce((a, l) => a + (Number(l.totalCents) || 0), 0)) || 0;
+  const extrasCents = extras.filter(x => !x.comped).reduce((a, x) => a + x.cents, 0), compedCents = extras.filter(x => x.comped).reduce((a, x) => a + x.cents, 0);
+  const discount = adj.discount && Number(adj.discount.cents) > 0 ? { label: clean(adj.discount.label) || 'Discount', cents: Math.round(Number(adj.discount.cents)) } : null;
+  return { extras, subtotalCents: subtotal, extrasCents, compedCents, discount, totalCents: Math.max(0, subtotal + extrasCents - (discount?.cents || 0)), adjusted: compedCents > 0 || Boolean(discount) };
+}
+// what staff changed on the invoice: which other lines are comped (their place in the quote's list) and a discount, never more than is left
+export function cleanInvoiceAdjust(input, q) {
+  const n = (q?.extras || []).length, b = input && typeof input === 'object' ? input : {};
+  const comped = [...new Set((Array.isArray(b.comped) ? b.comped : []).map(Number).filter(i => Number.isInteger(i) && i >= 0 && i < n))].sort((a, z) => a - z);
+  const d = b.discount && typeof b.discount === 'object' ? b.discount : null, dc = d ? cents(d.cents) : null;
+  const discount = dc ? { label: clean(d.label).slice(0, 80) || 'Discount', cents: dc } : null;
+  const before = invoiceOf({ ...q, invoice_adjust: { comped } });
+  if (discount && discount.cents > before.totalCents) return { error: `The discount is more than the invoice (${(before.totalCents / 100).toFixed(2)}).` };
+  return { value: { comped, ...(discount ? { discount } : {}) } };
+}
+
 // The client's view of a quote: no costs, no margins
 export const clientQuote = q => ({ id: q.id, number: q.number, status: q.status, title: q.title || '', lines: (q.lines || []).map(l => ({ title: l.title, quantity: l.quantity, sizes: l.sizes || {}, unitCents: l.unitCents, totalCents: l.totalCents, note: l.note || '' })),
-  extras: q.extras || [], totalCents: Number(q.total_cents), currency: q.currency || 'USD', notes: q.notes || '', validUntil: q.valid_until instanceof Date ? q.valid_until.toISOString().slice(0, 10) : q.valid_until || null, sentAt: q.sent_at, acceptedAt: q.accepted_at, reply: q.reply || '', payUrl: q.status === 'accepted' ? q.pay_url || '' : '' });
+  extras: q.extras || [], totalCents: Number(q.total_cents), currency: q.currency || 'USD', notes: q.notes || '', validUntil: q.valid_until instanceof Date ? q.valid_until.toISOString().slice(0, 10) : q.valid_until || null, sentAt: q.sent_at, acceptedAt: q.accepted_at, reply: q.reply || '', payUrl: q.status === 'accepted' ? q.pay_url || '' : '',
+  ...(q.status === 'accepted' && invoiceOf(q).adjusted ? { invoice: (i => ({ comped: i.extras.filter(x => x.comped).map(x => x.label), discount: i.discount, totalCents: i.totalCents }))(invoiceOf(q)) } : {}) });
 
 export const quoteNumber = (n, year = new Date().getUTCFullYear()) => `Q-${year}-${String(n).padStart(4, '0')}`;
