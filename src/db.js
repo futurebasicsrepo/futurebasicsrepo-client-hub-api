@@ -905,6 +905,8 @@ export async function migrate() {
       status text not null default 'draft',
       updated_at timestamptz not null default now()
     );
+    -- what a sample of the product costs the client (the sampling fee): quoted once with the product while a sample is required (src/order-quote-routes.js)
+    alter table product_configurations add column if not exists sample_fee_cents integer not null default 0;
     create table if not exists price_tiers (
       id uuid primary key default gen_random_uuid(),
       product_id uuid not null references products(id) on delete cascade,

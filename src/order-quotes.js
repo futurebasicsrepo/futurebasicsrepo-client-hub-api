@@ -23,6 +23,19 @@ const SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'
 export const sizeRank = k => { const i = SIZE_ORDER.indexOf(normSize(k)); return i < 0 ? 99 : i; };
 export const sizesWords = sizes => Object.entries(sizes || {}).filter(([, n]) => Number(n) > 0).sort((a, b) => sizeRank(a[0]) - sizeRank(b[0])).map(([k, n]) => `${n} ${k}`).join(', ');
 
+// The fees a product carries besides its price per piece, as the quote builder adds them (one line each, beside the product's own tier's setup
+// and freight): its sampling fee while a sample is required, the setup of each decoration designed for it in the Lab (screens, digitising,
+// a mould: the estimate, or the supplier's when calibrated), and the tooling and freight of its last one-product quote, used when its tiers
+// carry none. → { sampleCents, toolingCents, freightCents, decorations: [{ id, label, cents }] }
+export function productFees(p) {
+  const n = v => { const x = Math.round(Number(v)); return Number.isFinite(x) && x > 0 ? x : 0; };
+  const decorations = (Array.isArray(p?.decorations) ? p.decorations : []).filter(d => d && !d.unpriced && n(d.setupCents) > 0)
+    .map((d, i) => ({ id: String(d.id || `d${i}`).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || `d${i}`, label: clean(`${d.name || 'Decoration'}${d.technique ? ` (${d.technique})` : ''}`).slice(0, 50), cents: n(d.setupCents) }));
+  return { sampleCents: p?.sample_required === false ? 0 : n(p?.sample_fee_cents), toolingCents: n(p?.legacy?.tooling), freightCents: n(p?.legacy?.freight), decorations };
+}
+// which of a quote's other lines the builder keeps in step with a product (its tier's setup and freight, its sampling, a decoration's setup)
+export const AUTO_FEE = /^[0-9a-f-]{36}:(setup_cents|freight_cents|sample|decor:[A-Za-z0-9_-]{1,40})$/;
+
 // The tier a quantity falls in (the highest minimum at or under it; below every minimum, the smallest tier with a warning)
 export function tierFor(tiers, qty) {
   const list = [...(tiers || [])].sort((a, b) => (a.min_quantity ?? a.minQuantity) - (b.min_quantity ?? b.minQuantity)); if (!list.length) return null;
@@ -64,7 +77,7 @@ export function cleanQuote(input = {}, products = []) {
     if (Object.keys(sizes).length && sizesTotal(sizes) !== quantity) errors.push(`${p.title}: the sizes add up to ${sizesTotal(sizes)}, not ${quantity}`);
     lines.push({ productId: p.id, title: clean(l.title) || p.title, quantity, sizes, unitCents: unit, totalCents: unit * quantity, unitCostCents: cents(l.unitCostCents), tierId: l.tierId || null, note: clean(l.note).slice(0, 300) });
   }
-  const extras = (Array.isArray(input.extras) ? input.extras : []).map(x => ({ label: clean(x.label).slice(0, 80), cents: cents(x.cents), ...(/^[0-9a-f-]{36}:(setup|freight)_cents$/.test(String(x.auto || '')) ? { auto: String(x.auto) } : {}) })).filter(x => x.label && x.cents > 0); // auto: a product tier's setup or freight, which the builder keeps in step with the tier
+  const extras = (Array.isArray(input.extras) ? input.extras : []).map(x => ({ label: clean(x.label).slice(0, 80), cents: cents(x.cents), ...(AUTO_FEE.test(String(x.auto || '')) ? { auto: String(x.auto) } : {}) })).filter(x => x.label && x.cents > 0); // auto: a fee the builder keeps in step with its product (productFees)
   if (!lines.length && !errors.length) errors.push('Pick at least one product');
   const subtotal = lines.reduce((a, l) => a + l.totalCents, 0), extrasCents = extras.reduce((a, x) => a + x.cents, 0);
   const cost = lines.every(l => l.unitCostCents != null) ? lines.reduce((a, l) => a + l.unitCostCents * l.quantity, 0) : null;

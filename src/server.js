@@ -1841,6 +1841,9 @@ app.put('/v1/admin/products/:id/configuration',{preHandler:[authenticate,adminOn
     [product.id,supplierId||null,blankName||null,material||null,construction||null,decorationMethod||null,decorationLocations,
       artworkWidthIn||null,artworkHeightIn||null,colorways,sizes,JSON.stringify(variantPlan),packaging||null,fulfillment||null,moq||null,
       sampleRequired!==false,leadTimeDays||null,notes||null,status])).rows[0];
+  // the sampling fee (cents): quoted once with the product while a sample is required; left as it was when the form does not send it
+  const fee=req.body?.sampleFeeCents;if(fee!==undefined){const n=Math.round(Number(fee));if(!Number.isFinite(n)||n<0||n>10000000)return reply.code(400).send({error:'The sampling fee must be an amount of $0 or more'});
+    Object.assign(config,(await pool.query('update product_configurations set sample_fee_cents=$2 where product_id=$1 returning sample_fee_cents',[product.id,n])).rows[0]||{})}
   await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,product.id,req.auth.sub,'configuration',`Updated production configuration · ${status}`]);
   return config;
 });

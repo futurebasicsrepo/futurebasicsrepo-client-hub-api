@@ -61,3 +61,17 @@ test('a product tier\'s setup and freight ride on the quote as their own lines, 
   assert.equal(q.value.totalCents, 120000 + 15000 + 4500 + 2000, 'every line is in the total');
   assert.deepEqual(q.value.extras.map(x => x.auto || null), [tierKey, null, null], 'only a product and fee key is kept as the line\'s source');
 });
+
+test('every fee a product carries comes to its quote: sampling while a sample is required, each decoration\'s setup, an old quote\'s tooling and freight', async () => {
+  const { productFees, AUTO_FEE } = await import('../src/order-quotes.js');
+  const p = { sample_fee_cents: 7500, sample_required: true, legacy: { tooling: 12000, freight: 3000 },
+    decorations: [{ id: 'p1a', name: 'Wordmark', technique: 'Screen print', setupCents: 5000 }, { id: 'p2b', name: 'Back graphic', technique: 'Embroidery', setupCents: 3500 }, { id: 'x', name: 'Transfer', setupCents: 0 }, { id: 'u', name: 'Laser', setupCents: 900, unpriced: true }] };
+  const f = productFees(p);
+  assert.equal(f.sampleCents, 7500); assert.equal(f.toolingCents, 12000); assert.equal(f.freightCents, 3000);
+  assert.deepEqual(f.decorations, [{ id: 'p1a', label: 'Wordmark (Screen print)', cents: 5000 }, { id: 'p2b', label: 'Back graphic (Embroidery)', cents: 3500 }], 'no setup, or no estimate yet, is no line');
+  assert.equal(productFees({ ...p, sample_required: false }).sampleCents, 0, 'no sample, no sampling fee');
+  assert.deepEqual(productFees({}), { sampleCents: 0, toolingCents: 0, freightCents: 0, decorations: [] });
+  const id = '7eb2b6bb-cc3d-462f-9c2a-acee6f0979b0';
+  for (const k of ['setup_cents', 'freight_cents', 'sample', 'decor:p1a']) assert.ok(AUTO_FEE.test(`${id}:${k}`), k);
+  for (const k of ['decor:../x', 'sample;drop', 'other']) assert.ok(!AUTO_FEE.test(`${id}:${k}`), k);
+});

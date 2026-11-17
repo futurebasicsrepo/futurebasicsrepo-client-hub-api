@@ -13,7 +13,7 @@
 //
 // Sales: sending finds the client's contact (or makes one, tied to the room) and its company, and opens a deal at Proposal worth the quote's
 // total, on the quote's project; a new version updates the value. Accepting wins the deal; asking for changes logs the note on it.
-import { cleanQuote, matchRequest, clientQuote, quoteNumber, sizesWords } from './order-quotes.js';
+import { cleanQuote, matchRequest, clientQuote, quoteNumber, sizesWords, productFees } from './order-quotes.js';
 import { shopifyGraphql, DRAFT_ORDER_CREATE, requireNoUserErrors } from './shopify.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -27,7 +27,10 @@ export function registerOrderQuoteRoutes(app, d) {
   const uid = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const one = async id => (UUID.test(String(id || '')) ? (await pool.query('select q.*, c.name client_name from order_quotes q join clients c on c.id=q.client_id where q.id=$1', [id])).rows[0] : null) || null;
   const roomProducts = async cid => (await pool.query(`select p.id, p.title, p.project_id, pr.name project_name, p.shopify_variant_id, p.shopify_image_url, ${hasRenderingSql},
-      (select coalesce(jsonb_agg(to_jsonb(t) order by t.min_quantity), '[]'::jsonb) from price_tiers t where t.product_id=p.id) tiers, (select pc.sizes from product_configurations pc where pc.product_id=p.id) sizes
+      (select coalesce(jsonb_agg(to_jsonb(t) order by t.min_quantity), '[]'::jsonb) from price_tiers t where t.product_id=p.id) tiers, (select pc.sizes from product_configurations pc where pc.product_id=p.id) sizes,
+      (select pc.sample_fee_cents from product_configurations pc where pc.product_id=p.id) sample_fee_cents, (select pc.sample_required from product_configurations pc where pc.product_id=p.id) sample_required,
+      (select lc.spec->'decorations' from lab_concepts lc where lc.product_id=p.id order by lc.updated_at desc limit 1) decorations,
+      (select jsonb_build_object('tooling', q.tooling_cents, 'freight', q.freight_cents) from quotes q where q.product_id=p.id and q.status<>'declined' order by q.version desc limit 1) legacy
     from products p left join projects pr on pr.id=p.project_id where p.client_id=$1 and (pr.id is null or (pr.archived_at is null and pr.status not in ('archive','archived'))) order by pr.updated_at desc nulls last, p.title`, [cid])).rows;
   const staffView = q => ({ ...clientQuote(q), lines: q.lines || [], costCents: q.cost_cents == null ? null : Number(q.cost_cents), marginPct: q.margin_pct == null ? null : Number(q.margin_pct), requestId: q.request_id, projectId: q.project_id, dealId: q.deal_id,
     clientId: q.client_id, clientName: q.client_name || '', declinedAt: q.declined_at, payError: q.pay_error || '', createdAt: q.created_at, version: q.version });
@@ -83,7 +86,7 @@ export function registerOrderQuoteRoutes(app, d) {
   // ---- staff ----
   app.get('/v1/admin/clients/:id/quote-builder', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(String(req.params.id))) return bad(reply, 'Client not found', 404);
-    const products = (await roomProducts(req.params.id)).map(p => ({ id: p.id, title: p.title, projectId: p.project_id, projectName: p.project_name || 'No project', image: p.shopify_image_url || (p.has_rendering ? renderingUrl(p.id) : ''), tiers: p.tiers || [], sizes: p.sizes || [] }));
+    const products = (await roomProducts(req.params.id)).map(p => ({ id: p.id, title: p.title, projectId: p.project_id, projectName: p.project_name || 'No project', image: p.shopify_image_url || (p.has_rendering ? renderingUrl(p.id) : ''), tiers: p.tiers || [], sizes: p.sizes || [], fees: productFees(p) }));
     const request = UUID.test(String(req.query?.requestId || '')) ? (await pool.query('select id, title, details, project_id, product_id from requests where id=$1 and client_id=$2', [req.query.requestId, req.params.id])).rows[0] : null;
     const quotes = (await pool.query('select q.*, c.name client_name from order_quotes q join clients c on c.id=q.client_id where q.client_id=$1 order by q.created_at desc', [req.params.id])).rows.map(staffView);
     return { products, request: request ? { id: request.id, title: request.title, details: request.details, projectId: request.project_id } : null, suggestions: request ? matchRequest(`${request.title}\n${request.details}`, products) : [], quotes };
