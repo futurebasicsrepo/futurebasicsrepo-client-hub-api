@@ -64,7 +64,7 @@ export function cleanQuote(input = {}, products = []) {
     if (Object.keys(sizes).length && sizesTotal(sizes) !== quantity) errors.push(`${p.title}: the sizes add up to ${sizesTotal(sizes)}, not ${quantity}`);
     lines.push({ productId: p.id, title: clean(l.title) || p.title, quantity, sizes, unitCents: unit, totalCents: unit * quantity, unitCostCents: cents(l.unitCostCents), tierId: l.tierId || null, note: clean(l.note).slice(0, 300) });
   }
-  const extras = (Array.isArray(input.extras) ? input.extras : []).map(x => ({ label: clean(x.label).slice(0, 80), cents: cents(x.cents) })).filter(x => x.label && x.cents > 0);
+  const extras = (Array.isArray(input.extras) ? input.extras : []).map(x => ({ label: clean(x.label).slice(0, 80), cents: cents(x.cents), ...(/^[0-9a-f-]{36}:(setup|freight)_cents$/.test(String(x.auto || '')) ? { auto: String(x.auto) } : {}) })).filter(x => x.label && x.cents > 0); // auto: a product tier's setup or freight, which the builder keeps in step with the tier
   if (!lines.length && !errors.length) errors.push('Pick at least one product');
   const subtotal = lines.reduce((a, l) => a + l.totalCents, 0), extrasCents = extras.reduce((a, x) => a + x.cents, 0);
   const cost = lines.every(l => l.unitCostCents != null) ? lines.reduce((a, l) => a + l.unitCostCents * l.quantity, 0) : null;

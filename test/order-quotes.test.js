@@ -54,3 +54,10 @@ test('one size: "One size", "OSFA" or "one size fits all" alone covers the whole
   assert.deepEqual(parseSizes('One size'), {}, 'with no quantity there is nothing to count'); assert.deepEqual(parseSizes('blue', 5), {});
   assert.equal(cleanQuote({ lines: [{ productId: 'p0', quantity: 50, sizes: { 'one size': 50 }, unitCents: 1600 }] }, PRODUCTS).value.lines[0].sizes['One size'], 50);
 });
+
+test('a product tier\'s setup and freight ride on the quote as their own lines, still marked as the tier\'s when saved', () => {
+  const tierKey = '7eb2b6bb-cc3d-462f-9c2a-acee6f0979b0:setup_cents';
+  const q = cleanQuote({ lines: [{ productId: 'p3', quantity: 100, unitCents: 1200 }], extras: [{ label: 'Setup · Multitool', cents: 15000, auto: tierKey }, { label: 'Freight · Multitool', cents: 4500, auto: 'drop table' }, { label: 'Rush', cents: 2000 }] }, PRODUCTS);
+  assert.equal(q.value.totalCents, 120000 + 15000 + 4500 + 2000, 'every line is in the total');
+  assert.deepEqual(q.value.extras.map(x => x.auto || null), [tierKey, null, null], 'only a product and fee key is kept as the line\'s source');
+});
