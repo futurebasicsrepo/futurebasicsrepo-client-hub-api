@@ -179,6 +179,11 @@ export function registerOrderQuoteRoutes(app, d) {
     const before = invoiceOf(q), row = (await pool.query('update order_quotes set invoice_adjust=$2, updated_at=now() where id=$1 returning *', [q.id, JSON.stringify(c.value)])).rows[0], after = invoiceOf(row);
     const words = [...after.extras.filter(x => x.comped).map(x => `comped ${x.label}`), ...(after.discount ? [`${after.discount.label} ${usd(after.discount.cents)}`] : [])].join(', ') || 'no comps or discount';
     await pool.query(`insert into activities(client_id, actor_id, type, summary, metadata) values($1,$2,'commerce',$3,$4)`, [q.client_id, uid(req), `Invoice for quote ${q.number}: ${words} · ${usd(before.totalCents)} → ${usd(after.totalCents)}`, { orderQuoteId: q.id }]).catch(() => {});
+    // the won deal is worth what is invoiced, so Sales and Money agree after a comp or a discount
+    if (row.deal_id && after.totalCents !== before.totalCents) {
+      const d = (await pool.query(`update sales_deals set value_cents=$2, last_activity_at=now(), updated_at=now() where id=$1 and stage='won' returning contact_id`, [row.deal_id, after.totalCents]).catch(() => ({ rows: [] }))).rows[0];
+      if (d?.contact_id) await pool.query(`insert into sales_activities(contact_id,deal_id,kind,text,meta,actor_id) values($1,$2,'system',$3,$4::jsonb,$5)`, [d.contact_id, row.deal_id, `Invoice for quote ${q.number}: ${words}. Won value ${usd(before.totalCents)} → ${usd(after.totalCents)}`, JSON.stringify({ orderQuoteId: q.id }), uid(req)]).catch(() => {});
+    }
     const r = q.pay_url || shopifyReady() ? await paymentLink(row, { update: Boolean(q.shopify_draft_order_id) }) : { ok: true };
     if (!r.ok) return bad(reply, `Saved, but the payment link was not updated: ${r.error}`, 502);
     return { quote: staffView(await one(q.id)) };
@@ -218,4 +223,6 @@ export function registerOrderQuoteRoutes(app, d) {
     }
     return bad(reply, 'Accept the quote, or say what should change');
   });
+  // what reconcileDeals (sales-deals.js) calls for a quote out with the client that has no deal yet
+  return { trackDeal: q => trackDeal(q.status === 'accepted' ? { ...q, total_cents: invoiceOf(q).totalCents } : q, { stage: q.status === 'accepted' ? 'won' : 'proposal', text: `Quote ${q.number} (${usd(q.total_cents)}) ${q.status === 'accepted' ? 'was accepted' : 'is out with the client'}` }) };
 }

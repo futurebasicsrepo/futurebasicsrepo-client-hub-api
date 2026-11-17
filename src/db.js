@@ -2483,6 +2483,8 @@ export async function migrate() {
       select id,version,published_data,verification,published_at,published_by,locked_at from tech_packs where published_at is not null and published_data is not null
       on conflict(tech_pack_id,version) do nothing;
     alter table quotes add column if not exists tech_pack_version integer;
+    -- the deal in Sales a product's quotes are (every version of a product's quote is the same deal)
+    alter table quotes add column if not exists deal_id uuid references sales_deals(id) on delete set null;
     alter table production_runs add column if not exists tech_pack_version integer;
     -- The sites we build, watched: one row of current state per build with a live address, and a short history for uptime.
     create table if not exists site_monitors (

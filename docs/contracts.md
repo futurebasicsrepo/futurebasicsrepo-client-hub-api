@@ -17,6 +17,20 @@ Staff work in **Win, Contracts** (`/contracts`). Clients never sign in: they ope
 
 Then, as ever, **Start project** on the won deal.
 
+### Every contract is in the Sales pipeline
+
+A contract is a deal in Sales from the moment it has a fee, whether it was started from a deal, a project or nothing at all (`src/sales-deals.js`). A contract made without a deal opens one for the client's company and the signer, and keeps it, so its invoices carry the deal too.
+
+| The contract | The deal |
+|---|---|
+| a draft with a fee | **Meeting**, worth the contract's total (a draft never pulls a deal that is further along back) |
+| sent, or signed by the client | **Proposal** |
+| signed by both | **Won**, at the signed total |
+| declined, expired or voided | **Lost**, with the reason, unless something else on the deal is still out (a newer version, a quote) |
+| replaced by a new version | nothing: the new version carries the deal on |
+
+A won deal stays won. The deal's timeline says each move once. Product quotes (one product, issued from its page) follow the same rules: issued is a Proposal, accepted is Won, declined is Lost, and every version of a product's quote is one deal. Order quotes were already deals (Proposal when sent, Won when accepted); a comp or discount at the invoice stage now changes the won value to what is invoiced. Every hour, a job ties in any contract or quote that is out of step with its deal, including those made before this.
+
 ## Physical product agreements
 
 For customers whose project is a product (hats, shirts, shoes, electronics, bags), choose **Physical product development**. The fixed fee pays for our development work: design, tech packs, sampling management, sourcing. Everything else (samples, materials, tooling, production, inspection, testing, freight, duties) is outside the fee unless the scope says it is in. The wording is in [contracts-product-agreement.md](contracts-product-agreement.md), made from the code with the defaults, for a lawyer to read.

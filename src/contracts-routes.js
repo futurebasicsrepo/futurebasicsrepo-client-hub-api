@@ -20,11 +20,14 @@
 //   The client (no sign-in: the link is the key)
 //   GET  /v1/public/contracts/:token        the agreement as the client sees it      GET .../pdf
 //   POST /v1/public/contracts/:token/sign { name, title, agree, esign, autopay?, method? }      POST .../decline { reason }
+//
+// Sales: every contract is a deal (sales-deals.js syncContractDeal). Saving a draft opens one at Meeting worth the contract's total (or uses the deal it
+// was made from), sending moves it to Proposal, signing by both wins it, and declining, expiring or voiding loses it unless something else on it is live.
 import { cleanContent, renderContract, sendProblems, docHash, signToken, readToken, nextNumber, checkSignature, buildPlan, planWords, schedule, defaultSections, dollars, longDate, todayISO, addDays, KINDS, TERMS, isProduct, defaultProduct, PRODUCT_CATEGORIES, INCOTERMS, PRODUCTION_MODES } from './contracts.js';
 import { contractPdf } from './contract-pdf.js';
 import { markUrl } from './signatures.js';
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber } from './money.js';
-import { fireTrigger } from './sales-automations-engine.js';
+import { syncContractDeal } from './sales-deals.js';
 import { createAutopay, authorizationText } from './autopay.js';
 import { processor as paymentProcessor, tokensUrl } from './qb-payments.js';
 import { createStripe, verifyWebhook as verifyStripeWebhook } from './stripe-payments.js';
@@ -63,7 +66,7 @@ export function registerContractRoutes(app, d) {
   async function fresh(r) {
     if (r && r.status === 'sent' && r.expires_at && new Date(r.expires_at) < new Date()) {
       const u = await pool.query(`update contracts set status='expired', updated_at=now() where id=$1 and status='sent' returning id`, [r.id]);
-      if (u.rowCount) { await ev(r.id, 'expired', { detail: 'Not signed before ' + iso(r.expires_at) }); r = await one(r.id); }
+      if (u.rowCount) { await ev(r.id, 'expired', { detail: 'Not signed before ' + iso(r.expires_at) }); await syncContractDeal(pool, await one(r.id), { log }); r = await one(r.id); }
     }
     return r;
   }
@@ -152,7 +155,7 @@ export function registerContractRoutes(app, d) {
   });
 
   app.get('/v1/contracts', { preHandler: pre }, async (req) => {
-    await pool.query(`update contracts set status='expired', updated_at=now() where status='sent' and expires_at < now()`);
+    for (const x of (await pool.query(`update contracts set status='expired', updated_at=now() where status='sent' and expires_at < now() returning *`)).rows) { await ev(x.id, 'expired', { detail: 'Not signed before ' + iso(x.expires_at) }); await syncContractDeal(pool, x, { log }); }
     const q = clip(req.query?.q, 80).toLowerCase(), status = STATUS_FILTER.includes(req.query?.status) ? req.query.status : '';
     const rows = (await pool.query(`select c.*, d.title deal_title, p.name project_name from contracts c left join sales_deals d on d.id=c.deal_id left join projects p on p.id=c.project_id where ($1='' or c.status=$1) order by c.created_at desc limit 300`, [status])).rows;
     const list = rows.map(r => view(r)).filter(v => !q || `${v.number} ${v.title} ${v.clientCompany} ${v.signerName}`.toLowerCase().includes(q));
@@ -184,6 +187,7 @@ export function registerContractRoutes(app, d) {
     if (existing) {
       await pool.query('update contracts set title=$2, kind=$3, content=$4::jsonb, total_cents=$5, currency=$6, deal_id=$7, project_id=$8, client_id=$9, contact_id=$10, updated_at=now() where id=$1', [existing.id, c.value.title, c.value.kind, JSON.stringify(c.value), c.value.fee.totalCents, c.value.fee.currency, dealId, projectId, clientId, contactId]);
       await ev(existing.id, 'edited', { actor: (await userOf(req))?.email || '' });
+      await syncContractDeal(pool, await one(existing.id), { actorId: actorId(req), log });
       return existing.id;
     }
     const year = new Date().getUTCFullYear();
@@ -191,7 +195,8 @@ export function registerContractRoutes(app, d) {
       const number = nextNumber((await pool.query('select number from contracts')).rows.map(r => r.number), year);
       try {
         const id = (await pool.query(`insert into contracts(number,kind,title,content,total_cents,currency,deal_id,project_id,client_id,contact_id,created_by) values($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11) returning id`, [number, c.value.kind, c.value.title, JSON.stringify(c.value), c.value.fee.totalCents, c.value.fee.currency, dealId, projectId, clientId, contactId, actorId(req)])).rows[0].id;
-        await ev(id, 'created', { actor: (await userOf(req))?.email || '', detail: number }); return id;
+        await ev(id, 'created', { actor: (await userOf(req))?.email || '', detail: number });
+        await syncContractDeal(pool, await one(id), { actorId: actorId(req), log }); return id;
       } catch (e) { if (e.code !== '23505') throw e; }
     }
     return bad(reply, 'Could not number the contract. Try again.', 409);
@@ -241,8 +246,8 @@ export function registerContractRoutes(app, d) {
       await ev(r.id, 'sent', { actor: u?.email || '', detail: c.value.client.signerEmail, meta: { hash } });
       if (signNow) { const ink = await signatures?.markFor(req.auth?.sub).catch(() => null), sig = { name: c.value.provider.signerName, title: c.value.provider.signerTitle, at: new Date().toISOString(), ip: ipOf(req), ua: uaOf(req), by: u.email, hash, ...(ink ? { ink } : {}) }; await pool.query('update contracts set provider_signature=$2::jsonb where id=$1', [r.id, JSON.stringify(sig)]); await ev(r.id, 'signed_provider', { actor: u.email, detail: sig.name, ip: sig.ip }); }
     } else { await pool.query(`update contracts set expires_at=now() + ($2 || ' days')::interval, updated_at=now() where id=$1`, [r.id, String(days)]); await ev(r.id, 'resent', { actor: u?.email || '', detail: c.value.client.signerEmail }); }
+    r = await one(r.id); await syncContractDeal(pool, r, { actorId: actorId(req), log }); // the deal moves to Proposal at the contract's value, and says so
     r = await one(r.id); const ok = await mailSigner(r, { message, senderName: u?.name || '', replyTo: u?.email || '' });
-    if (r.contact_id) await pool.query(`insert into sales_activities(contact_id,deal_id,kind,text,meta,actor_id) values($1,$2,'system',$3,$4::jsonb,$5)`, [r.contact_id, r.deal_id, `Sent agreement ${r.number} for signature (${dollars(r.total_cents, r.currency)})`, JSON.stringify({ contractId: r.id }), actorId(req)]).catch(() => {});
     return { ...(await detail(r)), emailed: !!ok };
   });
 
@@ -272,6 +277,7 @@ export function registerContractRoutes(app, d) {
       if (r.status !== 'void') await db.query(`update contracts set status='void', void_reason=$2, updated_at=now() where id=$1`, [r.id, `Replaced by version ${nextV}`]);
       await db.query('commit');
       const u = await userOf(req); await ev(id, 'created', { actor: u?.email || '', detail: `Version ${nextV}, replaces ${r.number}` }); await ev(r.id, 'voided', { actor: u?.email || '', detail: `Replaced by version ${nextV}` });
+      await syncContractDeal(pool, await one(id), { actorId: actorId(req), log });
       return reply.code(201).send(await detail(await one(id)));
     } catch (e) { await db.query('rollback').catch(() => {}); throw e; } finally { db.release(); }
   });
@@ -280,20 +286,14 @@ export function registerContractRoutes(app, d) {
     if (!needId(req, reply)) return; const r = await fresh(await one(req.params.id)); if (!r) return bad(reply, 'Not found', 404);
     if (r.status === 'executed') return bad(reply, 'A fully signed contract cannot be voided here', 409); if (r.status === 'void') return bad(reply, 'It is already void', 409);
     const reason = clip(req.body?.reason, 300); await pool.query(`update contracts set status='void', void_reason=$2, updated_at=now() where id=$1`, [r.id, reason]);
-    await ev(r.id, 'voided', { actor: (await userOf(req))?.email || '', detail: reason }); return detail(await one(r.id));
+    await ev(r.id, 'voided', { actor: (await userOf(req))?.email || '', detail: reason }); await syncContractDeal(pool, await one(r.id), { actorId: actorId(req), log }); return detail(await one(r.id));
   });
 
   // ---- signing for Future Basics -----------------------------------------------------------------------------------------------------------------
   async function execute(r, req) {
     await pool.query(`update contracts set status='executed', executed_at=now(), updated_at=now() where id=$1 and status in ('sent','signed_by_client')`, [r.id]);
     await ev(r.id, 'executed', { detail: 'Both parties have signed' });
-    if (r.deal_id) {
-      const deal = (await pool.query('select id, stage, contact_id from sales_deals where id=$1', [r.deal_id])).rows[0];
-      if (deal && !['won', 'lost'].includes(deal.stage)) {
-        await pool.query(`update sales_deals set stage='won', closed_at=now(), last_activity_at=now(), updated_at=now() where id=$1`, [deal.id]);
-        if (deal.contact_id) { await pool.query(`insert into sales_activities(contact_id,deal_id,kind,text,meta) values($1,$2,'stage',$3,$4::jsonb)`, [deal.contact_id, deal.id, `Moved from ${deal.stage} to won: ${r.number} was signed by both parties`, JSON.stringify({ from: deal.stage, to: 'won', contractId: r.id })]).catch(() => {}); await fireTrigger(pool, { type: 'deal_stage', contactId: deal.contact_id, dealId: deal.id, stage: 'won' }, { deliberate: true }).catch(() => {}); }
-      }
-    }
+    await syncContractDeal(pool, await one(r.id), { log }); // the deal is won at the contract's value (opened first if there was none), before the invoices are drafted with it
     if (r.content.plan.method !== 'invoice') { const now = await one(r.id); if (now && !now.invoices_at) { const out = await draftInvoices(now, 'on signing'); if (out.error) await ev(r.id, 'invoices_failed', { actor: 'on signing', detail: out.error }); } }
     if (autopay && r.content.plan.autopay && await autopay.activeMethod(r.id)) autopay.runFor(r.id).catch(() => {}); // details were added before Future Basics signed: what is already due is taken now
     const fresh2 = await one(r.id), c = fresh2.content, link = linkOf(fresh2);
@@ -474,6 +474,7 @@ export function registerContractRoutes(app, d) {
     const u = await pool.query(`update contracts set client_signature=$2::jsonb, status='signed_by_client', updated_at=now() where id=$1 and status='sent' returning provider_signature`, [r.id, JSON.stringify(sig)]);
     if (!u.rowCount) return bad(reply, 'This agreement has already been signed.', 409);
     await ev(r.id, 'signed_client', { actor: sig.name, detail: sig.title, ip: sig.ip, meta: { ua: sig.ua, method: sig.method || null, autopay: !!sig.autopay } });
+    if (!r.deal_id) { await syncContractDeal(pool, await one(r.id), { log }); Object.assign(r, await one(r.id)); }
     if (r.contact_id) await pool.query(`insert into sales_activities(contact_id,deal_id,kind,text,meta) values($1,$2,'system',$3,$4::jsonb)`, [r.contact_id, r.deal_id, `${sig.name} signed agreement ${r.number}`, JSON.stringify({ contractId: r.id })]).catch(() => {});
     if (u.rows[0].provider_signature) await execute(r, req);
     else await notifyStaff(`${sig.name} signed ${r.number}: it needs your signature`, `<p><b>${emailEscape(r.title)}</b> (${emailEscape(dollars(r.total_cents, r.currency))}) was signed by ${emailEscape(r.content.client.company)}. It becomes final when Future Basics signs too.</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract and sign')}`);
@@ -528,6 +529,7 @@ export function registerContractRoutes(app, d) {
     const reason = clip(req.body?.reason, 500), decl = { at: new Date().toISOString(), reason, ip: ipOf(req) };
     const u = await pool.query(`update contracts set status='declined', declined=$2::jsonb, updated_at=now() where id=$1 and status='sent'`, [r.id, JSON.stringify(decl)]); if (!u.rowCount) return bad(reply, 'This agreement is not open for signing.', 409);
     await ev(r.id, 'declined', { actor: r.content.client.signerName, detail: reason, ip: decl.ip });
+    await syncContractDeal(pool, await one(r.id), { log });
     await notifyStaff(`${r.content.client.signerName || 'The client'} declined ${r.number}`, `<p><b>${emailEscape(r.title)}</b> was declined${reason ? `: ${emailEscape(reason)}` : '.'}</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}`);
     return { ok: true };
   });
