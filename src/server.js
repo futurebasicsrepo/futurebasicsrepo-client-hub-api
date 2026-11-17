@@ -85,6 +85,7 @@ import { createLabAccess } from './lab-access.js';
 import { registerLabSelfServeRoutes } from './lab-selfserve-routes.js';
 import { registerRoomTeamRoutes } from './room-team-routes.js';
 import { registerSampleFormRoutes } from './sample-form-routes.js';
+import { registerMcpRoutes } from './mcp-routes.js';
 import { registerTeamChatRoutes } from './team-chat-routes.js';
 import { registerWorkspaceRoutes } from './workspace-routes.js';
 import { registerOrderQuoteRoutes } from './order-quote-routes.js';
@@ -820,6 +821,8 @@ registerLabTripRoutes(app, { pool, authenticate, adminOnly }); // staff only (no
 registerLabClientRoutes(app, { pool, authenticate, adminOnly, log: app.log, sheetSvg: id => labFlats.sheetSvg(id), notifyStaff, notifyClientContact, hubUrl: () => clientHubUrl, learn: learnLabTaste });
 registerRoomTeamRoutes(app, { pool, authenticate, clientHubUrl, sendHubEmail, hubEmailShell, emailEscape, replyTo: intakeNotificationEmail, forgetUser, log: app.log });
 registerSampleFormRoutes(app, { pool, authenticate, normalizeTechPack, notifyStaff, emailEscape, hubButton, workHubUrl, log: app.log });
+// the Design Lab connector (src/mcp-routes.js): a room's own AI tool designs through the same routes and gate as the pages, on an AI access key
+registerMcpRoutes(app, { pool, secret, authenticate, hubUrl: () => clientHubUrl, log: app.log });
 // live nudges for open pages (src/live.js): team chat hears a new message at once
 const live = createLive({ pool, log: app.log });
 app.addHook('onClose', async () => { await live.close(); });

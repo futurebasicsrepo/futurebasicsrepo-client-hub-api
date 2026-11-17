@@ -219,6 +219,20 @@ The sites and prototypes Future Basics builds for a brand land in the brand's ow
 - Each site sits in a project with its stages, the agreement and invoices.
 - A **go-live checklist** splits launch into the brand's side and ours. Theirs shows under Needs attention with a Done button, and both sides tick off on the project so everyone sees how close it is.
 
+### Your own AI tool (good for a "design from a chat" cut)
+In the hub, under the Design Lab card, **Use it from your AI tool** makes a key for Claude Code, Claude Desktop, Cursor or VS Code. Then the user just asks, for example: "Start a heavyweight hoodie in the Washed earth colours, put our wordmark across the chest, check it can be made, and make the tech pack."
+
+What the tool can do:
+- start the piece from the recipe menu
+- place the logo
+- run the flats check and its fixes ("Wordmark made smaller, to 12 in × 1 in")
+- read the pattern proof ("14 of 14 pass at M, every size")
+- make the tech pack
+
+It spends no AI generations and orders nothing. Asking Future Basics to make it needs the user's yes. ChatGPT and claude.ai on the web need a sign-in that is coming next, so don't show them yet.
+
+**What makes it good on camera:** the chat on one side and the Studio on the other, the piece appearing and getting fixed as the user types.
+
 ### The tech pack and the factory
 - Measurements in inches with cm alongside, a bill of materials, colourways with Pantone C codes, callouts pinned on the picture, sample
   stages and inspection criteria.

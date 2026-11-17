@@ -385,6 +385,14 @@ API (all inside the Design Lab module): `GET /v1/lab/assortment?plan=&status=`, 
 ## Where the logo and graphics go (placement)
 The image model draws the piece anywhere in the frame, so fixed positions put marks off the garment or crooked. After the picture is drawn, a vision model (Claude, `ANTHROPIC_API_KEY`) looks at it and measures, for each mark, where it belongs on the item, how wide it should be and the angle of the cloth there (`src/lab-place.js`). It draws nothing: the marks are our own artwork, laid on at those measurements, turned to follow the cloth, kept inside the item's outline and away from handles, straps and zips. Its answer is sanity-checked (inside the item's box, a size near the hint, an angle within 35 degrees); with no key, an error or a nonsense answer the fixed positions are used. The plain picture is kept (`lab_concepts.raw`), so **Place the logo and graphics again** (on a concept) redoes only the placement, with no new picture. Concepts drawn before this was added have no plain copy: press **Redraw the picture** once. Limits: the marks follow the cloth's slope with a turn, not a full perspective warp, so a strongly three-quarter chest can still sit a little flat.
 
+## Designing from your own AI tool
+A room can let its own AI tool (Claude Code, Claude Desktop, Cursor, VS Code) design in the Lab through the connector at `/mcp`:
+1. Make an AI access key in the hub, under the Design Lab card.
+2. Add the key to the tool.
+3. Ask it to start a piece, brand it, check it and make the tech pack.
+
+It works as the person who made the key, through the same routes and checks as the pages. It spends no AI generations, and it never orders or sends anything to a factory. The setup, the tools and how it is kept safe are in `docs/ai-connector.md`.
+
 ## Fixing what the flats check finds
 Every problem the flats check finds with a logo or graphic comes with a button that fixes it (`fixPlacement` in `src/lab-flats.js`):
 - **Move it clear**: over a seam, a pocket, a zip, the neck, a rib, or another graphic.
