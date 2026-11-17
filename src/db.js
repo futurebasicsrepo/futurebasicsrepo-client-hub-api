@@ -2035,6 +2035,8 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    -- the invoice an accepted quote becomes: other lines comped ({comped: [their place]}) and a discount ({discount: {label, cents}}) (src/order-quotes.js invoiceOf)
+    alter table order_quotes add column if not exists invoice_adjust jsonb;
     create index if not exists order_quotes_client_idx on order_quotes (client_id, created_at desc);
     -- price ladders: a set of quantity price tiers saved once (a tee at 50/100/250/500, say) and put on any product (src/product-sheet-routes.js)
     create table if not exists price_ladders (

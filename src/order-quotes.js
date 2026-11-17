@@ -85,8 +85,31 @@ export function cleanQuote(input = {}, products = []) {
   return errors.length ? { error: errors[0], errors } : { value: { lines, extras, subtotalCents: subtotal, totalCents: subtotal + extrasCents, costCents: cost, marginPct: cost != null && subtotal ? Math.round((subtotal - cost) / subtotal * 1000) / 10 : null, notes: clean(input.notes).slice(0, 2000), validUntil } };
 }
 
+// The invoice an accepted quote becomes: its products and other lines as quoted, less what Future Basics comps (an other line struck off: it
+// stays on the invoice at $0, marked comped, so the client sees what was given) and a discount line. Quoted prices never change; only the
+// invoice does. → { extras: [{ label, cents, comped }], subtotalCents, extrasCents, compedCents, discount: { label, cents } | null, totalCents, adjusted }
+export function invoiceOf(q) {
+  const adj = q?.invoice_adjust || q?.invoiceAdjust || {}, comped = new Set(Array.isArray(adj.comped) ? adj.comped : []);
+  const extras = (q?.extras || []).map((x, i) => ({ label: x.label, cents: Number(x.cents) || 0, comped: comped.has(i) }));
+  const subtotal = Number(q?.subtotal_cents ?? q?.subtotalCents ?? (q?.lines || []).reduce((a, l) => a + (Number(l.totalCents) || 0), 0)) || 0;
+  const extrasCents = extras.filter(x => !x.comped).reduce((a, x) => a + x.cents, 0), compedCents = extras.filter(x => x.comped).reduce((a, x) => a + x.cents, 0);
+  const discount = adj.discount && Number(adj.discount.cents) > 0 ? { label: clean(adj.discount.label) || 'Discount', cents: Math.round(Number(adj.discount.cents)) } : null;
+  return { extras, subtotalCents: subtotal, extrasCents, compedCents, discount, totalCents: Math.max(0, subtotal + extrasCents - (discount?.cents || 0)), adjusted: compedCents > 0 || Boolean(discount) };
+}
+// what staff changed on the invoice: which other lines are comped (their place in the quote's list) and a discount, never more than is left
+export function cleanInvoiceAdjust(input, q) {
+  const n = (q?.extras || []).length, b = input && typeof input === 'object' ? input : {};
+  const comped = [...new Set((Array.isArray(b.comped) ? b.comped : []).map(Number).filter(i => Number.isInteger(i) && i >= 0 && i < n))].sort((a, z) => a - z);
+  const d = b.discount && typeof b.discount === 'object' ? b.discount : null, dc = d ? cents(d.cents) : null;
+  const discount = dc ? { label: clean(d.label).slice(0, 80) || 'Discount', cents: dc } : null;
+  const before = invoiceOf({ ...q, invoice_adjust: { comped } });
+  if (discount && discount.cents > before.totalCents) return { error: `The discount is more than the invoice (${(before.totalCents / 100).toFixed(2)}).` };
+  return { value: { comped, ...(discount ? { discount } : {}) } };
+}
+
 // The client's view of a quote: no costs, no margins
 export const clientQuote = q => ({ id: q.id, number: q.number, status: q.status, title: q.title || '', lines: (q.lines || []).map(l => ({ title: l.title, quantity: l.quantity, sizes: l.sizes || {}, unitCents: l.unitCents, totalCents: l.totalCents, note: l.note || '' })),
-  extras: q.extras || [], totalCents: Number(q.total_cents), currency: q.currency || 'USD', notes: q.notes || '', validUntil: q.valid_until instanceof Date ? q.valid_until.toISOString().slice(0, 10) : q.valid_until || null, sentAt: q.sent_at, acceptedAt: q.accepted_at, reply: q.reply || '', payUrl: q.status === 'accepted' ? q.pay_url || '' : '' });
+  extras: q.extras || [], totalCents: Number(q.total_cents), currency: q.currency || 'USD', notes: q.notes || '', validUntil: q.valid_until instanceof Date ? q.valid_until.toISOString().slice(0, 10) : q.valid_until || null, sentAt: q.sent_at, acceptedAt: q.accepted_at, reply: q.reply || '', payUrl: q.status === 'accepted' ? q.pay_url || '' : '',
+  ...(q.status === 'accepted' && invoiceOf(q).adjusted ? { invoice: (i => ({ comped: i.extras.filter(x => x.comped).map(x => x.label), discount: i.discount, totalCents: i.totalCents }))(invoiceOf(q)) } : {}) });
 
 export const quoteNumber = (n, year = new Date().getUTCFullYear()) => `Q-${year}-${String(n).padStart(4, '0')}`;

@@ -90,8 +90,10 @@ export function clientProductTerms(product, quotes) {
 // Build Shopify draft-order line items (and a display summary) for a set of products,
 // rolling every priced product into one order. Products without a variant fall back to a
 // custom line titled with the product name; setup and freight become their own lines.
-export function draftOrderLinesForProducts(products, quotes, currency) {
-  const lineItems = [], summary = [], skipped = [];
+// adjust (the invoice stage): comp: ['<productId>:setup' | '<productId>:freight'] keeps the line on the invoice at $0, marked comped; discount:
+// { label, cents } comes off the order as the draft order's own discount (appliedDiscount), never more than the order.
+export function draftOrderLinesForProducts(products, quotes, currency, adjust = {}) {
+  const lineItems = [], summary = [], skipped = [], comp = new Set(Array.isArray(adjust?.comp) ? adjust.comp.map(String) : []);
   let amountCents = 0;
   for (const product of products) {
     const terms = productCommercials(product, quotes);
@@ -101,14 +103,18 @@ export function draftOrderLinesForProducts(products, quotes, currency) {
     const main = product.shopify_variant_id ? { variantId: product.shopify_variant_id, quantity: terms.units, priceOverride: money(terms.unitPriceCents) }
       : { title: product.title, quantity: terms.units, requiresShipping: true, originalUnitPriceWithCurrency: money(terms.unitPriceCents) };
     lineItems.push(main);
-    if (terms.setupCents > 0) lineItems.push({ title: `Setup — ${product.title}`, quantity: 1, requiresShipping: false, originalUnitPriceWithCurrency: money(terms.setupCents) });
-    if (terms.freightCents > 0) lineItems.push({ title: `Freight — ${product.title}`, quantity: 1, requiresShipping: false, originalUnitPriceWithCurrency: money(terms.freightCents) });
-    amountCents += terms.lineTotalCents;
+    const setupComped = terms.setupCents > 0 && comp.has(`${product.id}:setup`), freightComped = terms.freightCents > 0 && comp.has(`${product.id}:freight`);
+    if (terms.setupCents > 0) lineItems.push({ title: `Setup — ${product.title}${setupComped ? ' (comped)' : ''}`, quantity: 1, requiresShipping: false, originalUnitPriceWithCurrency: money(setupComped ? 0 : terms.setupCents) });
+    if (terms.freightCents > 0) lineItems.push({ title: `Freight — ${product.title}${freightComped ? ' (comped)' : ''}`, quantity: 1, requiresShipping: false, originalUnitPriceWithCurrency: money(freightComped ? 0 : terms.freightCents) });
+    const lineTotalCents = terms.lineTotalCents - (setupComped ? terms.setupCents : 0) - (freightComped ? terms.freightCents : 0);
+    amountCents += lineTotalCents;
     summary.push({
       productId: product.id, title: product.title, units: terms.units, unitPriceCents: terms.unitPriceCents,
-      setupCents: terms.setupCents, freightCents: terms.freightCents, lineTotalCents: terms.lineTotalCents,
+      setupCents: terms.setupCents, freightCents: terms.freightCents, setupComped, freightComped, lineTotalCents,
       committed: terms.committed, estimated: terms.estimated, hasVariant: Boolean(product.shopify_variant_id)
     });
   }
-  return { lineItems, summary, skipped, amountCents, currency };
+  const d = adjust?.discount && Math.round(Number(adjust.discount.cents)) > 0 ? { label: String(adjust.discount.label || '').trim().slice(0, 80) || 'Discount', cents: Math.min(Math.round(Number(adjust.discount.cents)), amountCents) } : null;
+  const appliedDiscount = d && d.cents > 0 ? { title: d.label, description: d.label, value: Number((d.cents / 100).toFixed(2)), valueType: 'FIXED_AMOUNT' } : null;
+  return { lineItems, summary, skipped, amountCents: amountCents - (d?.cents || 0), currency, discount: d && d.cents > 0 ? d : null, appliedDiscount };
 }

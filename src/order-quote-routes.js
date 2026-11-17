@@ -13,15 +13,15 @@
 //
 // Sales: sending finds the client's contact (or makes one, tied to the room) and its company, and opens a deal at Proposal worth the quote's
 // total, on the quote's project; a new version updates the value. Accepting wins the deal; asking for changes logs the note on it.
-import { cleanQuote, matchRequest, clientQuote, quoteNumber, sizesWords, productFees } from './order-quotes.js';
-import { shopifyGraphql, DRAFT_ORDER_CREATE, requireNoUserErrors } from './shopify.js';
+import { cleanQuote, matchRequest, clientQuote, quoteNumber, sizesWords, productFees, invoiceOf, cleanInvoiceAdjust } from './order-quotes.js';
+import { shopifyGraphql, DRAFT_ORDER_CREATE, DRAFT_ORDER_UPDATE, requireNoUserErrors } from './shopify.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const day = v => (v instanceof Date ? v.toISOString().slice(0, 10) : v ? String(v).slice(0, 10) : '');
 const usd = c => '$' + (Number(c) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function registerOrderQuoteRoutes(app, d) {
-  const { pool, authenticate, adminOnly, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, emailEscape = s => String(s), notifyRoomStaff = async () => 0, clientHubUrl = '', workHubUrl = '', shopifyReady = () => true, log = console, makeDraftOrder = null, hasRenderingSql = 'false has_rendering', renderingUrl = () => '' } = d;
+  const { pool, authenticate, adminOnly, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, emailEscape = s => String(s), notifyRoomStaff = async () => 0, clientHubUrl = '', workHubUrl = '', shopifyReady = () => true, log = console, makeDraftOrder = null, updateDraftOrder = null, hasRenderingSql = 'false has_rendering', renderingUrl = () => '' } = d;
   const pre = [authenticate, adminOnly];
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const uid = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
@@ -33,7 +33,7 @@ export function registerOrderQuoteRoutes(app, d) {
       (select jsonb_build_object('tooling', q.tooling_cents, 'freight', q.freight_cents) from quotes q where q.product_id=p.id and q.status<>'declined' order by q.version desc limit 1) legacy
     from products p left join projects pr on pr.id=p.project_id where p.client_id=$1 and (pr.id is null or (pr.archived_at is null and pr.status not in ('archive','archived'))) order by pr.updated_at desc nulls last, p.title`, [cid])).rows;
   const staffView = q => ({ ...clientQuote(q), lines: q.lines || [], costCents: q.cost_cents == null ? null : Number(q.cost_cents), marginPct: q.margin_pct == null ? null : Number(q.margin_pct), requestId: q.request_id, projectId: q.project_id, dealId: q.deal_id,
-    clientId: q.client_id, clientName: q.client_name || '', declinedAt: q.declined_at, payError: q.pay_error || '', createdAt: q.created_at, version: q.version });
+    clientId: q.client_id, clientName: q.client_name || '', declinedAt: q.declined_at, payError: q.pay_error || '', createdAt: q.created_at, version: q.version, invoice: invoiceOf(q) });
 
   // ---- Sales: the client's contact, company and the deal this quote is ----
   async function trackDeal(q, { stage, text, kind = 'system', actorId = null, lostReason = '' }) {
@@ -62,21 +62,27 @@ export function registerOrderQuoteRoutes(app, d) {
   }
 
   // ---- the payment link: a Shopify draft order with every line (a product's own variant where it has one), shown in the client's invoices ----
-  async function paymentLink(q) {
+  // It is the invoice (invoiceOf): an other line comped is on it at $0, marked comped; a discount is the draft order's own discount. With
+  // update, the draft order already made is changed in place, so its number and the client's link stay the same.
+  async function paymentLink(q, { update = false } = {}) {
     try {
       if (!shopifyReady()) throw new Error('Shopify is not set up, so make the payment link in Money');
       const c = (await pool.query('select name, contact_email, shopify_customer_id from clients where id=$1', [q.client_id])).rows[0];
       const variants = new Map((await pool.query('select id, shopify_variant_id from products where id = any($1)', [(q.lines || []).map(l => l.productId)])).rows.map(r => [r.id, r.shopify_variant_id]));
       const money = v => ({ amount: (Number(v) / 100).toFixed(2), currencyCode: q.currency || 'USD' });
+      const inv = invoiceOf(q);
       const lineItems = (q.lines || []).map(l => { const v = variants.get(l.productId), title = `${l.title}${l.sizes && Object.keys(l.sizes).length ? ' (' + sizesWords(l.sizes) + ')' : ''}`;
         return v ? { variantId: v, quantity: l.quantity, priceOverride: money(l.unitCents) } : { title, quantity: l.quantity, requiresShipping: true, originalUnitPriceWithCurrency: money(l.unitCents) }; })
-        .concat((q.extras || []).map(x => ({ title: x.label, quantity: 1, requiresShipping: false, originalUnitPriceWithCurrency: money(x.cents) })));
-      const input = { lineItems, email: c?.contact_email || undefined, customerId: c?.shopify_customer_id || undefined, note: `Future Basics quote ${q.number}`, tags: ['future-basics-client-hub', 'order-quote', `client-${String(c?.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`], visibleToCustomer: true };
-      const draft = makeDraftOrder ? await makeDraftOrder(input) : requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE, { input })).draftOrderCreate).draftOrder;
+        .concat(inv.extras.map(x => ({ title: x.comped ? `${x.label} (comped)` : x.label, quantity: 1, requiresShipping: false, originalUnitPriceWithCurrency: money(x.comped ? 0 : x.cents) })));
+      const input = { lineItems, email: c?.contact_email || undefined, customerId: c?.shopify_customer_id || undefined, note: `Future Basics quote ${q.number}`, tags: ['future-basics-client-hub', 'order-quote', `client-${String(c?.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`], visibleToCustomer: true,
+        ...(inv.discount ? { appliedDiscount: { title: inv.discount.label.slice(0, 255), description: inv.discount.label.slice(0, 255), value: Number((inv.discount.cents / 100).toFixed(2)), valueType: 'FIXED_AMOUNT' } } : {}) };
+      const draft = update && q.shopify_draft_order_id
+        ? (updateDraftOrder ? await updateDraftOrder(q.shopify_draft_order_id, input) : requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_UPDATE, { id: q.shopify_draft_order_id, input })).draftOrderUpdate).draftOrder)
+        : makeDraftOrder ? await makeDraftOrder(input) : requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE, { input })).draftOrderCreate).draftOrder;
       await pool.query(`update order_quotes set shopify_draft_order_id=$2, shopify_draft_order_name=$3, pay_url=$4, pay_error=null, updated_at=now() where id=$1`, [q.id, draft.id, draft.name, draft.invoiceUrl]);
       await pool.query(`insert into invoices(client_id,project_id,number,amount_cents,currency,status,external_url,kind,shopify_draft_order_id,product_ids) values($1,$2,$3,$4,$5,'due',$6,'invoice',$7,$8)
         on conflict(client_id,number) do update set amount_cents=excluded.amount_cents,status='due',external_url=excluded.external_url,shopify_draft_order_id=excluded.shopify_draft_order_id`,
-        [q.client_id, q.project_id, draft.name, q.total_cents, q.currency || 'USD', draft.invoiceUrl, draft.id, (q.lines || []).map(l => l.productId)]);
+        [q.client_id, q.project_id, draft.name, inv.totalCents, q.currency || 'USD', draft.invoiceUrl, draft.id, (q.lines || []).map(l => l.productId)]);
       return { ok: true, url: draft.invoiceUrl, name: draft.name };
     } catch (e) { await pool.query('update order_quotes set pay_error=$2 where id=$1', [q.id, String(e.message || e).slice(0, 300)]).catch(() => {}); log.warn?.({ err: e.message, quote: q.id }, 'quote payment link not made'); return { ok: false, error: e.message }; }
   }
@@ -160,6 +166,21 @@ export function registerOrderQuoteRoutes(app, d) {
     const q = await one(req.params.qid); if (!q) return bad(reply, 'Quote not found', 404); if (q.status !== 'accepted') return bad(reply, 'A payment link is made once the client accepts', 409);
     if (q.pay_url) return { quote: staffView(q) };
     const r = await paymentLink(q); if (!r.ok) return bad(reply, r.error, 502);
+    return { quote: staffView(await one(q.id)) };
+  });
+
+  // the invoice stage: comp other lines (struck off, kept at $0) and add a discount, on an accepted quote until its invoice is paid. The payment
+  // link already made is updated in place (same link, same number); none yet, it is made now with the changes.
+  app.put('/v1/admin/order-quotes/:qid/invoice', { preHandler: pre }, async (req, reply) => {
+    const q = await one(req.params.qid); if (!q) return bad(reply, 'Quote not found', 404);
+    if (q.status !== 'accepted') return bad(reply, 'The invoice is changed once the client accepts the quote. Before then, edit the quote.', 409);
+    if (q.shopify_draft_order_id && (await pool.query(`select 1 from invoices where client_id=$1 and shopify_draft_order_id=$2 and status='paid'`, [q.client_id, q.shopify_draft_order_id])).rowCount) return bad(reply, 'This invoice is paid. Refund or credit it in Shopify instead.', 409);
+    const c = cleanInvoiceAdjust(req.body || {}, q); if (c.error) return bad(reply, c.error);
+    const before = invoiceOf(q), row = (await pool.query('update order_quotes set invoice_adjust=$2, updated_at=now() where id=$1 returning *', [q.id, JSON.stringify(c.value)])).rows[0], after = invoiceOf(row);
+    const words = [...after.extras.filter(x => x.comped).map(x => `comped ${x.label}`), ...(after.discount ? [`${after.discount.label} ${usd(after.discount.cents)}`] : [])].join(', ') || 'no comps or discount';
+    await pool.query(`insert into activities(client_id, actor_id, type, summary, metadata) values($1,$2,'commerce',$3,$4)`, [q.client_id, uid(req), `Invoice for quote ${q.number}: ${words} · ${usd(before.totalCents)} → ${usd(after.totalCents)}`, { orderQuoteId: q.id }]).catch(() => {});
+    const r = q.pay_url || shopifyReady() ? await paymentLink(row, { update: Boolean(q.shopify_draft_order_id) }) : { ok: true };
+    if (!r.ok) return bad(reply, `Saved, but the payment link was not updated: ${r.error}`, 502);
     return { quote: staffView(await one(q.id)) };
   });
 
