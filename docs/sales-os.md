@@ -119,6 +119,10 @@ Each card says why in plain words and offers **Make a task** (with a suggested t
 2. ~~Chat with a handoff to a person~~ (done, above). Possible next steps: attachments, notifying staff in the Message Center, a chat that continues over email, chat on the hub for clients.
 3. ~~Opportunity finder~~ (done, above; finding *new* prospects outside the CRM is not built). ~~Press comms~~ (done, above). Possible next steps for press: scheduled sends, a public press page, importing a media list from CSV, tracking opens.
 
+## Quotes and contracts are deals
+
+The pipeline's money is what is in front of clients: every order quote, product quote and contract is a deal, opened and moved as it is sent, signed, accepted or declined. The rules are in [contracts.md](contracts.md#every-contract-is-in-the-sales-pipeline) and `src/sales-deals.js`.
+
 ## Won deal to work: Start project
 Moving a deal to **Won** is where the sale ends and the work begins. In the deal window a won deal shows **Start project** with the kind of work (software or product development). One click:
 - finds the client's room (the contact's own, else one with the company's name) or makes one, and the contact can sign in to it;

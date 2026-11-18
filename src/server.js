@@ -89,6 +89,7 @@ import { registerMcpRoutes } from './mcp-routes.js';
 import { registerTeamChatRoutes } from './team-chat-routes.js';
 import { registerWorkspaceRoutes } from './workspace-routes.js';
 import { registerOrderQuoteRoutes } from './order-quote-routes.js';
+import { syncProductQuoteDeal, reconcileDeals } from './sales-deals.js';
 import { registerProductSheetRoutes } from './product-sheet-routes.js';
 import { registerRoomSitesRoutes } from './room-sites-routes.js';
 import { createLive } from './live.js';
@@ -830,7 +831,7 @@ registerTeamChatRoutes(app, { pool, authenticate, notifyStaff, sendHubEmail, hub
 registerWorkspaceRoutes(app, { pool, authenticate, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, log: app.log });
 registerRoomSitesRoutes(app, { pool, authenticate, adminOnly, notifyStaff, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, workHubUrl, log: app.log });
 registerProductSheetRoutes(app, { pool, authenticate, adminOnly, hasRenderingSql: HAS_RENDERING_SQL, renderingUrl });
-registerOrderQuoteRoutes(app, { pool, authenticate, adminOnly, sendHubEmail, hubEmailShell, emailEscape, notifyRoomStaff, clientHubUrl, workHubUrl, shopifyReady: shopifyConfigured, log: app.log, hasRenderingSql: HAS_RENDERING_SQL, renderingUrl });
+const orderQuoteDeals=registerOrderQuoteRoutes(app, { pool, authenticate, adminOnly, sendHubEmail, hubEmailShell, emailEscape, notifyRoomStaff, clientHubUrl, workHubUrl, shopifyReady: shopifyConfigured, log: app.log, hasRenderingSql: HAS_RENDERING_SQL, renderingUrl });
 registerLabSelfServeRoutes(app, { pool, authenticate, adminOnly, lab: labAccess, clientHubUrl, workHubUrl, notifyStaff, notifyClientContact, sendHubEmail, hubEmailShell, replyTo: intakeNotificationEmail, forgetUser, clientForEmail, log: app.log });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
@@ -1865,6 +1866,7 @@ app.post('/v1/admin/products/:id/quotes/from-tier',{preHandler:[authenticate,adm
     values($1,$2,$3,$4,$5,$6,$7,$8,$9,'issued',$10,$11,(select version from tech_packs where product_id=$1 and published_at is not null),$12) returning *`,[req.params.id,version,quantity,tier.unit_cost_cents,tier.setup_cents,tier.freight_cents,
       tier.wholesale_cents,tier.srp_cents,req.body?.notes||tier.notes||null,tier.id,JSON.stringify(config),depositPct(req.body?.depositPct)])).rows[0];
   await flow(req.params.id,'quote-issued',{actorId:req.auth.sub,note:`v${quote.version}`});
+  await syncProductQuoteDeal(pool,quote.id,{actorId:req.auth.sub,log:app.log}); // a deal in Sales at Proposal, worth the quote (a new version updates the product's deal)
   await emailQuoteIssued(req.params.id,quote);
   return reply.code(201).send(quote);
 });
@@ -2125,6 +2127,7 @@ app.post('/v1/admin/products/:id/quotes',{preHandler:[authenticate,adminOnly]},a
   const quote=(await pool.query(`insert into quotes(product_id,version,quantity,unit_cost_cents,tooling_cents,freight_cents,wholesale_cents,srp_cents,expires_at,notes,status,tech_pack_version,deposit_pct)
     values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'issued',(select version from tech_packs where product_id=$1 and published_at is not null),$11) returning *`,[req.params.id,version,quantity,unitCostCents,toolingCents,freightCents,wholesaleCents||null,srpCents||null,expiresAt||null,notes||null,depositPct(req.body?.depositPct)])).rows[0];
   await flow(req.params.id,'quote-issued',{actorId:req.auth.sub,note:`v${quote.version}`});
+  await syncProductQuoteDeal(pool,quote.id,{actorId:req.auth.sub,log:app.log}); // a deal in Sales at Proposal, worth the quote (a new version updates the product's deal)
   await emailQuoteIssued(req.params.id,quote);
   return reply.code(201).send(quote);
 });
@@ -2837,6 +2840,7 @@ app.post('/v1/quotes/:id/decision', { preHandler: authenticate }, async (req, re
     await client.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[row.client_id,row.product_id,req.auth.sub,'quote-decision',message]);
     await client.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'quote-decision',$2,'quote',$3)`,[row.client_id,message,row.id]);
     await client.query('commit');
+    await syncProductQuoteDeal(pool,row.id,{actorId:req.auth.sub,log:app.log}); // accepting wins the product's deal, declining loses it
     let deposit=null;
     if(decision==='approved')deposit=await createDepositInvoice(row.id,req.auth.sub).catch(e=>{app.log.error({err:e.message,quoteId:row.id},'sample deposit not invoiced');return null});
     await notifyStaff(`${row.client_name} ${decision==='approved'?'accepted':'declined'} quote v${row.version} — ${row.product_title}`,`<p>${emailEscape(message)}</p>${hubButton(`${workHubUrl}/clients/${row.client_id}`,'Open the client room')}`);
@@ -6692,6 +6696,9 @@ if(process.env.INTEL_AUTO!=='off')jobEvery('Sales intelligence', 15 * 60 * 1000,
 // Design Lab: read the watched brands that have not been looked at in three days (a few at a time, within a daily AI allowance). Switched off with LAB_AUTO=off.
 if(process.env.LAB_AUTO!=='off')jobEvery('Design Lab scan', 6 * 3600 * 1000, async()=>{const r=await lab.scanDue({limit:3,hours:72});await labPurge(pool).catch(()=>{});return r.reduce((n,x)=>n+(x.added||0),0)}, { delay: 6 * 60 * 1000 }); else declareJob('Design Lab scan', 6 * 3600 * 1000, 'switched off (LAB_AUTO=off)');
 jobEvery('CRM sync from the hub', 60 * 60 * 1000, async()=>{const r=await syncHubContacts(pool);return r.created+r.updated}, { delay: 90 * 1000 });
+// Every contract and quote is a deal in Sales (sales-deals.js). The routes keep them in step as they happen; this ties in what came before and
+// anything that slipped (a contract that expired unseen). It writes only what is out of step, so a quiet hour changes nothing.
+jobEvery('Deals from quotes and contracts', 60 * 60 * 1000, async()=>{const r=await reconcileDeals(pool,{orderQuotes:orderQuoteDeals.trackDeal,log:app.log});if(r.contracts+r.quotes+r.orderQuotes)app.log.info(r,'quotes and contracts tied to deals in Sales');return r.contracts+r.quotes+r.orderQuotes}, { delay: 20 * 1000 });
 // The showcase follows the apps: hourly, look at each build's repository for merged changes (needs a GitHub token to read private repositories; 'Sync now' on the builds page works without the job)
 if(process.env.BUILDS_GITHUB_TOKEN||process.env.GITHUB_TOKEN)jobEvery('Showcase update sync', 60 * 60 * 1000, async()=>{const r=await syncBuilds(pool,{log:app.log,fetchImpl:(u,o)=>trackedFetch('github',u,o)});return r.queued+r.published}, { delay: 2 * 60 * 1000 });
 if (process.env.FOLLOWUPS_DISABLED !== 'true') jobEvery('Photo follow-up emails', 15 * 60 * 1000, runPhotoFollowups); else declareJob('Photo follow-up emails', 15 * 60 * 1000, 'switched off (FOLLOWUPS_DISABLED)');
