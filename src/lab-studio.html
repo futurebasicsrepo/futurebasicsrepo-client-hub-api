@@ -104,6 +104,8 @@ html[data-focus] .studio:not([data-v=split]) .stage{background-color:var(--stage
 .studio[data-v=pattern] .side,.studio[data-v=pattern] .stage,.studio[data-v=pattern] .rail,.studio[data-v=pattern] .opts,.studio[data-v=pattern] .flat-only,.studio[data-v=pattern] .pic-only{display:none!important}
 .studio[data-v=pattern] .mid{grid-column:1/-1}.studio[data-v=pattern] .pathost{display:block}
 .studio[data-v=front] .pic-only,.studio[data-v=back] .pic-only{display:none!important}
+/* Download (every file for the piece) is in the picture and flats views; Pattern has its own files, and the board keeps its bar as it was */
+.studio[data-v=pattern] .dl-menu,.studio[data-v=board] .dl-menu{display:none!important}
 /* the flats keep the tool rail and its options: the same tools draw on the flat (the flats bring their own panels, so the layer list goes) */
 .studio[data-v=front] .side,.studio[data-v=back] .side,.studio[data-v=front] .stage,.studio[data-v=back] .stage{display:none}
 .studio[data-v=front] .mid,.studio[data-v=back] .mid{grid-column:2/-1}
@@ -238,11 +240,12 @@ body.typing .rail-names,body.typing #flatPicBar{display:none!important}
     <button class="fold btn q sm" id="focusBtn" type="button" aria-pressed="false" title="Make the drawing as big as it goes: hide the header, the menu and the guide, full screen where the browser allows (F)">Focus</button>
     <button class="fold btn sm pic-only pro-only" id="impBtn" type="button" title="Bring an SVG back from Illustrator: the studio's own export comes back as layers">Import</button><input type="file" id="svgIn" accept=".svg,image/svg+xml" class="hidden">
     <button class="fold btn sm pic-only" id="tryBtn" type="button" title="The design painted on a 3D model, turned round">3D</button>
-    <div class="fold menu pic-only"><button class="btn sm" id="expBtn" type="button" aria-haspopup="true" aria-expanded="false">Export</button>
+    <div class="fold menu dl-menu"><button class="btn sm" id="expBtn" type="button" aria-haspopup="true" aria-expanded="false" title="Every file for this piece, without the tech pack, and the picture as a file">Download</button>
       <div class="pop hidden" id="expPop" role="menu">
-        <button type="button" role="menuitem" data-exp="png"><b>Picture (PNG)</b><small>Everything as one picture, full size</small></button>
-        <button type="button" role="menuitem" data-exp="svg" class="pro-only"><b>Layers for Illustrator (SVG)</b><small>One group per layer; type and shapes stay editable</small></button>
-        <button type="button" role="menuitem" data-exp="layer"><b>The selected layer (PNG)</b><small>With a clear background, for a print file</small></button>
+        <button type="button" role="menuitem" data-exp="all" id="expAll"><b>Every file for this piece</b><small>The picture and turns, the flats, the sheets, each graphic's artwork, separations or stitch files, and the pattern</small></button>
+        <button type="button" role="menuitem" data-exp="png" class="pic-only"><b>Picture (PNG)</b><small>Everything as one picture, full size</small></button>
+        <button type="button" role="menuitem" data-exp="svg" class="pro-only pic-only"><b>Layers for Illustrator (SVG)</b><small>One group per layer; type and shapes stay editable</small></button>
+        <button type="button" role="menuitem" data-exp="layer" class="pic-only"><b>The selected layer (PNG)</b><small>With a clear background, for a print file</small></button>
         <button type="button" role="menuitem" data-exp="keepnew" class="hidden" id="expKeepNew"><b>Keep as a new graphic</b><small>Everything visible goes into the library as its own graphic</small></button>
       </div></div>
     <button class="fold btn sm hidden in-panel" id="matBtn" type="button" title="The fabrics, trims and labels this garment is made of, from the library: add, change and see what they cost">Fabrics, trims &amp; labels</button>
@@ -363,6 +366,7 @@ body.typing .rail-names,body.typing #flatPicBar{display:none!important}
 <script src="/lab/studio-main.js"></script>
 <script src="/lab/lab-gl.js"></script>
 <script src="/lab/lab-encode.js"></script>
+<script src="/lab/lab-downloads.js"></script>
 <script src="/lab/studio-pro.js"></script>
 <script src="/lab/vendor/polygon-clipping.js"></script>
 <script src="/lab/studio-vec.js"></script>

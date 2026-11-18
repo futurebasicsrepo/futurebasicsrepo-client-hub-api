@@ -161,6 +161,8 @@ shows no prices, and none should appear in a video: a price is quoted on a produ
   become an all-over repeat.
 - **Embroidery:** a realistic sew-out preview with playback, and a quality report.
 - **Decoration sheet:** graphics at real size, colour separations, and inks per colourway.
+- **Download any file, any time:** one button gives the picture, the flats (SVG and PNG), the sheets, each graphic's separations or
+  stitch files (.dst, .exp) and the pattern, one at a time or all in one zip. No need to make the tech pack first.
 
 ### Materials and trims
 A library of photo-real fabric and trim swatches, recoloured to your colour. It covers fabrics, footwear materials, plush, plastics and
