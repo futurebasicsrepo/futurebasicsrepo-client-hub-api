@@ -541,6 +541,16 @@ When nothing holds it up, the list offers **Send to the tech pack**; once it is 
   - **Picture (PNG)** at full size.
   - **The selected layer (PNG)** with a clear background, for a print file.
   - **Layers for Illustrator (SVG)**, one group per layer. Plain type and shapes stay live vectors; anything recoloured partly, adjusted or distressed is placed as its picture.
+- **Download** (every file for the piece, without the tech pack). The button is in the Studio header in every view, on the flats page, and on each piece on the Lab page. It lists what the piece has now, as last saved, and makes each file when it is asked for:
+  - **Design:** the picture and each view that has been made (JPEG).
+  - **Sketch:** the front and back flats as SVG (opens in Illustrator) and PNG (2400 px), the spec sheet (SVG), and the decoration sheet (PDF).
+  - **Each graphic,** on the flats at its placed size, or at 10 in when it is not placed yet:
+    - its artwork (PNG) and the artwork as a vector (SVG, one path per ink);
+    - a print: its separations and films as a zip, a plate per ink with its Pantone, the film positives and the job sheet;
+    - embroidery: the stitch files (.dst for Tajima, .exp for Melco), and a zip with the thread list, sew-out preview and job sheet.
+  - **Pattern:** DXF for every size, SVG, the cut list and trims, and the cut-and-sew proof.
+  - **Download everything (.zip):** all of it in folders, with a READ-ME that lists anything that could not be made. It holds every graphic's production files, the same ones the tech pack carries, so it can take a minute.
+  - Routes: `GET /v1/lab/concepts/:id/downloads` (the list), `…/downloads/:file` (one file), `…/downloads.zip` (all), in `src/lab-flats-routes.js`; the panel is `src/lab-downloads.js`. A client's room reaches only its own pieces, and nothing uses an AI generation.
 - Fonts other than Space Grotesk and IBM Plex Mono are the computer's own (serif, slab, condensed, script, typewriter), so they can look slightly different on another machine. The SVG names the font.
 - Routes: `src/lab-studio-routes.js` (`GET/PUT /v1/lab/concepts/:id/studio`, `GET …/studio/plain`, `POST …/studio/ai`, `POST …/studio/apply`, `POST …/studio/restore`). The page is `src/lab-studio.html`, and the table is `lab_studio_docs`. A saved design can be up to 30 MB and 80 layers. A layer's picture can only come from the design itself, a Lab graphic or one of our marks, never from an outside address.
 

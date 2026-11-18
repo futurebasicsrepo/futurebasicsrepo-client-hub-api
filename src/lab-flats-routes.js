@@ -11,6 +11,8 @@
 //   POST /v1/lab/concepts/:id/studio/graphics   {layers:[{layer, name, image|art, widthIn, heightIn, placement, techniqueId?}]} the studio's placed
 //                                               layers become the concept's graphics, and placements on its flats at their size
 //   GET|POST /v1/lab/decor/quotes, DELETE /v1/lab/decor/quotes/:id   what factories really charged, against the estimate: it calibrates the costs
+//   GET  /v1/lab/concepts/:id/downloads         every file the piece has (picture, turns, flats, sheets, each graphic's artwork, vector, separations
+//                                               or stitch files, the pattern), one at a time at …/downloads/:file, or all at …/downloads.zip
 // The check ("can it be made"): every placement is on the piece and clear of seams, ribs, zips, pockets and collars (the drawing alone); within the
 // technique's size; and its artwork, at the size it is placed, holds the technique's finest line, needs no more inks than the technique is priced for,
 // has no smooth shading a screen cannot print, and, for embroidery, how many stitches it takes.
@@ -29,6 +31,8 @@ import { maskFor } from './lab-flat-mask.js';
 import { logoSvg } from './brand-kit.js';
 import { cleanRules, cleanSurfaces, SURFACE_FIRST, MARK_FIRST } from './lab-library.js';
 import { jobFile } from './lab-jobfile.js';
+import { zip } from './zip.js';
+import { VIEW_KINDS, isKind as isViewKind } from './lab-views.js';
 import { traceVector } from './lab-vector.js';
 import { shoeSvg, withArt, SHOE_VIEWS, BAG_VIEWS } from './lab-shoe-draw.js';
 import { BAG_TYPES } from './lab-bags.js';
@@ -150,7 +154,7 @@ export const washPictures = async (p, views, o = {}, width = FLAT_PX) => Object.
 }))).filter(Boolean));
 
 export function registerLabFlatsRoutes(app, d) {
-  const { pool, authenticate, adminOnly, attachArtwork, applyHandoff, log = console, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit , pickImpl = callJsonSchema, lab = null } = d;
+  const { pool, authenticate, adminOnly, attachArtwork, applyHandoff, log = console, env = process.env, imageCfg = () => imageConfig(env), editImpl = openaiEdit , pickImpl = callJsonSchema, lab = null, extraFiles = null } = d; // extraFiles(id): the pattern and engineering files, for the piece's downloads
   const own = req => lab?.scope?.(req) || null, charge = async (req, o) => (lab ? lab.charge(req, o) : null); // a client's room: its own quotes, its AI meter
   const pre = [authenticate, adminOnly], bad = (reply, error, code = 422, extra = {}) => reply.code(code).send({ error, ...extra });
   const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
@@ -1046,5 +1050,113 @@ export function registerLabFlatsRoutes(app, d) {
     });
     return out;
   }
+  // ---- Downloads: every file a piece has, one at a time or all together, without going through its tech pack ----------------------------------
+  //   GET /v1/lab/concepts/:id/downloads         what there is now, in groups: the design (the picture and its turns), the sketch (the flats as
+  //                                              SVG and PNG, the spec sheet, the decoration sheet), each graphic (its artwork, the artwork as a
+  //                                              vector, and its separations and films for a print or its stitch files for embroidery), and the
+  //                                              pattern; each item with its URL and file name, and the URL of the zip of all of it
+  //   GET /v1/lab/concepts/:id/downloads/:file   one of them, made when it is asked for (the job files are the same ones the tech pack carries)
+  //   GET /v1/lab/concepts/:id/downloads.zip     all of it in one folder
+  // A client's room only reaches its own pieces (the Lab gate scopes /v1/lab/concepts/:id); nothing here uses an AI generation.
+  const dlSlugOf = v => String(v || 'graphic').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'graphic';
+  const dlKindOf = t => t.kind || (/embroid/i.test(t.base || '') ? 'embroidery' : 'print');
+  // the piece's graphics: those placed on the flats, at the size they are placed, then any not placed yet, at a working width of 10 in
+  async function dlGraphicsOf(c, s) {
+    const list = await techniques(c.client_id), style = s?.p?.style || null, out = [], seen = new Set();
+    const extra = new Map((await pool.query('select id, factory_note, art_guide from lab_techniques')).rows.map(r => [r.id, r]));
+    const full = t0 => { const x = extra.get(t0.id) || {}; return { ...t0, kind: dlKindOf(t0), factoryNote: x.factory_note || '', artGuide: x.art_guide || '' }; };
+    for (const q of s?.pl || []) { if (!q.mark && !q.art) continue; out.push({ name: q.name || 'Graphic', src: q, widthIn: Number(q.w) || 4, t: full(techFor(list, q, style)), placed: true }); if (q.art) seen.add(q.art); }
+    for (const g of ensureBranding(c.spec || {}, c.category).graphics || []) {
+      if ((!g.art && !g.svg) || (g.art && seen.has(g.art))) continue;
+      out.push({ name: g.name || 'Graphic', src: { art: g.art, svg: g.svg }, widthIn: 10, t: full(techFor(list, { technique: g.technique }, style)), placed: false });
+    }
+    return out.map((g, i) => ({ ...g, n: i + 1, slug: dlSlugOf(g.name), kind: g.t.kind }));
+  }
+  const dlGraphicPng = async g => (g.src.mark || g.src.art ? pngOf(g.src) : g.src.svg ? sharp(Buffer.from(g.src.svg), { density: 300 }).resize({ width: 3000, withoutEnlargement: true }).png().toBuffer().catch(() => null) : null);
+  const dlGarmentOf = s => (/^#[0-9a-f]{6}$/i.test(String(s?.p?.color || '')) ? s.p.color : '');
+  // the views the flats draw (a cup's are its sides, drawn as its front with the side named)
+  const dlFlatViews = s => { if (!s) return []; const cupS = wrapStyle(s.p.style); return ['front', 'back'].filter(v => (cupS ? v === 'front' || STYLES[s.p.style].goods.sides === 2 : s.views.includes(v))); };
+  const dlFlatSvg = (s, v) => { const cupS = wrapStyle(s.p.style); return renderSvg(s.p, cupS ? 'front' : v, { maskHref, placements: s.pl, hrefs: s.hrefs, scale: FLAT_SCALE, templateSvg, partHref, editHrefs: s.editHrefs, alloverHref: s.alloverHref, tags: s.tags, showDims: false, plain: true, raster: true, ...(cupS ? { side: v } : {}) }); };
+  const dlFlatPng = async (s, v) => sharp(Buffer.from(dlFlatSvg(s, v)), { density: 150 }).resize({ width: 2400, height: 2400, fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer();
+
+  async function downloadList(c) {
+    const base = `/v1/lab/concepts/${c.id}/downloads`, name = dlSlugOf(c.name), groups = [];
+    const item = (file, label, hint = '') => ({ id: file, label, hint, url: `${base}/${encodeURIComponent(file)}`, filename: `${name}-${file}` });
+    const pic = (await pool.query('select image is not null has from lab_concepts where id=$1', [c.id])).rows[0]?.has;
+    const turns = (await pool.query(`select kind from lab_concept_views where concept_id=$1 and status='ready' and image is not null`, [c.id])).rows.map(r => r.kind);
+    const design = [...(pic ? [item('picture.jpg', 'The picture', 'JPEG')] : []), ...VIEW_KINDS.filter(k => turns.includes(k.id)).map(k => item(`view-${k.id}.jpg`, k.label, 'JPEG'))];
+    if (design.length) groups.push({ key: 'design', title: 'Design', items: design });
+    const s = await sheet(c).catch(() => null);
+    if (s) {
+      const sk = [];
+      for (const v of dlFlatViews(s)) { const w = v === 'front' ? 'Front' : 'Back'; sk.push(item(`flat-${v}.svg`, `${w} flat`, 'SVG: opens in Illustrator'), item(`flat-${v}.png`, `${w} flat`, 'PNG, 2400 px')); }
+      sk.push(item('spec-sheet.svg', 'Spec sheet', 'Front and back, every placement measured, points of measure'));
+      if (s.pl.length) sk.push(item('decoration-sheet.pdf', 'Decoration sheet', 'A page per graphic for the decorator'));
+      groups.push({ key: 'sketch', title: 'Sketch', items: sk });
+    }
+    for (const g of await dlGraphicsOf(c, s)) {
+      const its = [item(`art-${g.n}-${g.slug}.png`, 'Artwork', `PNG, ${g.placed ? `${fmt(g.widthIn)} wide as placed` : 'not placed yet'}`), item(`vector-${g.n}-${g.slug}.svg`, 'Artwork as a vector', 'SVG, one path per ink')];
+      if (g.kind === 'embroidery') its.push(item(`stitch-${g.n}-${g.slug}.dst`, 'Stitch file (.dst)', 'Tajima: every commercial machine reads it'), item(`stitch-${g.n}-${g.slug}.exp`, 'Stitch file (.exp)', 'Melco'));
+      its.push(item(`job-${g.n}-${g.slug}.zip`, g.kind === 'print' ? 'Separations and films' : g.kind === 'embroidery' ? 'Everything to stitch it' : 'Job file', g.kind === 'print' ? 'A plate per ink with its Pantone, film positives, the job sheet' : g.kind === 'embroidery' ? 'The stitch files, thread list, sew-out preview and job sheet' : `The artwork at size and the job sheet (${g.t.name})`));
+      groups.push({ key: `graphic-${g.n}`, title: g.name, sub: `${g.t.name}${g.placed ? '' : ' · not on the flats yet'}`, items: its });
+    }
+    if (extraFiles && s) groups.push({ key: 'pattern', title: 'Pattern', items: [item('pattern.zip', 'Pattern files', 'DXF (all sizes), SVG, cut list and trims, the cut-and-sew proof')] });
+    return { groups, zip: { url: `${base}.zip`, filename: `${name}-files.zip` }, count: groups.reduce((n, g) => n + g.items.length, 0) };
+  }
+
+  // one file → { data, type } or { error, code }
+  async function downloadFile(c, file) {
+    const m = /^(picture|view|flat|spec|decoration|art|vector|stitch|job|pattern)(?:-([a-z0-9_]+))?(?:-([a-z0-9-]+))?\.(jpg|svg|png|pdf|dst|exp|zip)$/.exec(String(file));
+    if (!m) return { error: 'Not found', code: 404 };
+    const [, what, a, , ext] = m;
+    if (what === 'picture') { const r = (await pool.query('select image from lab_concepts where id=$1', [c.id])).rows[0]; return r?.image ? { data: r.image, type: 'image/jpeg' } : { error: 'There is no picture yet', code: 404 }; }
+    if (what === 'view') { if (!isViewKind(a)) return { error: 'Not found', code: 404 }; const r = (await pool.query(`select image from lab_concept_views where concept_id=$1 and kind=$2 and status='ready'`, [c.id, a])).rows[0]; return r?.image ? { data: r.image, type: 'image/jpeg' } : { error: 'That view is not made yet', code: 404 }; }
+    if (what === 'pattern') { if (!extraFiles) return { error: 'Not found', code: 404 }; const x = await extraFiles(c.id); if (!x.files.length) return { error: x.notes[0] || 'There is no pattern for this piece yet', code: 404 }; return { data: zip(x.files.map(f => ({ name: f.name, data: f.data }))), type: 'application/zip' }; }
+    const s = await sheet(c).catch(() => null);
+    if (what === 'flat' || what === 'spec' || what === 'decoration') {
+      if (!s) return { error: 'Save the flats first', code: 404 };
+      if (what === 'spec') return { data: Buffer.from(s.svg), type: 'image/svg+xml' };
+      if (what === 'decoration') { const pdf = await decorationPdf(c); return pdf ? { data: pdf, type: 'application/pdf' } : { error: 'Place a graphic on the flats first', code: 404 }; }
+      if (!dlFlatViews(s).includes(a)) return { error: 'This piece has no such view', code: 404 };
+      return ext === 'svg' ? { data: Buffer.from(dlFlatSvg(s, a)), type: 'image/svg+xml' } : { data: await dlFlatPng(s, a), type: 'image/png' };
+    }
+    const g = (await dlGraphicsOf(c, s))[Number(a) - 1]; if (!g) return { error: 'That graphic is not on the piece any more', code: 404 };
+    const png = await dlGraphicPng(g); if (!png) return { error: `${g.name} has no artwork file to make it from`, code: 404 };
+    if (what === 'art') return { data: png, type: 'image/png' };
+    if (what === 'vector') { const v = await traceVector(png, { widthIn: g.widthIn, name: g.name }); return { data: Buffer.from(v.svg), type: 'image/svg+xml' }; }
+    if (what === 'stitch' && g.kind !== 'embroidery') return { error: `${g.name} is not embroidered, so it has no stitch file`, code: 404 };
+    const r = await jobFile(png, { name: g.name, technique: g.t, widthIn: g.widthIn, garmentColour: dlGarmentOf(s) });
+    if (what === 'stitch') { const f = r.files.find(x => x.name.toLowerCase().endsWith('.' + ext)); return f ? { data: f.data, type: 'application/octet-stream' } : { error: 'The stitch file could not be made', code: 422 }; }
+    return { data: zip(r.files.map(f => ({ name: `${g.slug}/${f.name}`, data: f.data }))), type: 'application/zip' };
+  }
+
+  const dlSendFile = (reply, data, type, filename, inline = false) => reply.header('content-type', type).header('cache-control', 'private, no-store').header('content-disposition', `${inline ? 'inline' : 'attachment'}; filename="${filename.replace(/[^\w.-]+/g, '-')}"`).send(data);
+  app.get('/v1/lab/concepts/:id/downloads', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    return downloadList(c);
+  });
+  app.get('/v1/lab/concepts/:id/downloads/:file', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    try { const r = await downloadFile(c, req.params.file); if (r.error) return bad(reply, r.error, r.code); return dlSendFile(reply, r.data, r.type, `${dlSlugOf(c.name)}-${req.params.file}`); }
+    catch (e) { log.warn?.({ err: e.message, file: req.params.file }, 'download not made'); return bad(reply, `The file could not be made (${String(e.message).slice(0, 120)})`); }
+  });
+  // everything: the design, the flats, every graphic's job folder (as the tech pack carries them) and the pattern; what could not be made is
+  // listed in READ-ME.txt rather than left out without a word
+  app.get('/v1/lab/concepts/:id/downloads.zip', { preHandler: pre }, async (req, reply) => {
+    const c = await concept(req.params.id); if (!c) return bad(reply, 'Not found', 404);
+    const out = [], notes = [], add = (name, data) => { if (data) out.push({ name, data }); };
+    const r = (await pool.query('select image from lab_concepts where id=$1', [c.id])).rows[0]; add('design/picture.jpg', r?.image);
+    for (const v of (await pool.query(`select kind, image from lab_concept_views where concept_id=$1 and status='ready' and image is not null order by kind`, [c.id])).rows) add(`design/${v.kind}.jpg`, v.image);
+    const s = await sheet(c).catch(() => null);
+    if (s) for (const v of dlFlatViews(s)) { try { add(`flats/flat-${v}.svg`, Buffer.from(dlFlatSvg(s, v))); add(`flats/flat-${v}.png`, await dlFlatPng(s, v)); } catch (e) { notes.push(`The ${v} flat could not be drawn (${String(e.message).slice(0, 120)})`); } }
+    else notes.push('The flats are not saved yet, so there is no sketch, spec sheet or decoration sheet.');
+    try { const p = await productionFiles(c); for (const f of p.files) out.push({ name: f.name, data: f.data }); notes.push(...p.notes); } catch (e) { notes.push(`The graphics' files could not be made (${String(e.message).slice(0, 120)})`); }
+    if (!s) for (const g of await dlGraphicsOf(c, null)) { const png = await dlGraphicPng(g).catch(() => null); if (png) add(`decorations/${String(g.n).padStart(2, '0')}-${g.slug}/artwork.png`, png); }
+    if (extraFiles) { try { const x = await extraFiles(c.id); out.push(...x.files.map(f => ({ name: f.name, data: f.data }))); notes.push(...x.notes); } catch (e) { notes.push(`The pattern could not be made (${String(e.message).slice(0, 120)})`); } }
+    if (!out.length) return bad(reply, 'There is nothing to download yet: make the picture, or save the flats', 404);
+    out.push({ name: 'READ-ME.txt', data: Buffer.from([`${c.name}: the files from the Future Basics Design Lab, as they stood on ${new Date().toISOString().slice(0, 10)}.`, '', 'design/       the picture and its views', 'flats/        the flats, front and back, as SVG (opens in Illustrator) and PNG', 'decorations/  the spec sheet and decoration sheet, and a folder per graphic: its artwork, the artwork as a vector, and its separations and films (a print) or stitch files (embroidery)', 'pattern/      the pattern: DXF for every size, SVG, cut list and trims', '', ...(notes.length ? ['Notes:', ...notes.map(n => `- ${n}`)] : [])].join('\r\n') + '\r\n') });
+    return dlSendFile(reply, zip(out), 'application/zip', `${dlSlugOf(c.name)}-files.zip`);
+  });
+
   return { flatThumb: async id => { const c = await concept(id); return c ? flatThumb(c) : null; }, thumbSoonById: async id => { const c = await concept(id).catch(() => null); if (c) thumbSoon(c, 200); }, flatPictures: async id => { const c = await concept(id); return c ? flatPictures(c) : null; }, startCheck, productionFiles: async id => { const c = await concept(id); return c ? productionFiles(c) : { files: [], notes: [] }; }, sheetSvg: async id => { const c = await concept(id); const sh = c && await sheet(c); return sh?.svg || null; }, files: async id => { const c = await concept(id); return c ? files(c) : []; }, sendToPack: async (id, productId) => { const c = await concept(id); return c ? sendToPack(c, productId) : null; } };
 }

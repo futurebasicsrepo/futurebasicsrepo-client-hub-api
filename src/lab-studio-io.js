@@ -50,6 +50,8 @@ function svgDoc(){
     const g=`<g id="${xa(l.name.replace(/[^A-Za-z0-9_-]+/g,'_')+'_'+l.id)}" data-name="${xa(l.name)}" transform="${tr}" style="${style}">${inner}</g>`;return window.ILL?ILL.svgWrap(l,g):g});
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n<title>${esc(D.concept.name)} · Future Basics Design Lab</title>\n${window.ILL?`<defs>${ILL.svgDefs()}</defs>`:''}\n${parts.join('\n')}\n</svg>`;
 }
+// every file the piece has, in any view, without going into its tech pack (src/lab-downloads.js); in a flats view the Sketch group comes first
+$('#dlBtn').onclick=()=>{if(!CID){toast('This graphic is not on a piece: use Export for the picture or its layers.');return}const v=document.querySelector('.studio')?.dataset.v||'';window.FBDownloads?.open({conceptId:CID,name:D.concept?.name||'',token:TOKEN(),focus:v==='front'||v==='back'?'sketch':v==='pattern'?'pattern':'',save:(b,n,l)=>{if(INAPP()){showSheet(b,n,l);return true}return false}})};
 $('#expBtn').onclick=e=>{e.stopPropagation();const p=$('#expPop'),open=p.classList.toggle('hidden');$('#expBtn').setAttribute('aria-expanded',String(!open))};
 document.addEventListener('click',e=>{if(!e.target.closest('.menu')){$('#expPop').classList.add('hidden');$('#expBtn').setAttribute('aria-expanded','false')}});
 $('#expPop').addEventListener('click',e=>{const b=e.target.closest('[data-exp]');if(!b)return;$('#expPop').classList.add('hidden');const k=b.dataset.exp;compose();

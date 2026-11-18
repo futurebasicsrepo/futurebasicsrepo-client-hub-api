@@ -1945,6 +1945,16 @@ await journey('J230', 'Decoration to the factory: a graphic has a real size in i
     const pages = (pb.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
     ok(pdf.status === 200 && /application\/pdf/.test(pdf.headers.get('content-type')) && pb.slice(0, 4).toString() === '%PDF' && pages === body.placements.length, `2. the decoration sheet is a PDF, one page per graphic (${pages})`);
     ok((await call(`/v1/lab/concepts/${c.id}/flats/decorations.pdf`)).status === 401, '   closed like the rest of the Lab');
+    // 2b. the piece's downloads, with no tech pack yet: the list, the front flat, the graphic's separations, and everything in one zip
+    const dl = (await K(`/concepts/${c.id}/downloads`)).json, gi = dl.groups?.find(x => x.title === 'Chest graphic'), sk = dl.groups?.find(x => x.key === 'sketch');
+    ok(sk?.items.some(i => i.id === 'flat-front.svg') && sk.items.some(i => i.id === 'spec-sheet.svg') && gi && gi.items.some(i => /^job-\d+-chest-graphic\.zip$/.test(i.id)) && gi.items.some(i => /^vector-/.test(i.id)) && !gi.items.some(i => /\.dst$/.test(i.id)),
+      '2b. the piece lists its files before any tech pack: the flats, the sheets, and the graphic with its vector and separations (a print has no stitch file)', dl);
+    const get = async u => { const r = await fetch(BASE + u, { headers: { Authorization: 'Bearer ' + kyleT } }); return { status: r.status, cd: r.headers.get('content-disposition') || '', b: Buffer.from(await r.arrayBuffer()) }; };
+    const fl = await get(sk.items.find(i => i.id === 'flat-front.svg').url), job = await get(gi.items.find(i => /^job-/.test(i.id)).url), all = await get(dl.zip.url);
+    ok(fl.status === 200 && /<svg/.test(fl.b.toString()) && /^attachment/.test(fl.cd), '   the front flat downloads as an SVG file', fl.status);
+    ok(job.status === 200 && job.b.subarray(0, 2).toString() === 'PK' && /ink-/.test(job.b.toString('latin1')) && /job-sheet\.pdf/.test(job.b.toString('latin1')), '   the graphic\'s separations download as a zip: a plate per ink and the job sheet', job.status);
+    ok(all.status === 200 && ['READ-ME.txt', 'flats/flat-front.svg', 'flats/spec-sheet.svg', 'decorations/decoration-sheet.pdf'].every(n => all.b.toString('latin1').includes(n)), '   and everything comes as one zip, with a read-me', all.status);
+    ok((await call(`/v1/lab/concepts/${c.id}/downloads`)).status === 401 && (await call(`/v1/lab/concepts/${c.id}/downloads/flat-front.svg`)).status === 401, '   closed like the rest of the Lab');
     // 3. the tech pack BOM
     await K(`/concepts/${c.id}/approve`, { body: { overrideReason: 'reviewed side by side with the references: it is ours', makeReason: 'checked with the printer' } });
     const tp = await K(`/concepts/${c.id}/tech-pack`, { body: {} }), pack = (await call(`/v1/admin/products/${tp.json.productId}/tech-pack`, { token: kyleT })).json.techPack?.data;
