@@ -33,6 +33,7 @@ import { registerProtoRoutes } from './proto-routes.js'
 import { stubEdit } from './proto-build.js';
 import { qbConfig as qbConfigOf } from './quickbooks.js'
 import { moneyInvoicePdf } from './money-pdf.js'
+import { receiptPdf, receiptEmail } from './receipt-pdf.js'
 import { coverageChecks, coverageConfig, redactSecrets } from './platform-coverage.js'
 import { createStaffGate } from './staff-gate.js';
 import { createStaffAccess } from './staff-access.js';
@@ -380,13 +381,15 @@ const emailOutbox=[];
 app.get('/v1/dev/outbox',async(req,reply)=>{
   if(process.env.EMAIL_CAPTURE!=='1')return reply.code(404).send({error:'Not found'});
   const to=String(req.query?.to||'').toLowerCase(),since=Number(req.query?.since)||0;
-  return {emails:emailOutbox.filter(e=>e.at>=since&&(!to||e.to===to)).map(e=>({to:e.to,subject:e.subject,at:e.at,html:e.html.slice(0,6000),text:e.html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,600),links:[...e.html.matchAll(/href="([^"]+)"/g)].map(m=>m[1].replace(/&amp;/g,'&'))}))};
+  return {emails:emailOutbox.filter(e=>e.at>=since&&(!to||e.to===to)).map(e=>({to:e.to,subject:e.subject,at:e.at,attachments:e.attachments||[],html:e.html.slice(0,6000),text:e.html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,600),links:[...e.html.matchAll(/href="([^"]+)"/g)].map(m=>m[1].replace(/&amp;/g,'&'))}))};
 });
-async function sendHubEmail({to,subject,html,replyTo,from,headers}){
-  if(process.env.EMAIL_CAPTURE==='1'){emailOutbox.push({to:String(to).toLowerCase(),subject,html,at:Date.now()});if(emailOutbox.length>300)emailOutbox.shift();return true}
+// attachments: [{ filename, content: Buffer }] (a receipt's PDF); the outbox keeps their names and sizes
+async function sendHubEmail({to,subject,html,replyTo,from,headers,attachments}){
+  const files=(attachments||[]).filter(a=>a&&a.filename&&a.content);
+  if(process.env.EMAIL_CAPTURE==='1'){emailOutbox.push({to:String(to).toLowerCase(),subject,html,at:Date.now(),attachments:files.map(a=>({filename:a.filename,bytes:Buffer.byteLength(a.content),head:Buffer.from(a.content).subarray(0,5).toString('latin1')}))});if(emailOutbox.length>300)emailOutbox.shift();return true}
   if(!process.env.RESEND_API_KEY){app.log.warn({to,subject},'RESEND_API_KEY missing; hub email not sent');return false}
   const response=await trackedFetch('resend','https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
-    body:JSON.stringify({from:from||hubFromEmail,to:[to],reply_to:replyTo||intakeNotificationEmail,subject,html,...(headers?{headers}:{})})});
+    body:JSON.stringify({from:from||hubFromEmail,to:[to],reply_to:replyTo||intakeNotificationEmail,subject,html,...(headers?{headers}:{}),...(files.length?{attachments:files.map(a=>({filename:a.filename,content:Buffer.from(a.content).toString('base64')}))}:{})})});
   if(!response.ok)throw new Error(`Hub email delivery failed: ${response.status}`);return true;
 }
 const hubButton=(href,label)=>`<p style="margin:24px 0"><a href="${emailEscape(href)}" style="display:inline-block;padding:14px 22px;border-radius:999px;background:#141416;color:#fff;text-decoration:none;font-weight:600">${emailEscape(label)}</a></p>`;
@@ -845,6 +848,7 @@ const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting
   },
   // Shopify Payments payouts (needs the app's read_shopify_payments_payouts scope; a store without Shopify Payments has no account to read)
   shopifyReady: shopifyConfigured,
+  sendHubEmail, hubEmailShell, emailEscape, // the receipt, emailed with its PDF once an invoice is paid
   shopifyPayouts: async ({ after } = {}) => {
     if (!shopifyConfigured()) return null;
     const acct = (await shopifyGraphql(PAYOUTS_QUERY, { after: after || null })).shopifyPaymentsAccount;
@@ -2185,7 +2189,7 @@ async function depositPaid(invoice,actorId=null){
 }
 async function setInvoiceStatus(invoiceId,status,actorId=null){
   const before=(await pool.query('select * from invoices where id=$1',[invoiceId])).rows[0];if(!before)return null;
-  const row=(await pool.query('update invoices set status=$2 where id=$1 returning *',[invoiceId,status])).rows[0];
+  const row=(await pool.query(`update invoices set status=$2,paid_at=case when $2='paid' then coalesce(paid_at,now()) else null end where id=$1 returning *`,[invoiceId,status])).rows[0];
   if(status==='paid'&&before.status!=='paid')await depositPaid(row,actorId);
   return row;
 }
@@ -2321,7 +2325,7 @@ app.post('/v1/admin/shopify/sync-commerce',{preHandler:[authenticate,adminOnly]}
     await pool.query(`update quotes set shopify_draft_order_status=$1,shopify_invoice_url=$2,shopify_order_id=$3,shopify_financial_status=$4,
       shopify_fulfillment_status=$5,shopify_synced_at=now() where id=$6`,[draft.status,draft.invoiceUrl,draft.order?.id||null,financial,fulfillment,quote.id]);
     const invoiceStatus=financial==='PAID'?'paid':draft.status==='INVOICE_SENT'?'due':draft.status==='COMPLETED'?'paid':'draft';
-    await pool.query(`update invoices set status=$1,external_url=coalesce($2,external_url) where client_id=$3 and number=$4 and kind<>'deposit'`,[invoiceStatus,draft.invoiceUrl,quote.client_id,draft.name]);
+    await pool.query(`update invoices set status=$1,external_url=coalesce($2,external_url),shopify_order_id=coalesce($5,shopify_order_id),paid_at=case when $1='paid' then coalesce(paid_at,now()) else null end where client_id=$3 and number=$4 and kind<>'deposit'`,[invoiceStatus,draft.invoiceUrl,quote.client_id,draft.name,draft.order?.id||null]);
     synced.push({quoteId:quote.id,draftOrder:draft.name,status:draft.status,financialStatus:financial,fulfillmentStatus:fulfillment});
   }
   const projectInvoices=(await pool.query(`select * from invoices where shopify_draft_order_id is not null and (quote_id is null or kind='deposit')`)).rows;
@@ -2370,6 +2374,39 @@ app.get('/v1/invoices/:id/download',{preHandler:authenticate},async(req,reply)=>
   const settings={instructions:String(((await getSetting('moneyPayment').catch(()=>null))||{}).instructions||'')};
   const pdf=await moneyInvoicePdf({number:row.number,company:row.client_name,address:'',contact_name:'',contact_email:'',issued_on:issued,terms:days?`Net ${days}`:'Due on receipt',due_on:due,lines:[{description:what,qty:1,rateCents:Number(row.amount_cents)}],tax_rate:0,tax_cents:0,subtotal_cents:Number(row.amount_cents),total_cents:Number(row.amount_cents),credits:[],due_now_label:'Total due',due_now_cents:null,notes:row.project_name&&row.product_title?`Project: ${row.project_name}`:'',currency:row.currency||'USD',status:row.status,pay_url:row.external_url||''},settings,{state:row.status==='paid'?'paid':row.status});
   return reply.type('application/pdf').header('content-disposition',`attachment; filename="${safeNumber}.pdf"`).send(pdf);
+});
+// The receipt for a paid invoice (src/receipt-pdf.js), on the same letterhead as the invoice: the same line, and the payment (when Shopify took it,
+// with its order number, or when staff recorded it). The client downloads it from the hub; staff download it, or email it with the PDF attached.
+async function hubReceipt(id){
+  if(!UUID_RE.test(String(id||'')))return null;
+  const row=(await pool.query(`select i.*,c.name client_name,c.contact_name,c.contact_email,pr.name project_name,p.title product_title,q.version quote_version from invoices i join clients c on c.id=i.client_id
+    left join projects pr on pr.id=i.project_id left join products p on p.id=i.product_id left join quotes q on q.id=i.quote_id where i.id=$1`,[id])).rows[0];if(!row)return null;
+  const pay=row.shopify_order_id?(await pool.query('select paid_at,shopify_order_name,amount_cents from payments where shopify_order_id=$1 limit 1',[row.shopify_order_id])).rows[0]:null;
+  const what=row.kind==='deposit'?`Sample deposit${row.product_title?` - ${row.product_title}${row.quote_version?` (quote v${row.quote_version})`:''}`:''}`:row.product_title?`Development and production - ${row.product_title}`:row.project_name?`Project invoice - ${row.project_name}`:'Project invoice';
+  const amount=Number(row.amount_cents),viaShopify=Boolean(row.shopify_order_id||pay||row.shopify_financial_status==='PAID');
+  const input={invoiceNumber:row.number,company:row.client_name,contactName:row.contact_name||'',contactEmail:row.contact_email||'',address:'',issuedOn:new Date(row.created_at).toISOString().slice(0,10),currency:row.currency||'USD',
+    lines:[{description:what,qty:1,rateCents:amount}],subtotalCents:amount,taxCents:0,totalCents:amount,credits:[],notes:row.project_name&&row.product_title?`Project: ${row.project_name}`:'',
+    payments:row.status==='paid'?[{paidOn:(pay?.paid_at||row.paid_at)?new Date(pay?.paid_at||row.paid_at).toISOString().slice(0,10):null,method:viaShopify?'shopify':'other',reference:pay?.shopify_order_name||'',amountCents:amount}]:[]};
+  return {row,input};
+}
+app.get('/v1/invoices/:id/receipt.pdf',{preHandler:authenticate},async(req,reply)=>{
+  const r=await hubReceipt(req.params.id);
+  if(!r||(req.auth.role!=='admin'&&r.row.client_id!==req.auth.clientId))return reply.code(404).send({error:'Invoice not found'});
+  if(r.row.status!=='paid')return reply.code(409).send({error:'The receipt is ready once the invoice is paid'});
+  return reply.type('application/pdf').header('content-disposition',`attachment; filename="${receiptEmail(r.input).filename}"`).send(await receiptPdf(r.input));
+});
+app.post('/v1/admin/invoices/:id/receipt',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const r=await hubReceipt(req.params.id);if(!r)return reply.code(404).send({error:'Invoice not found'});
+  if(r.row.status!=='paid')return reply.code(409).send({error:'The receipt is ready once the invoice is paid'});
+  const to=String(req.body?.to||r.row.contact_email||'').trim().toLowerCase().slice(0,200),message=String(req.body?.message??'').trim().slice(0,1500);
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))return reply.code(422).send({error:'The room has no contact email: type where to send the receipt'});
+  const staff=(await pool.query('select email from users where id=$1',[req.auth.sub]).catch(()=>({rows:[]}))).rows[0];
+  const e=receiptEmail(r.input,{message,esc:emailEscape}),pdf=await receiptPdf(r.input);
+  const sent=await sendHubEmail({to,subject:e.subject,html:hubEmailShell('Payment received',e.body),replyTo:staff?.email||undefined,attachments:[{filename:e.filename,content:pdf}]});
+  if(!sent)return reply.code(503).send({error:'The receipt could not be emailed: email is not set up on this server'});
+  const row=(await pool.query('update invoices set receipt_sent_at=now(),receipt_sent_to=$2 where id=$1 returning *',[r.row.id,to])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'commerce',$4)`,[r.row.client_id,r.row.product_id,req.auth.sub,`Receipt for invoice ${r.row.number} sent to ${to}`]).catch(()=>{});
+  return {invoice:row,sentTo:to};
 });
 
 app.get('/v1/projects/:id/share.pdf',{preHandler:authenticate},async(req,reply)=>{

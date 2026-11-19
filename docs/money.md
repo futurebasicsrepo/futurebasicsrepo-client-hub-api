@@ -23,6 +23,22 @@ The kind of work decides how a client pays, and the link prints in the PDF's "Ho
 - Editing an invoice drops its Shopify link (the amount may have changed): make it again from the invoice. A paid or void invoice prints no link.
 - The QuickBooks email to the client, when you use "Create and email from QuickBooks", is QuickBooks's own design. The PDF from Money, the work console and the hub is the Future Basics one.
 
+## Receipts
+
+Once a client has paid, they get a **receipt**: the invoice's twin on the same letterhead (`src/receipt-pdf.js`). It is headed Receipt with a green Paid pill and numbered `R-` plus the invoice number. It shows:
+
+- who paid;
+- when the payment was made and how: Shopify checkout (with its order number), wire, ACH, card, check;
+- the invoice's own lines and totals, each payment taken off, and a balance of $0.00 when it is paid in full, in the same dark box as the invoice.
+
+A part payment makes a receipt for what came in, with the balance still due.
+
+- **Money:** a paid (or part-paid) invoice has **Download receipt** and **Email the receipt** under its payments. The email goes to the invoice's contact, or to an address you type, with an optional note and the PDF attached. Replies come to whoever sent it. The invoice shows who it was last sent to and when. Routes: `GET /v1/money/invoices/:id/receipt.pdf`, `POST /v1/money/invoices/:id/receipt { to?, message? }`.
+- **A project's invoices** (the Shopify draft orders made from a project, a quote or a sample deposit): in the work console's project money section a paid invoice has **Download receipt** and **Email receipt**. The payment date and order number come from the Shopify order the payment sync recorded; an invoice marked paid by hand shows the day it was marked. Routes: `GET /v1/invoices/:id/receipt.pdf` (staff, and the client for their own), `POST /v1/admin/invoices/:id/receipt { to?, message? }`.
+- **The client** downloads the receipt for any paid invoice from their hub.
+
+Nothing is emailed without someone pressing the button, and a receipt that could not be sent (no email service) says so and is not marked sent.
+
 ## QuickBooks Online
 Money → Settings has a QuickBooks panel: **Connect** (sign in at Intuit; Danielle or Kyle only), **Test connection** (reads the company name, changes nothing), **Read payments now**, **Disconnect**.
 - **Railway variables:** `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_ENV` (`sandbox` or `production`; start with sandbox). Register the redirect URI `https://work.thefuturebasics.com/v1/money/quickbooks/callback` in the Intuit app. Tokens are saved sealed (AES-GCM) and refreshed automatically.

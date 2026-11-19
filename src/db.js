@@ -1105,6 +1105,10 @@ export async function migrate() {
     alter table invoices add column if not exists product_ids uuid[] not null default '{}';
     -- deposit: the sample deposit invoiced when a quote is accepted; balance: the rest, invoiced when production starts
     alter table invoices add column if not exists kind text not null default 'invoice';
+    -- when it was paid (set as it turns paid), and the receipt sent for it (src/receipt-pdf.js)
+    alter table invoices add column if not exists paid_at timestamptz;
+    alter table invoices add column if not exists receipt_sent_at timestamptz;
+    alter table invoices add column if not exists receipt_sent_to text;
     alter table quotes add column if not exists deposit_pct integer;
     create index if not exists invoices_project_idx on invoices(project_id,created_at desc);
     create index if not exists invoices_draft_order_idx on invoices(shopify_draft_order_id);
@@ -2412,6 +2416,9 @@ export async function migrate() {
     create index if not exists contract_events_idx on contract_events (contract_id, at);
     alter table money_invoices add column if not exists contract_id uuid references contracts(id) on delete set null;
     alter table money_invoices add column if not exists contract_seq integer;
+    -- the receipt sent once it was paid (src/receipt-pdf.js)
+    alter table money_invoices add column if not exists receipt_sent_at timestamptz;
+    alter table money_invoices add column if not exists receipt_sent_to text;
     -- Automatic payments on a signed contract (autopay.js). The card or bank account is kept at the processor (QuickBooks Payments): we hold only its id and the last four digits.
     alter table contracts add column if not exists delivered_on date;
     -- physical product development agreements: the kind column's check also allows 'product'
