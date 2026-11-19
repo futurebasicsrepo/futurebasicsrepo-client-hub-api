@@ -8,10 +8,13 @@
 //   GET  /v1/money/sources                     won deals and live projects, with the invoices already made for each      GET /v1/money/draft?deal=|project=   an invoice filled in from one
 //   GET  /v1/money/payouts   POST /v1/money/payouts/sync     Shopify Payments payouts and the fees Shopify kept
 //   GET|PUT /v1/money/settings                 the payment instructions printed on invoices
+//   GET  /v1/money/invoices/:id/receipt.pdf   POST /v1/money/invoices/:id/receipt { to?, message? }   the receipt for what was paid (src/receipt-pdf.js),
+//                                              downloaded, or emailed to the client with the PDF attached
 //   GET /v1/money/quickbooks/status   POST .../connect | test | sync | disconnect   GET .../callback (Intuit sends the browser back here)   POST /v1/money/invoices/:id/quickbooks
 import { payoutRow, payoutTotals, needsScope } from './shopify-payouts.js';
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber, invoiceState, aging, parseInvoiceCsv, METHODS } from './money.js';
 import { moneyInvoicePdf } from './money-pdf.js';
+import { receiptPdf, receiptEmail } from './receipt-pdf.js';
 import { qbConfig, signState, readState, authUrl, endpoints, exchangeCode, revoke, companyInfo, pushInvoice, invoiceLink, paymentsSince, methodOf, recordPayment as qbRecordPayment, SCOPE, PAYMENT_SCOPE } from './quickbooks.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -20,7 +23,7 @@ const iso = d => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 export function registerMoneyRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {}, tokenSeal, stateSecret = 'money', workUrl = 'https://work.thefuturebasics.com', fetchImpl = fetch, log = console, shopifyInvoiceLink = null, shopifyDraftStatus = null, shopifyPayouts = null, shopifyReady = () => Boolean(shopifyPayouts) } = d;
+  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {}, tokenSeal, stateSecret = 'money', workUrl = 'https://work.thefuturebasics.com', fetchImpl = fetch, log = console, shopifyInvoiceLink = null, shopifyDraftStatus = null, shopifyPayouts = null, shopifyReady = () => Boolean(shopifyPayouts) , sendHubEmail = null, hubEmailShell = (t, b) => b, emailEscape = v => String(v)} = d;
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   async function moneyOnly(req, reply) {
     const u = (await pool.query('select email from users where id=$1', [req.auth?.sub]).catch(() => ({ rows: [] }))).rows[0];
@@ -37,7 +40,7 @@ export function registerMoneyRoutes(app, d) {
       credits: r.credits, dueNowLabel: r.due_now_label, dueNowCents: r.due_now_cents == null ? null : Number(r.due_now_cents), subtotalCents: Number(r.subtotal_cents), taxCents: Number(r.tax_cents), totalCents: Number(r.total_cents), notes: r.notes, currency: r.currency,
       status: r.status, source: r.source, state: st.state, owedCents: st.owedCents, overdue: st.overdue, daysOverdue: st.daysOverdue, paidCents: paid, sentAt: r.sent_at, paidAt: r.paid_at, createdAt: r.created_at,
       workKind: r.work_kind || '', projectId: r.project_id || null, projectName: r.project_name || '', dealId: r.deal_id || null, dealTitle: r.deal_title || '', payUrl: r.pay_url || '', payChannel: r.pay_channel || '',
-      qb: r.qb_id ? { id: r.qb_id, docNumber: r.qb_doc_number, link: r.qb_link, syncedAt: r.qb_synced_at } : null };
+      qb: r.qb_id ? { id: r.qb_id, docNumber: r.qb_doc_number, link: r.qb_link, syncedAt: r.qb_synced_at } : null, receiptSentAt: r.receipt_sent_at || null, receiptSentTo: r.receipt_sent_to || '' };
   };
   // What is still owed by the numbers alone, whatever status the invoice has (a paid invoice reads 0 otherwise).
   const rawOwed = r => invoiceState({ ...r, status: 'sent', due_on: iso(r.due_on) }, Number(r.paid_cents), today()).owedCents;
@@ -101,6 +104,34 @@ export function registerMoneyRoutes(app, d) {
     const st = invoiceState({ ...r, due_on: iso(r.due_on) }, Number(r.paid_cents), today());
     const buf = await moneyInvoicePdf({ ...r, issued_on: iso(r.issued_on), due_on: iso(r.due_on), pay_url: ['paid', 'void'].includes(r.status) ? '' : r.pay_url }, { instructions: await instructions() }, st);
     return reply.type('application/pdf').header('content-disposition', `inline; filename="TFB Invoice ${String(r.number).replace(/[^A-Za-z0-9_-]/g, '-')}.pdf"`).send(buf);
+  });
+
+  // ---------- the receipt: once something has been paid, what came in, on the same letterhead as the invoice ----------
+  async function receiptInput(r) {
+    const pays = (await pool.query('select amount_cents, paid_on, method, reference, note from money_payments where invoice_id=$1 order by paid_on, created_at', [r.id])).rows;
+    return { invoiceNumber: r.number, company: r.company, contactName: r.contact_name, contactEmail: r.contact_email, address: r.address, issuedOn: iso(r.issued_on), currency: r.currency || 'USD',
+      lines: r.lines || [], subtotalCents: Number(r.subtotal_cents), taxCents: Number(r.tax_cents), taxRatePct: Number(r.tax_rate), totalCents: Number(r.total_cents), credits: r.credits || [],
+      payments: pays.map(p => ({ paidOn: iso(p.paid_on), method: p.method, reference: p.reference, note: p.note, amountCents: Number(p.amount_cents) })), notes: r.project_name ? `Project: ${r.project_name}` : '' };
+  }
+  const receiptReady = r => (r.status === 'void' ? 'A void invoice has no receipt' : Number(r.paid_cents) > 0 ? '' : 'Nothing has been paid on this invoice yet: record the payment first');
+  app.get('/v1/money/invoices/:id/receipt.pdf', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return; const r = await one(req.params.id); if (!r) return bad(reply, 'Not found', 404);
+    const why = receiptReady(r); if (why) return bad(reply, why, 409);
+    const input = await receiptInput(r);
+    return reply.type('application/pdf').header('content-disposition', `inline; filename="${receiptEmail(input).filename}"`).send(await receiptPdf(input));
+  });
+  app.post('/v1/money/invoices/:id/receipt', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return; const r = await one(req.params.id); if (!r) return bad(reply, 'Not found', 404);
+    const why = receiptReady(r); if (why) return bad(reply, why, 409);
+    const to = clip(req.body?.to || r.contact_email, 200).toLowerCase(), message = String(req.body?.message ?? '').trim().slice(0, 1500);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return bad(reply, 'Add the client\'s email to the invoice, or type where to send the receipt');
+    if (!sendHubEmail) return bad(reply, 'Email is not set up on this server', 503);
+    const input = await receiptInput(r), e = receiptEmail(input, { message, esc: emailEscape }), pdf = await receiptPdf(input);
+    const sent = await sendHubEmail({ to, subject: e.subject, html: hubEmailShell('Payment received', e.body), replyTo: req.money.email, attachments: [{ filename: e.filename, content: pdf }] });
+    if (!sent) return bad(reply, 'The receipt could not be emailed: email is not set up on this server', 503);
+    await pool.query('update money_invoices set receipt_sent_at=now(), receipt_sent_to=$2, updated_at=now() where id=$1', [r.id, to]);
+    await onChange('receipt', r.id);
+    return { invoice: view(await one(r.id)), sentTo: to };
   });
 
   // ---------- what happens to an invoice ----------

@@ -422,6 +422,13 @@ await journey('J142', 'a product development invoice gets a Shopify payment link
   inv = (await M(`/invoices/${inv.id}`)).json; ok(inv.invoice.state === 'paid' && inv.payments.length === 1 && inv.payments[0].source === 'shopify' && inv.payments[0].amountCents === 20000, 'the invoice is paid by one Shopify payment of $200', JSON.stringify(inv.payments));
   const sync2 = await M('/shopify-links/sync', { body: {} }); ok(sync2.json.added === 0 && (await M(`/invoices/${inv.invoice.id}`)).json.payments.length === 1, 'checking again adds nothing');
   const paidPdf = await fetch(`http://127.0.0.1:3127/v1/money/invoices/${inv.invoice.id}/pdf`, { headers: { Authorization: `Bearer ${kyle}` } }); ok(!Buffer.from(await paidPdf.arrayBuffer()).toString('latin1').includes(inv.invoice.payUrl), 'a paid invoice prints no link');
+  // the receipt: once Shopify has the money, a branded receipt for it, to download or email
+  const rcpt = await fetch(`http://127.0.0.1:3127/v1/money/invoices/${inv.invoice.id}/receipt.pdf`, { headers: { Authorization: `Bearer ${kyle}` } }), rb = Buffer.from(await rcpt.arrayBuffer());
+  ok(rcpt.status === 200 && /application\/pdf/.test(rcpt.headers.get('content-type')) && rb.subarray(0, 4).toString() === '%PDF' && /Receipt R-/.test(rcpt.headers.get('content-disposition') || '') && rb.length > 8000, 'the paid invoice has a receipt: a PDF on the letterhead', rcpt.status);
+  const unpaidR = await fetch(`http://127.0.0.1:3127/v1/money/invoices/${(await mk({ projectId: pid })).id}/receipt.pdf`, { headers: { Authorization: `Bearer ${kyle}` } });
+  ok(unpaidR.status === 409 && /Nothing has been paid/.test((await unpaidR.json()).error), 'an invoice with nothing paid has no receipt yet');
+  const noMail = await M(`/invoices/${inv.invoice.id}/receipt`, { body: { message: 'Thanks!' } });
+  ok(noMail.status === 503 && /not set up/.test(noMail.json.error) && !(await M(`/invoices/${inv.invoice.id}`)).json.invoice.receiptSentAt, 'with no email service the receipt is not sent, and it says so (nothing is marked sent)', JSON.stringify(noMail.json));
 
   // software development: needs QuickBooks, which this server does not have
   const sw = await mk({ workKind: 'software' }); ok(sw.workKind === 'software', 'software development can be chosen without a project');
