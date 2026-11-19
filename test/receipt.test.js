@@ -18,6 +18,13 @@ test('a deposit counts towards the balance; a part payment leaves the rest due; 
   assert.equal(receiptOf(hat({ payments: [] })).paidInFull, false, 'nothing paid is never "paid in full"');
 });
 
+test('a Shopify payment shows its order number, never the checkout\'s internal id', () => {
+  const r = receiptOf(hat({ payments: [{ paidOn: '2026-11-17', method: 'shopify', reference: 'shopify:gid://shopify/DraftOrder/1270714761413', note: 'Paid through the Shopify link (#1042)', amountCents: 500000 }] }));
+  assert.equal(r.payments[0].reference, '#1042');
+  assert.equal(receiptOf(hat({ payments: [{ paidOn: '2026-11-17', method: 'shopify', reference: 'shopify:gid://shopify/DraftOrder/1', note: 'Paid through the Shopify link', amountCents: 500000 }] })).payments[0].reference, '', 'no order number known: no reference at all');
+  assert.equal(receiptOf(hat({ payments: [{ paidOn: '2026-11-17', method: 'wire', reference: 'FED-2291', amountCents: 500000 }] })).payments[0].reference, 'FED-2291', 'a bank reference is kept');
+});
+
 test('the receipt is a PDF on the letterhead, and its email names the amount and carries a file name', async () => {
   const pdf = await receiptPdf(hat());
   assert.equal(pdf.subarray(0, 4).toString(), '%PDF'); assert.ok(pdf.length > 8000);

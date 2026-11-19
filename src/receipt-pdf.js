@@ -14,7 +14,9 @@ export const receiptNumber = invoiceNumber => `R-${String(invoiceNumber || '').r
 // r: { invoiceNumber, company, contactName, contactEmail, address, issuedOn, currency, lines:[{description, qty, rateCents}], subtotalCents,
 //      taxCents, taxRatePct, totalCents, credits:[{label, amountCents}], payments:[{paidOn, method, reference, note, amountCents}], notes }
 export function receiptOf(r) {
-  const payments = (r.payments || []).filter(p => Number(p.amountCents) > 0).sort((a, b) => String(a.paidOn || '').localeCompare(String(b.paidOn || '')));
+  // a Shopify payment is recorded against the checkout's draft order (shopify:gid://…): the receipt shows the order number from its note instead, or nothing
+  const ref = p => (/^shopify:|gid:\/\//.test(String(p.reference || '')) ? ((/\((#[^)\s]+)\)/.exec(String(p.note || '')) || [])[1] || '') : p.reference || '');
+  const payments = (r.payments || []).filter(p => Number(p.amountCents) > 0).map(p => ({ ...p, reference: ref(p) })).sort((a, b) => String(a.paidOn || '').localeCompare(String(b.paidOn || '')));
   const credits = (r.credits || []).filter(c => Number(c.amountCents) > 0);
   const total = Number(r.totalCents) || 0, creditCents = credits.reduce((a, c) => a + Number(c.amountCents), 0), paidCents = payments.reduce((a, p) => a + Number(p.amountCents), 0);
   const balanceCents = Math.max(0, total - creditCents - paidCents), last = payments[payments.length - 1] || null;

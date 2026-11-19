@@ -69,7 +69,7 @@ async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body
 const usd=c=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(c||0)/100),usd0=c=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(Number(c||0)/100);
 const when=d=>d?new Date(d).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}):'',day=d=>d?new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
 const toCents=v=>{const n=Number(String(v||'').replace(/[$,\s]/g,''));return Number.isFinite(n)?Math.round(n*100):NaN};
-const STATE={draft:['Draft','dim'],sent:['Waiting for client','info'],signed_by_client:['Needs our signature','warn'],executed:['Fully signed','ok'],declined:['Declined','bad'],void:['Void','dim'],expired:['Expired','warn']};
+const STATE={draft:['Draft','dim'],sent:['Waiting for client','info'],signed_by_client:['Needs our signature','warn'],executed:['Fully signed','ok'],declined:['Declined','bad'],void:['Void','dim'],expired:['Expired','warn'],closed:['Closed out','ok']};
 const chip=s=>{const [l,c]=STATE[s]||[s,''];return `<span class="chip ${c}">${esc(l)}</span>`};
 const say=(t,k='ok')=>{const m=$('#msg');m.className='msg '+k;m.textContent=t};
 let F={status:'',q:''},ME={signer:false};
@@ -77,7 +77,7 @@ let F={status:'',q:''},ME={signer:false};
 // ---------- the list ----------
 async function loadList(){
   const r=await api('/v1/contracts'+(F.status?'?status='+F.status:'')),c=r.counts;
-  const chips=[['','All'],['draft','Drafts'],['sent','Waiting for client'],['signed_by_client','Needs our signature'],['executed','Fully signed'],['declined','Declined'],['expired','Expired'],['void','Void']];
+  const chips=[['','All'],['draft','Drafts'],['sent','Waiting for client'],['signed_by_client','Needs our signature'],['executed','Fully signed'],['declined','Declined'],['expired','Expired'],['closed','Closed out'],['void','Void']];
   $('#t-list').innerHTML=`<div class="tiles"><div class="tile"><span class="sub">Waiting for the client</span><b>${c.awaitingClient}</b></div><div class="tile"><span class="sub">Needs our signature</span><b>${c.awaitingUs}</b></div><div class="tile"><span class="sub">Out for signature</span><b>${usd0(c.openCents)}</b></div><div class="tile"><span class="sub">Fully signed</span><b>${c.executed}</b></div></div>
    <div class="filters" id="fl">${chips.map(([k,l])=>`<button class="fchip ${F.status===k?'on':''}" data-st="${k}">${l}</button>`).join('')}<input class="t" id="fq" placeholder="Search number, client, title" value="${esc(F.q)}" style="max-width:280px;margin-left:auto"></div>
    <div class="panel"><div class="scroll"><table><thead><tr><th>Contract</th><th>Client</th><th class="n">Fixed fee</th><th>Status</th><th>Activity</th></tr></thead><tbody id="rows"></tbody></table></div></div>`;
@@ -105,7 +105,9 @@ async function openContract(id){
    <div class="acts" id="acts"></div><p class="msg" id="dMsg" role="status"></p>
    ${r.autopay?autopayBox(r.autopay,c):''}
    <fieldset><legend>Trail</legend><ul class="timeline">${r.events.map(v=>`<li><time>${esc(when(v.at))}</time><span><b>${esc(v.kind.replace(/_/g,' '))}</b>${v.detail?' · '+esc(v.detail):''}${v.actor?` <span class="sub">${esc(v.actor)}</span>`:''}</span></li>`).join('')}</ul></fieldset>
-   ${r.invoices.length?`<fieldset><legend>Invoices from the schedule</legend>${r.invoices.map(i=>`<div><a href="/money?invoice=${i.id}">${esc(i.number)}</a> · ${usd(i.totalCents)} · due ${esc(i.dueOn)} · ${esc(i.status)}</div>`).join('')}</fieldset>`:''}`;
+   ${c.status==='closed'?`<p class="msg ok">Closed out ${esc(when(c.closedAt))}${c.closedBy?' by '+esc(c.closedBy):''}${c.closeNote?': '+esc(c.closeNote):''}</p>`:''}
+   <fieldset><legend>Invoices</legend>${r.invoices.length?r.invoices.map(i=>`<div class="inv-row"><a href="/money?invoice=${i.id}">${esc(i.number)}</a> · ${usd(i.totalCents)} · ${i.paidCents>=i.totalCents&&i.totalCents>0?'<b>paid</b>':i.paidCents>0?usd(i.paidCents)+' paid':esc(i.status)}${i.dueOn&&i.paidCents<i.totalCents?' · due '+esc(i.dueOn):''}${i.linked?' <span class="sub">· linked by hand</span>':''}${i.linked&&ME.signer&&c.status!=='closed'?` <button class="btn sm q" type="button" data-unlink="${i.id}">Unlink</button>`:''}</div>`).join('')+`<p class="sub">Invoiced ${usd(r.money.invoicedCents)} · paid ${usd(r.money.paidCents)} of the ${usd(c.totalCents)} fee</p>`:'<p class="sub">No invoices on this contract yet. An invoice sent from Money on its own (a Shopify link, a deposit) can be linked to it here.</p>'}
+   ${ME.signer&&c.status!=='closed'?`<div class="row" style="gap:8px;align-items:center"><button class="btn sm" type="button" id="lnkInv">Link an invoice</button><span id="lnkPick"></span></div>`:''}</fieldset>`;
   const acts=[];const mk=(label,cls,fn,dis=false)=>acts.push({label,cls,fn,dis});
   mk('Download PDF','',()=>pdf(id));
   if(c.status==='sent'){mk('Send a reminder','',async()=>{const x=await api(`/v1/contracts/${id}/remind`,{body:{}});msg(x.emailed?'Reminder sent.':'Reminder saved, but the email could not be sent.')});}
@@ -113,8 +115,14 @@ async function openContract(id){
   if((c.status==='sent'||c.status==='signed_by_client')&&c.providerSignature&&!c.providerSignature.ink&&ME.signer&&String(c.providerSignature.by||'').toLowerCase()===String(ME.email||'').toLowerCase()){mk('Add my handwritten signature','',async()=>{if(!(await signDialog('Add your handwritten signature',`You signed ${c.number} with your typed name. Your handwritten signature goes on that signature in ink; the agreement and when it was signed stay as they are.`,'Add it',true)))return;await api(`/v1/contracts/${id}/ink`,{body:{}});done('Your handwritten signature is on it.',id)})}
   if((c.status==='sent'||c.status==='signed_by_client')&&!c.providerSignature){mk('Sign for Future Basics','go',async()=>{if(!(await signDialog('Sign for Future Basics',`Sign ${c.title} (${c.number}) for Future Basics.`,'Sign it')))return;await api(`/v1/contracts/${id}/countersign`,{body:{}});done('Signed.',id)},!ME.signer)}
   if(c.status==='executed'&&!c.invoicesAt){mk('Draft the invoices','go',async()=>{if(!confirm(`Draft ${rows.rows.length} invoices from the payment schedule?`))return;const x=await api(`/v1/contracts/${id}/invoices`,{body:{}});done(`${x.made.length} invoices drafted.`,id)},!ME.signer)}
-  if(c.dealId&&c.status==='executed')acts.push({href:'/sales#pipeline',label:'Open the deal'});
-  if(!['executed','void'].includes(c.status)){mk('Revise','',async()=>{const x=await api(`/v1/contracts/${id}/revise`,{body:{}});openContract(x.contract.id)});mk('Void','bad',async()=>{const reason=prompt('Why is it being voided?','');if(reason===null)return;await api(`/v1/contracts/${id}/void`,{body:{reason}});done('Voided.',id)})}
+  if(c.dealId&&['executed','closed'].includes(c.status))acts.push({href:'/sales#pipeline',label:'Open the deal'});
+  // close out: settled outside signing (paid on its invoice, never signed), or done and paid. The deal is won; it can be reopened.
+  if(['sent','signed_by_client','executed','expired'].includes(c.status)){mk('Close out','',async()=>{
+    const paid=r.money.paidCents,signed=c.status==='executed';
+    const head=`Close out ${c.number}?\n\n${signed?'Signed by both parties.':c.clientSignature?'Signed by the client only.':'It was never signed.'} ${paid?`${usd(paid)} of ${usd(c.totalCents)} has been paid on its invoices.`:'Nothing has been paid on a linked invoice yet: link the paid invoice first if there is one.'}\n\nThe deal is marked won. Add a note for the record (optional):`;
+    const note=prompt(head,signed?'':'Accepted by payment: the client paid the invoice without signing.');if(note===null)return;await api(`/v1/contracts/${id}/close`,{body:{note}});done('Closed out.',id)},!ME.signer)}
+  if(c.status==='closed'){mk('Reopen','',async()=>{if(!confirm(`Reopen ${c.number}? It goes back to ${(c.closedFrom||'sent').replace(/_/g,' ')}.`))return;await api(`/v1/contracts/${id}/reopen`,{body:{}});done('Reopened.',id)},!ME.signer)}
+  if(!['executed','void','closed'].includes(c.status)){mk('Revise','',async()=>{const x=await api(`/v1/contracts/${id}/revise`,{body:{}});openContract(x.contract.id)});mk('Void','bad',async()=>{const reason=prompt('Why is it being voided?','');if(reason===null)return;await api(`/v1/contracts/${id}/void`,{body:{reason}});done('Voided.',id)})}
   $('#acts').innerHTML=acts.map((a,i)=>a.href?`<a class="btn sm" href="${a.href}">${esc(a.label)}</a>`:`<button class="btn sm ${a.cls||''}" data-a="${i}" ${a.dis?'disabled title="Only the people who sign for Future Basics can do this"':''}>${esc(a.label)}</button>`).join('');
   $('#acts').onclick=async e=>{const b=e.target.closest('[data-a]');if(!b)return;try{await acts[+b.dataset.a].fn()}catch(x){msg(x.message,'bad')}};
   const apBox=$('#apBox');if(apBox)apBox.onclick=async e=>{const b=e.target.closest('[data-ap]');if(!b)return;const act=b.dataset.ap;b.disabled=true;try{
@@ -124,6 +132,12 @@ async function openContract(id){
     else if(act==='charge'){const i=r.autopay.installments[+b.dataset.seq-1];if(!confirm(`Take ${usd(i.amountCents)} now from ${r.autopay.method.label}? The agreement lets us take it on its due date.`)){b.disabled=false;return}const x=await api(`/v1/contracts/${id}/autopay/charge`,{body:{seq:i.seq}});return done(x.result==='succeeded'?'Payment taken.':x.result==='pending'?'Sent to the bank: it settles in a few days.':'The payment did not go through. See the status.',id)}
     else if(act==='delivered'){const on=prompt(c.kind==='product'?'Date the final sample was approved (YYYY-MM-DD)':'Date the work was delivered (YYYY-MM-DD)',new Date().toISOString().slice(0,10));if(!on){b.disabled=false;return}await api(`/v1/contracts/${id}/delivered`,{body:{on}});return done(c.kind==='product'?'Final sample approval recorded: payments due on approval fall due now.':'Delivery recorded: payments due on delivery fall due now.',id)}
   }catch(x){msg(x.message,'bad')}b.disabled=false};
+  // link an invoice made outside the schedule (Money → the contract)
+  const li=$('#lnkInv');if(li)li.onclick=async()=>{try{const x=await api(`/v1/contracts/${id}/invoices/candidates`);const pick=$('#lnkPick');
+    if(!x.invoices.length){pick.innerHTML='<span class="sub">No unlinked invoices for this client. Make it in Money first.</span>';return}
+    pick.innerHTML=`<select class="t" id="lnkSel">${x.invoices.map(i=>`<option value="${i.id}">${esc(i.number)} · ${esc(i.company)} · ${usd(i.totalCents)}${i.paidCents>=i.totalCents&&i.totalCents>0?' · paid':i.paidCents?' · '+usd(i.paidCents)+' paid':' · '+esc(i.status)}</option>`).join('')}</select> <button class="btn sm go" type="button" id="lnkGo">Link it</button>`;
+    $('#lnkGo').onclick=async()=>{try{await api(`/v1/contracts/${id}/invoices/link`,{body:{invoiceId:$('#lnkSel').value}});done('Invoice linked.',id)}catch(x){msg(x.message,'bad')}}}catch(x){msg(x.message,'bad')}};
+  B.querySelectorAll('[data-unlink]').forEach(b=>b.onclick=async()=>{if(!confirm('Unlink this invoice from the contract?'))return;try{await api(`/v1/contracts/${id}/invoices/unlink`,{body:{invoiceId:b.dataset.unlink}});done('Invoice unlinked.',id)}catch(x){msg(x.message,'bad')}});
   const cp=$('#cp');if(cp)cp.onclick=async()=>{msg((await copyText($('#lnk').value))?'Link copied.':'Select the link and copy it.')};
   $('#dX').onclick=()=>dlg.close();
   function msg(t,k='ok'){const m=$('#dMsg');m.className='msg '+k;m.textContent=t}

@@ -1,7 +1,7 @@
 // Every quote and contract is a deal in Sales, so the pipeline's money is the money we have put in front of clients.
 //
 //   order quotes      sent → Proposal, accepted → Won (order-quote-routes.js keeps its own trackDeal; the deal is order_quotes.deal_id)
-//   contracts         a draft → Meeting, sent or signed by the client → Proposal, signed by both → Won, declined, expired or voided → Lost
+//   contracts         a draft → Meeting, sent or signed by the client → Proposal, signed by both or closed out → Won, declined, expired or voided → Lost
 //   product quotes    (one product, the quotes table) issued → Proposal, accepted → Won, declined → Lost. Every version of a product's
 //                     quote is the same deal, so a new version updates its value instead of adding a second deal.
 //
@@ -15,7 +15,7 @@
 import { fireTrigger } from './sales-automations-engine.js';
 
 export const DEAL_RANK = { new: 0, contacted: 1, meeting: 2, proposal: 3, won: 4, lost: -1 };
-const CONTRACT_STAGE = { draft: 'meeting', sent: 'proposal', signed_by_client: 'proposal', executed: 'won', declined: 'lost', expired: 'lost', void: 'lost' };
+const CONTRACT_STAGE = { draft: 'meeting', sent: 'proposal', signed_by_client: 'proposal', executed: 'won', closed: 'won', declined: 'lost', expired: 'lost', void: 'lost' };
 const QUOTE_STAGE = { issued: 'proposal', accepted: 'won', declined: 'lost' };
 export const contractStage = status => CONTRACT_STAGE[status] || null;
 export const quoteStage = status => QUOTE_STAGE[status] || null;
@@ -100,7 +100,7 @@ export async function linkDeal(db, { dealId = null, clientId = null, email = '',
 // ---- the documents --------------------------------------------------------------------------------------------------------------------------
 
 const money = c => '$' + (Number(c) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const CONTRACT_WORDS = { draft: 'is being drafted', sent: 'was sent for signature', signed_by_client: 'was signed by the client', executed: 'was signed by both parties', declined: 'was declined', expired: 'expired unsigned', void: 'was voided' };
+const CONTRACT_WORDS = { draft: 'is being drafted', sent: 'was sent for signature', signed_by_client: 'was signed by the client', executed: 'was signed by both parties', closed: 'was closed out', declined: 'was declined', expired: 'expired unsigned', void: 'was voided' };
 
 // A contract's deal follows the contract. Its deal (and contact) are written back on the contract, so its invoices carry the deal too.
 export async function syncContractDeal(db, r, { actorId = null, log = console } = {}) {
