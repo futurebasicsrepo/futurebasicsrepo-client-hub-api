@@ -33,14 +33,14 @@ export function registerMoneyRoutes(app, d) {
   const pre = [authenticate, adminOnly, moneyOnly], actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const needId = (req, reply) => UUID.test(req.params.id) || (bad(reply, 'Not found', 404), false);
 
-  const SELECT = `select i.*, coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id), 0)::bigint paid_cents, (select pr.name from projects pr where pr.id=i.project_id) project_name, (select d.title from sales_deals d where d.id=i.deal_id) deal_title from money_invoices i`;
+  const SELECT = `select i.*, coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id), 0)::bigint paid_cents, (select pr.name from projects pr where pr.id=i.project_id) project_name, (select d.title from sales_deals d where d.id=i.deal_id) deal_title, (select k.number from contracts k where k.id=i.contract_id) contract_number from money_invoices i`;
   const view = r => {
     const paid = Number(r.paid_cents || 0), st = invoiceState({ ...r, due_on: iso(r.due_on) }, paid, today());
     return { id: r.id, number: r.number, company: r.company, contactName: r.contact_name, contactEmail: r.contact_email, address: r.address, issuedOn: iso(r.issued_on), terms: r.terms, dueOn: iso(r.due_on), lines: r.lines, taxRatePct: Number(r.tax_rate), chargeTax: r.charge_tax,
       credits: r.credits, dueNowLabel: r.due_now_label, dueNowCents: r.due_now_cents == null ? null : Number(r.due_now_cents), subtotalCents: Number(r.subtotal_cents), taxCents: Number(r.tax_cents), totalCents: Number(r.total_cents), notes: r.notes, currency: r.currency,
       status: r.status, source: r.source, state: st.state, owedCents: st.owedCents, overdue: st.overdue, daysOverdue: st.daysOverdue, paidCents: paid, sentAt: r.sent_at, paidAt: r.paid_at, createdAt: r.created_at,
       workKind: r.work_kind || '', projectId: r.project_id || null, projectName: r.project_name || '', dealId: r.deal_id || null, dealTitle: r.deal_title || '', payUrl: r.pay_url || '', payChannel: r.pay_channel || '',
-      qb: r.qb_id ? { id: r.qb_id, docNumber: r.qb_doc_number, link: r.qb_link, syncedAt: r.qb_synced_at } : null, receiptSentAt: r.receipt_sent_at || null, receiptSentTo: r.receipt_sent_to || '' };
+      qb: r.qb_id ? { id: r.qb_id, docNumber: r.qb_doc_number, link: r.qb_link, syncedAt: r.qb_synced_at } : null, receiptSentAt: r.receipt_sent_at || null, receiptSentTo: r.receipt_sent_to || '', contractId: r.contract_id || null, contractNumber: r.contract_number || '' };
   };
   // What is still owed by the numbers alone, whatever status the invoice has (a paid invoice reads 0 otherwise).
   const rawOwed = r => invoiceState({ ...r, status: 'sent', due_on: iso(r.due_on) }, Number(r.paid_cents), today()).owedCents;

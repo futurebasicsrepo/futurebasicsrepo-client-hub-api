@@ -299,6 +299,34 @@ await journey('J188', 'Contracts for a physical product (a hat): its own wording
   const pr = await fetch(`${BASE}/v1/contracts/${id}/pdf`, { headers: { Authorization: 'Bearer ' + colby } }); ok(pr.status === 200 && /pdf/.test(pr.headers.get('content-type') || ''), 'the PDF can be made');
 });
 
+await journey('J316', 'A contract paid but never signed: its invoice, made in Money on its own and paid, is linked to the contract, which is then closed out; the deal is won, and it can be reopened', async () => {
+  await C('/settings', { method: 'PUT', body: { providerName: 'Future Basics', providerAddress: '10 Studio Way, Norristown PA', signerName: 'Kyle Riggle', signerTitle: 'Founder', governingLaw: 'Pennsylvania' } });
+  const company = `Retro Hat Co ${stamp}`, rSign = `devon-${stamp}@retro.test`;
+  const dc = (await C('/template?kind=product')).json;
+  const content = { title: `Retro hats ${stamp}`, kind: 'product', client: { company, address: '1 Brim Way, Austin TX', signerName: 'Devon Retro', signerTitle: 'Brand lead', signerEmail: rSign }, project: { name: 'Retro hats' }, scope: ['400 hats'], fee: { totalCents: 500000 }, timeline: { effectiveOn: '2026-11-01', startOn: '2026-11-03', completionOn: '2027-01-15' }, plan: buildPlan({ type: 'split', totalCents: 500000 }).plan, sections: dc.sections, product: dc.product };
+  const id = (await C('', { body: { content } })).json.contract?.id; ok(id && (await C(`/${id}/send`, { body: {} })).json.contract?.status === 'sent', 'the hat contract goes out for signature');
+  // the invoice made in Money on its own, and paid (as a Shopify checkout would)
+  const M = (p, o = {}) => call('/v1/money' + p, { token: kyle, ...o });
+  const inv = (await M('/invoices', { body: { company, contactEmail: rSign, lines: [{ description: 'Retro World hats', qty: 400, rate: 12.5 }], taxRatePct: 0 } })).json.invoice;
+  await M(`/invoices/${inv.id}/send`, { body: {} }); const paid = await M(`/invoices/${inv.id}/paid`, { body: { method: 'shopify', reference: '#1042', paidOn: '2026-11-17' } });
+  ok(paid.status === 200 && (await M(`/invoices/${inv.id}`)).json.invoice.state === 'paid', 'the $5,000 invoice is paid', paid.json.error);
+  ok((await C(`/${id}/invoices/candidates`)).status === 403, 'only the people who sign for Future Basics link invoices');
+  const cand = (await K(`/${id}/invoices/candidates`)).json.invoices; ok(cand.some(i => i.id === inv.id && i.paidCents === 500000), 'the paid invoice is offered: same company, not on another contract', JSON.stringify(cand));
+  const ln = await K(`/${id}/invoices/link`, { body: { invoiceId: inv.id } });
+  ok(ln.status === 200 && ln.json.invoices.some(i => i.id === inv.id && i.linked && i.paidCents === 500000) && ln.json.money.paidCents === 500000 && ln.json.events.some(e => e.kind === 'invoice_linked'), 'linking puts it on the contract with what was paid, and on its trail', JSON.stringify(ln.json.money));
+  ok((await M(`/invoices/${inv.id}`)).json.invoice.contractId === id, 'Money shows the invoice belongs to the contract');
+  ok(!(await K(`/${id}/invoices/candidates`)).json.invoices.some(i => i.id === inv.id), 'a linked invoice is no longer offered');
+  // close out
+  ok((await C(`/${id}/close`, { body: {} })).status === 403, 'only a signer closes a contract out');
+  const cl = await K(`/${id}/close`, { body: { note: 'Accepted by payment' } });
+  ok(cl.status === 200 && cl.json.contract.status === 'closed' && cl.json.contract.closedFrom === 'sent' && cl.json.events.some(e => e.kind === 'closed' && /Not signed; \$5,000\.00 of \$5,000\.00 paid \(invoice /.test(e.detail) && /Accepted by payment/.test(e.detail)), 'it is closed out, and the trail says it was never signed and was paid in full', JSON.stringify(cl.json.events?.slice(-1)));
+  const dealRow = sql(`select d.stage||'|'||d.value_cents from contracts k join sales_deals d on d.id=k.deal_id where k.id='${id}'`);
+  ok(dealRow === 'won|500000', 'its deal in Sales is won at the contract\'s value', dealRow);
+  ok((await K(`/${id}/close`, { body: {} })).status === 409 && (await K(`/${id}/revise`, { body: {} })).status === 409 && (await K(`/${id}/void`, { body: { reason: 'x' } })).status === 409 && (await K(`/${id}/invoices/unlink`, { body: { invoiceId: inv.id } })).status === 200, 'closed: not closed twice, revised or voided (an invoice can still be unlinked)');
+  const ro = await K(`/${id}/reopen`, { body: {} }); ok(ro.status === 200 && ro.json.contract.status === 'sent' && ro.json.events.some(e => e.kind === 'reopened'), 'reopening puts it back where it was');
+  ok((await C('?status=closed')).status === 200, 'the list filters by closed');
+});
+
 await journey('J189', 'Contracts in a browser: a physical product agreement is chosen per customer, shows its product options, and switching the type swaps the wording', async () => {
   if (!playwright) { ok(true, 'skipped: no browser here'); return; }
   await C('/settings', { method: 'PUT', body: { providerName: 'Future Basics', providerAddress: '10 Studio Way, Norristown PA', signerName: 'Kyle Riggle', signerTitle: 'Founder', governingLaw: 'Pennsylvania' } });

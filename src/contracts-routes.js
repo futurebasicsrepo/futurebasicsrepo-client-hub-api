@@ -16,6 +16,11 @@
 //   POST /v1/contracts/:id/countersign      signers only (the people named for Money): sign for Future Basics
 //   POST /v1/contracts/:id/ink              the person who signed with a typed name puts their handwritten signature on it (while it waits on the client)
 //   POST /v1/contracts/:id/invoices         signers only: draft an invoice for every payment in the schedule of a signed contract
+//   GET  /v1/contracts/:id/invoices/candidates   signers only: the client's Money invoices that could belong to it (same room, company, project or deal)
+//   POST /v1/contracts/:id/invoices/link { invoiceId }   POST …/unlink { invoiceId }   signers only: an invoice sent outside the schedule (a Shopify
+//                                           link, a deposit) belongs to the contract; only one linked by hand can be unlinked
+//   POST /v1/contracts/:id/close { note? }  signers only: close it out: settled outside the signing flow (paid, never signed) or done and paid;
+//                                           the deal is won at its value       POST /v1/contracts/:id/reopen   back to the status it was closed from
 //
 //   The client (no sign-in: the link is the key)
 //   GET  /v1/public/contracts/:token        the agreement as the client sees it      GET .../pdf
@@ -37,7 +42,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const iso = d => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(d).slice(0, 10) : null);
 const OPEN = ['sent', 'signed_by_client'];
-const STATUS_FILTER = ['draft', 'sent', 'signed_by_client', 'executed', 'declined', 'void', 'expired'];
+const STATUS_FILTER = ['draft', 'sent', 'signed_by_client', 'executed', 'declined', 'void', 'expired', 'closed'];
+const CLOSABLE = ['sent', 'signed_by_client', 'executed', 'expired'];
 
 export function registerContractRoutes(app, d) {
   const { pool, authenticate, adminOnly, getSetting, setSetting, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, hubButton = () => '', emailEscape = s => String(s), notifyStaff = async () => false,
@@ -76,7 +82,7 @@ export function registerContractRoutes(app, d) {
     id: r.id, number: r.number, version: r.version, supersedesId: r.supersedes_id, kind: r.kind, kindLabel: KINDS[r.kind] || '', title: r.title, status: r.status, clientCompany: r.content?.client?.company || '', signerName: r.content?.client?.signerName || '', signerEmail: r.content?.client?.signerEmail || '',
     totalCents: Number(r.total_cents), currency: r.currency, dealId: r.deal_id || null, dealTitle: r.deal_title || '', projectId: r.project_id || null, projectName: r.project_name || '', clientId: r.client_id || null, contactId: r.contact_id || null,
     sentAt: r.sent_at, sentTo: r.sent_to || '', expiresAt: r.expires_at, firstViewedAt: r.first_viewed_at, lastViewedAt: r.last_viewed_at, viewCount: r.view_count, clientSignature: sigView(r.client_signature, staff), providerSignature: sigView(r.provider_signature, staff),
-    declined: r.declined || null, voidReason: r.void_reason || '', executedAt: r.executed_at, invoicesAt: r.invoices_at, createdAt: r.created_at, updatedAt: r.updated_at, docHash: r.doc_hash || ''
+    declined: r.declined || null, voidReason: r.void_reason || '', executedAt: r.executed_at, invoicesAt: r.invoices_at, closedAt: r.closed_at || null, closedBy: r.closed_by || '', closeNote: r.close_note || '', closedFrom: r.closed_from || '', createdAt: r.created_at, updatedAt: r.updated_at, docHash: r.doc_hash || ''
   });
   const stateFor = async r => ({ status: r.status, sentAt: r.sent_at, hash: r.doc_hash || '', clientSignature: r.client_signature, providerSignature: r.provider_signature, declined: r.declined, events: (await pool.query(`select kind, at, ip, meta from contract_events where contract_id=$1 and kind='viewed' order by at limit 1`, [r.id])).rows });
   // the PDF draws the ink itself, so it is read in with the state
@@ -202,11 +208,12 @@ export function registerContractRoutes(app, d) {
     return bad(reply, 'Could not number the contract. Try again.', 409);
   }
   const detail = async (r) => {
-    const st = await settings(), rendered = await renderOf(r, st), invoices = (await pool.query(`select id, number, status, total_cents, due_on, contract_seq from money_invoices where contract_id=$1 order by contract_seq, created_at`, [r.id])).rows;
+    const st = await settings(), rendered = await renderOf(r, st), invoices = (await pool.query(`select i.id, i.number, i.status, i.total_cents, i.due_on, i.contract_seq, coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id),0)::bigint paid_cents from money_invoices i where i.contract_id=$1 order by i.contract_seq nulls last, i.created_at`, [r.id])).rows;
+    const live = invoices.filter(i => i.status !== 'void'), money = { invoicedCents: live.reduce((a, i) => a + Number(i.total_cents), 0), paidCents: live.reduce((a, i) => a + Number(i.paid_cents), 0) };
     const ap = autopay ? await autopay.overview(r) : null, rd = ap ? await autopay.readiness() : null;
     return { contract: view(r), content: r.content, rendered, autopay: ap ? { ...ap, ready: rd.ready, notReadyWhy: rd.why } : null, problems: r.status === 'draft' ? [...cleanContent(r.content, { settings: st, lenient: true }).errors, ...sendProblems(r.content, st)] : [],
       events: (await pool.query('select kind, actor, detail, at, ip from contract_events where contract_id=$1 order by at, id', [r.id])).rows.map(e => ({ kind: e.kind, actor: e.actor, detail: e.detail, at: e.at, ip: e.ip })),
-      link: OPEN.includes(r.status) || r.status === 'executed' ? linkOf(r) : null, invoices: invoices.map(i => ({ id: i.id, number: i.number, status: i.status, totalCents: Number(i.total_cents), dueOn: iso(i.due_on), seq: i.contract_seq })) };
+      link: OPEN.includes(r.status) || r.status === 'executed' ? linkOf(r) : null, invoices: invoices.map(i => ({ id: i.id, number: i.number, status: i.status, totalCents: Number(i.total_cents), paidCents: Number(i.paid_cents), dueOn: iso(i.due_on), seq: i.contract_seq, linked: i.contract_seq == null })), money };
   };
 
   app.post('/v1/contracts', { preHandler: pre }, async (req, reply) => { const id = await save(req, reply, null); if (typeof id !== 'string') return; return reply.code(201).send(await detail(await one(id))); });
@@ -269,7 +276,7 @@ export function registerContractRoutes(app, d) {
 
   app.post('/v1/contracts/:id/revise', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const r = await fresh(await one(req.params.id)); if (!r) return bad(reply, 'Not found', 404);
-    if (r.status === 'draft') return bad(reply, 'It is still a draft: just edit it', 409); if (r.status === 'executed') return bad(reply, 'A fully signed contract stands. Changes go through a new agreement or a change request.', 409);
+    if (r.status === 'draft') return bad(reply, 'It is still a draft: just edit it', 409); if (r.status === 'closed') return bad(reply, 'It is closed out. Reopen it first.', 409); if (r.status === 'executed') return bad(reply, 'A fully signed contract stands. Changes go through a new agreement or a change request.', 409);
     const db = await pool.connect();
     try {
       await db.query('begin'); const base = r.number.replace(/-v\d+$/, ''), nextV = (await db.query(`select coalesce(max(version),1)+1 v from contracts where number=$1 or number like $2`, [base, base + '-v%'])).rows[0].v;
@@ -284,7 +291,7 @@ export function registerContractRoutes(app, d) {
 
   app.post('/v1/contracts/:id/void', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const r = await fresh(await one(req.params.id)); if (!r) return bad(reply, 'Not found', 404);
-    if (r.status === 'executed') return bad(reply, 'A fully signed contract cannot be voided here', 409); if (r.status === 'void') return bad(reply, 'It is already void', 409);
+    if (r.status === 'executed') return bad(reply, 'A fully signed contract cannot be voided here', 409); if (r.status === 'closed') return bad(reply, 'It is closed out. Reopen it first.', 409); if (r.status === 'void') return bad(reply, 'It is already void', 409);
     const reason = clip(req.body?.reason, 300); await pool.query(`update contracts set status='void', void_reason=$2, updated_at=now() where id=$1`, [r.id, reason]);
     await ev(r.id, 'voided', { actor: (await userOf(req))?.email || '', detail: reason }); await syncContractDeal(pool, await one(r.id), { actorId: actorId(req), log }); return detail(await one(r.id));
   });
@@ -413,6 +420,55 @@ export function registerContractRoutes(app, d) {
 
   // ---- the client's hub: their agreements, what is waiting on them, and the way to sign or add payment details from there ----------------------------------------
   // Only the person named as signer gets the signing link; other people at the client see the agreement and who it is waiting on. A staff preview of the hub gets no links.
+  // ---- invoices sent outside the schedule, and closing a contract out ------------------------------------------------------------------------
+  // An invoice can be made in Money on its own (a Shopify link for the work) and paid without the contract ever being signed. A signer links it
+  // to the contract, so the contract shows what was invoiced and paid, and closes the contract out: settled, with how it was settled on record.
+  const moneyRow = async id => (UUID.test(String(id || '')) ? (await pool.query('select id, number, status, total_cents, contract_id, contract_seq, client_id, deal_id, project_id from money_invoices where id=$1', [id])).rows[0] : null);
+  app.get('/v1/contracts/:id/invoices/candidates', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
+    if (!needId(req, reply)) return; const r = await one(req.params.id); if (!r) return bad(reply, 'Not found', 404);
+    const rows = (await pool.query(`select i.id, i.number, i.company, i.status, i.total_cents, i.issued_on, coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id),0)::bigint paid_cents
+        from money_invoices i where i.contract_id is null and i.status <> 'void'
+          and ((i.client_id is not null and i.client_id=$1) or (i.project_id is not null and i.project_id=$2) or (i.deal_id is not null and i.deal_id=$3) or (lower(i.company)=lower($4) and $4<>''))
+        order by i.issued_on desc nulls last, i.created_at desc limit 40`, [r.client_id, r.project_id, r.deal_id, String(r.content?.client?.company || '').trim()])).rows;
+    return { invoices: rows.map(i => ({ id: i.id, number: i.number, company: i.company, status: i.status, totalCents: Number(i.total_cents), paidCents: Number(i.paid_cents), issuedOn: iso(i.issued_on) })) };
+  });
+  app.post('/v1/contracts/:id/invoices/:op', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
+    if (!needId(req, reply)) return; const r = await one(req.params.id); if (!r) return bad(reply, 'Not found', 404);
+    const op = req.params.op; if (!['link', 'unlink'].includes(op)) return bad(reply, 'Not found', 404);
+    const inv = await moneyRow(req.body?.invoiceId); if (!inv) return bad(reply, 'Choose an invoice', 404);
+    if (op === 'link') {
+      if (inv.contract_id && inv.contract_id !== r.id) return bad(reply, `Invoice ${inv.number} already belongs to another contract`, 409);
+      if (inv.status === 'void') return bad(reply, 'A void invoice cannot be linked', 409);
+      await pool.query('update money_invoices set contract_id=$2, client_id=coalesce(client_id,$3), deal_id=coalesce(deal_id,$4), project_id=coalesce(project_id,$5), updated_at=now() where id=$1', [inv.id, r.id, r.client_id, r.deal_id, r.project_id]);
+      await ev(r.id, 'invoice_linked', { actor: req.signer.email, detail: `Invoice ${inv.number} (${dollars(inv.total_cents, r.currency)})` });
+    } else {
+      if (inv.contract_id !== r.id) return bad(reply, 'That invoice is not on this contract', 409);
+      if (inv.contract_seq != null) return bad(reply, 'Invoices drafted from the payment schedule stay with their contract', 409);
+      await pool.query('update money_invoices set contract_id=null, updated_at=now() where id=$1', [inv.id]);
+      await ev(r.id, 'invoice_unlinked', { actor: req.signer.email, detail: `Invoice ${inv.number}` });
+    }
+    return detail(await one(r.id));
+  });
+  app.post('/v1/contracts/:id/close', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
+    if (!needId(req, reply)) return; const r = await fresh(await one(req.params.id)); if (!r) return bad(reply, 'Not found', 404);
+    if (!CLOSABLE.includes(r.status)) return bad(reply, r.status === 'closed' ? 'It is already closed out' : r.status === 'draft' ? 'A draft has nothing to close: send it, or void it' : `A ${r.status.replace(/_/g, ' ')} contract cannot be closed out`, 409);
+    const d = await detail(r), signed = r.status === 'executed', paid = d.money.paidCents, invNums = d.invoices.filter(i => i.status !== 'void').map(i => i.number);
+    const how = `${signed ? 'Signed by both parties' : r.client_signature ? 'Signed by the client only' : 'Not signed'}; ${paid > 0 ? `${dollars(paid, r.currency)} of ${dollars(r.total_cents, r.currency)} paid${invNums.length ? ` (invoice ${invNums.join(', ')})` : ''}` : 'nothing paid on a linked invoice'}`;
+    const note = clip(req.body?.note, 500);
+    await pool.query(`update contracts set status='closed', closed_from=$2, closed_at=now(), closed_by=$3, close_note=$4, updated_at=now() where id=$1`, [r.id, r.status, req.signer.email, note]);
+    await ev(r.id, 'closed', { actor: req.signer.email, detail: `${how}${note ? `. ${note}` : ''}`, meta: { from: r.status, paidCents: paid, invoices: invNums } });
+    await syncContractDeal(pool, await one(r.id), { actorId: actorId(req), log }); // closed out: the deal is won at the contract's value
+    return detail(await one(r.id));
+  });
+  app.post('/v1/contracts/:id/reopen', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
+    if (!needId(req, reply)) return; const r = await one(req.params.id); if (!r) return bad(reply, 'Not found', 404);
+    if (r.status !== 'closed') return bad(reply, 'Only a closed contract can be reopened', 409);
+    const back = CLOSABLE.includes(r.closed_from) ? r.closed_from : 'sent';
+    await pool.query(`update contracts set status=$2, closed_at=null, closed_by=null, closed_from=null, updated_at=now() where id=$1`, [r.id, back]);
+    await ev(r.id, 'reopened', { actor: req.signer.email, detail: `Back to ${back.replace(/_/g, ' ')}` });
+    return detail(await one(r.id));
+  });
+
   async function hubContracts({ clientId, userId, preview = false }) {
     if (!clientId) return [];
     const me = String((await pool.query('select email from users where id=$1', [userId]).catch(() => ({ rows: [] }))).rows[0]?.email || '').toLowerCase();

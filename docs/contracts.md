@@ -15,6 +15,9 @@ Staff work in **Win, Contracts** (`/contracts`). Clients never sign in: they ope
 5. **Countersign.** When the client has signed, staff are emailed. A signer (the people named for Money: Kyle and Danielle) presses **Sign for Future Basics**. The agreement is then final: the deal moves to **Won**, the client is emailed their signed copy, and a certificate page is added to the PDF.
 6. **Invoices.** A contract paid by card or ACH (Stripe or QuickBooks Payments) gets them as soon as both parties have signed; on a contract paid by invoice a signer presses **Draft the invoices** (here or on the Money overview, under **Coming from contracts**, where every sent and signed contract shows what it will bring in): one draft invoice per payment in the schedule (deposit on signing, monthly payments on their dates, balance due on delivery), linked to the deal, the project and the contract. They go through the normal Money flow (QuickBooks pay link, payments, overdue). Done once per contract.
 
+7. **Invoices made outside the schedule.** An invoice made in Money on its own (a quick invoice paid through a Shopify link, say) can be tied to its contract: in the contract's **Invoices** box, a signer presses **Link an invoice** and picks from the open Money invoices for the same client, project, deal or company. It takes the contract's client, deal and project. The box lists every invoice on the contract with what has been paid on each, and adds up invoiced and paid against the fee. **Unlink** takes back one linked by hand (never one drafted from the schedule). Both are on the contract's trail.
+8. **Close it out.** **Close out** settles a contract that will never go further: a client who paid without signing, or an executed contract whose work is done. It works on a sent, client-signed, signed or expired contract. It asks for a note (on an unsigned contract it suggests "Accepted by payment: the client paid the invoice without signing.") and records on the trail how it ended: who had signed, and how much of the linked invoices was paid. The deal moves to **Won**. A closed contract cannot be revised, voided or signed; **Reopen** puts it back where it was. Closed contracts are under the **Closed out** filter.
+
 Then, as ever, **Start project** on the won deal.
 
 ### Every contract is in the Sales pipeline
@@ -26,6 +29,7 @@ A contract is a deal in Sales from the moment it has a fee, whether it was start
 | a draft with a fee | **Meeting**, worth the contract's total (a draft never pulls a deal that is further along back) |
 | sent, or signed by the client | **Proposal** |
 | signed by both | **Won**, at the signed total |
+| closed out (paid without signing, or the work is done) | **Won** |
 | declined, expired or voided | **Lost**, with the reason, unless something else on the deal is still out (a newer version, a quote) |
 | replaced by a new version | nothing: the new version carries the deal on |
 
@@ -96,7 +100,7 @@ How the client pays is part of the plan: **invoice** for each payment (pay onlin
 
 ## Who can do what
 
-Any signed-in teammate can draft, send, remind, revise, void and read contracts. Signing for Future Basics and drafting invoices are for the people named for Money (`MONEY_ACCESS_EMAILS`, default Danielle and Kyle). The legal basics (who signs for us, our address, the governing law) are set once under **Settings** and fill the wording; a contract cannot be sent until they are set.
+Any signed-in teammate can draft, send, remind, revise, void and read contracts. Signing for Future Basics, drafting invoices, linking or unlinking an invoice and closing out or reopening a contract are for the people named for Money (`MONEY_ACCESS_EMAILS`, default Danielle and Kyle). The legal basics (who signs for us, our address, the governing law) are set once under **Settings** and fill the wording; a contract cannot be sent until they are set.
 
 ## Where it lives
 
@@ -108,14 +112,14 @@ Any signed-in teammate can draft, send, remind, revise, void and read contracts.
 | Staff page | `src/contracts.html` at `/contracts`, in the console menu under Win |
 | The client's page | `src/sign.html` at `/sign/<link>` |
 | Tables | `contracts`, `contract_events`, and `money_invoices.contract_id` |
-| Tests | `test/contracts.test.js`, journeys J164 (API), J165 (browser), J188 (a product contract end to end), J189 (the product options in a browser) |
+| Tests | `test/contracts.test.js`, journeys J164 (API), J165 (browser), J188 (a product contract end to end), J189 (the product options in a browser), J316 (an invoice paid without signing: link, close out, reopen) |
 | Automatic payments | `src/autopay.js`, `src/qb-payments.js`, see `docs/autopay.md` |
 
 ## In the client hub
 
 A contract belongs to a client (`contracts.client_id`). It is set from the project when there is one; otherwise from the signer's email (the hub user with that email, then the client's contact or allowed emails, then the company name), when a draft is saved and again when it is sent. At startup, contracts still without a client are tied the same way.
 
-Once sent, the hub's dashboard carries it (`agreements`): a signing request shows in **Waiting on you** ("Sign ...", or "Add your payment details" when automatic payments were agreed but no card or account is on file yet), and every sent or signed agreement stays under **Your agreements** with its status, summary and, once signed by both, the signed PDF. A contract is also matched to a signed-in person by the email it is addressed to, wherever it is filed (never in a staff preview). Only the signer's own sign-in gets the private signing link; a teammate sees the agreement without it, and a staff preview of the hub never gets a link. Covered by journey J171.
+Once sent, the hub's dashboard carries it (`agreements`; a closed-out contract is not listed there): a signing request shows in **Waiting on you** ("Sign ...", or "Add your payment details" when automatic payments were agreed but no card or account is on file yet), and every sent or signed agreement stays under **Your agreements** with its status, summary and, once signed by both, the signed PDF. A contract is also matched to a signed-in person by the email it is addressed to, wherever it is filed (never in a staff preview). Only the signer's own sign-in gets the private signing link; a teammate sees the agreement without it, and a staff preview of the hub never gets a link. Covered by journey J171.
 
 ## Not built yet
 

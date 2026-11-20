@@ -2426,6 +2426,13 @@ export async function migrate() {
     alter table contracts add constraint contracts_kind_check check (kind in ('website','app','other','product'));
     alter table contracts add column if not exists autopay_paused_at timestamptz;
     alter table contracts add column if not exists autopay_paused_by text;
+    -- closed out: settled outside the signing flow (paid on its invoice without being signed), or the work done and paid; the status it was closed from comes back on reopening
+    alter table contracts drop constraint if exists contracts_status_check;
+    alter table contracts add constraint contracts_status_check check (status in ('draft','sent','signed_by_client','executed','declined','void','expired','closed'));
+    alter table contracts add column if not exists closed_at timestamptz;
+    alter table contracts add column if not exists closed_by text;
+    alter table contracts add column if not exists close_note text not null default '';
+    alter table contracts add column if not exists closed_from text;
     create table if not exists contract_payment_methods (
       id uuid primary key default gen_random_uuid(),
       contract_id uuid not null references contracts(id) on delete cascade,
