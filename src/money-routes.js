@@ -407,9 +407,15 @@ export function registerMoneyRoutes(app, d) {
     const since = n => { const x = new Date(); x.setUTCDate(x.getUTCDate() - n); return x.toISOString().slice(0, 10); };
     const within = n => all.filter(r => r.paidOn >= since(n)), sum = rows => rows.reduce((a, r) => a + r.amountCents, 0);
     const open = invs.filter(i => ['open', 'part-paid', 'overdue'].includes(i.state)), late = open.filter(i => i.overdue);
-    // won deals in the last year that no invoice bills yet
+    // won deals in the last year that nothing bills yet: no Money invoice (on the deal or on one of its contracts), no contract out, signed or
+    // closed out, no accepted order quote with its Shopify checkout made, no product quote with a hub invoice
     const toInvoice = (await pool.query(`select d.id, d.title, d.value_cents, coalesce(d.closed_at, d.updated_at) won_at, coalesce(co.name, ct.name, '') company from sales_deals d left join sales_companies co on co.id=d.company_id left join sales_contacts ct on ct.id=d.contact_id
-      where d.stage='won' and coalesce(d.closed_at, d.updated_at) > now() - interval '365 days' and not exists (select 1 from money_invoices i where i.deal_id=d.id and i.status<>'void') and not exists (select 1 from contracts k where k.deal_id=d.id and k.status in ('sent','signed_by_client','executed')) order by won_at desc limit 50`).catch(() => pool.query(`select d.id, d.title, d.value_cents, coalesce(d.closed_at, d.updated_at) won_at, coalesce(co.name, ct.name, '') company from sales_deals d left join sales_companies co on co.id=d.company_id left join sales_contacts ct on ct.id=d.contact_id where d.stage='won' and coalesce(d.closed_at, d.updated_at) > now() - interval '365 days' and not exists (select 1 from money_invoices i where i.deal_id=d.id and i.status<>'void') order by won_at desc limit 50`))).rows
+      where d.stage='won' and coalesce(d.closed_at, d.updated_at) > now() - interval '365 days'
+        and not exists (select 1 from money_invoices i where (i.deal_id=d.id or i.contract_id in (select k.id from contracts k where k.deal_id=d.id)) and i.status<>'void')
+        and not exists (select 1 from contracts k where k.deal_id=d.id and k.status in ('sent','signed_by_client','executed','closed'))
+        and not exists (select 1 from order_quotes q where q.deal_id=d.id and q.status='accepted' and (q.shopify_draft_order_id is not null or coalesce(q.pay_url,'')<>''))
+        and not exists (select 1 from quotes pq where pq.deal_id=d.id and (pq.shopify_draft_order_id is not null or exists (select 1 from invoices hi where hi.quote_id=pq.id and hi.status<>'void')))
+        order by won_at desc limit 50`).catch(() => pool.query(`select d.id, d.title, d.value_cents, coalesce(d.closed_at, d.updated_at) won_at, coalesce(co.name, ct.name, '') company from sales_deals d left join sales_companies co on co.id=d.company_id left join sales_contacts ct on ct.id=d.contact_id where d.stage='won' and coalesce(d.closed_at, d.updated_at) > now() - interval '365 days' and not exists (select 1 from money_invoices i where i.deal_id=d.id and i.status<>'void') order by won_at desc limit 50`))).rows
       .map(r => ({ id: r.id, title: r.title, company: r.company, valueCents: Number(r.value_cents), wonAt: r.won_at }));
     const contracts = await underContract(), stripeOn = ((await getSetting('autopayProcessor').catch(() => null))?.processor || env.AUTOPAY_PROCESSOR) === 'stripe';
     for (const k of contracts) k.processor = k.method === 'invoice' ? 'invoice' : stripeOn ? 'stripe' : 'quickbooks';

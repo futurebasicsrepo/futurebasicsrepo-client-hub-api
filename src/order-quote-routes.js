@@ -17,6 +17,8 @@ import { cleanQuote, matchRequest, clientQuote, quoteNumber, sizesWords, product
 import { shopifyGraphql, DRAFT_ORDER_CREATE, DRAFT_ORDER_UPDATE, requireNoUserErrors } from './shopify.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// the contract drawn up from a quote (the latest that is not void), shown on the quote with a link to it
+export const QUOTE_CONTRACT_SQL = `(select jsonb_build_object('id', k.id, 'number', k.number, 'status', k.status) from contracts k where k.quote_id=q.id and k.status<>'void' order by k.created_at desc limit 1) contract`;
 const day = v => (v instanceof Date ? v.toISOString().slice(0, 10) : v ? String(v).slice(0, 10) : '');
 const usd = c => '$' + (Number(c) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -33,7 +35,7 @@ export function registerOrderQuoteRoutes(app, d) {
       (select jsonb_build_object('tooling', q.tooling_cents, 'freight', q.freight_cents) from quotes q where q.product_id=p.id and q.status<>'declined' order by q.version desc limit 1) legacy
     from products p left join projects pr on pr.id=p.project_id where p.client_id=$1 and (pr.id is null or (pr.archived_at is null and pr.status not in ('archive','archived'))) order by pr.updated_at desc nulls last, p.title`, [cid])).rows;
   const staffView = q => ({ ...clientQuote(q), lines: q.lines || [], costCents: q.cost_cents == null ? null : Number(q.cost_cents), marginPct: q.margin_pct == null ? null : Number(q.margin_pct), requestId: q.request_id, projectId: q.project_id, dealId: q.deal_id,
-    clientId: q.client_id, clientName: q.client_name || '', declinedAt: q.declined_at, payError: q.pay_error || '', createdAt: q.created_at, version: q.version, invoice: invoiceOf(q) });
+    clientId: q.client_id, clientName: q.client_name || '', declinedAt: q.declined_at, payError: q.pay_error || '', createdAt: q.created_at, version: q.version, invoice: invoiceOf(q), contract: q.contract || null });
 
   // ---- Sales: the client's contact, company and the deal this quote is ----
   async function trackDeal(q, { stage, text, kind = 'system', actorId = null, lostReason = '' }) {
@@ -94,7 +96,7 @@ export function registerOrderQuoteRoutes(app, d) {
     if (!UUID.test(String(req.params.id))) return bad(reply, 'Client not found', 404);
     const products = (await roomProducts(req.params.id)).map(p => ({ id: p.id, title: p.title, projectId: p.project_id, projectName: p.project_name || 'No project', image: p.shopify_image_url || (p.has_rendering ? renderingUrl(p.id) : ''), tiers: p.tiers || [], sizes: p.sizes || [], fees: productFees(p) }));
     const request = UUID.test(String(req.query?.requestId || '')) ? (await pool.query('select id, title, details, project_id, product_id from requests where id=$1 and client_id=$2', [req.query.requestId, req.params.id])).rows[0] : null;
-    const quotes = (await pool.query('select q.*, c.name client_name from order_quotes q join clients c on c.id=q.client_id where q.client_id=$1 order by q.created_at desc', [req.params.id])).rows.map(staffView);
+    const quotes = (await pool.query(`select q.*, c.name client_name, ${QUOTE_CONTRACT_SQL} from order_quotes q join clients c on c.id=q.client_id where q.client_id=$1 order by q.created_at desc`, [req.params.id])).rows.map(staffView);
     return { products, request: request ? { id: request.id, title: request.title, details: request.details, projectId: request.project_id } : null, suggestions: request ? matchRequest(`${request.title}\n${request.details}`, products) : [], quotes };
   });
   async function saveQuote(req, reply, existing) {

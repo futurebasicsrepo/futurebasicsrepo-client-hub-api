@@ -348,6 +348,42 @@ await journey('J318', 'A contract from an order quote is priced per unit: every 
   ok(il.length === 2 && il[0].taxable !== false && il[1].taxable === false && /shipping, setup and services \(not taxed\)/.test(il[1].description) && il[1].rateCents === 53000, 'on each invoice the products are taxed and its share of setup and freight is not', il);
 });
 
+await journey('J319', 'Quotes turn into contracts from where they are: the room\'s quote card and the deal in Sales list them with Turn into a contract, then the contract made; a product quote drafts the same way; and Money stops asking to invoice a deal its quote\'s checkout or a closed-out contract already billed', async () => {
+  const r = await mk(), rc = sql(`select client_id from users where lower(email)='${r.email || ''}'`) || r.client?.id;
+  const pid = sql(`insert into projects(client_id,name,status,kind) values('${rc}','Shirts ${stamp}','active','product') returning id`).split('\n')[0];
+  const deal = sql(`insert into sales_deals(title,stage,value_cents) values('Shirt order ${stamp}','won',212500) returning id`).split('\n')[0];
+  const lines = JSON.stringify([{ title: 'Collared Knit Shirt', quantity: 100, sizes: { M: 60, L: 40 }, unitCents: 2005, totalCents: 200500 }]), extras = JSON.stringify([{ label: 'Freight · Collared Knit Shirt', cents: 12000 }]);
+  const qid = sql(`insert into order_quotes(client_id,project_id,deal_id,number,title,status,lines,extras,subtotal_cents,total_cents,accepted_at) values('${rc}','${pid}','${deal}','Q-J319-${stamp}','Shirt order','accepted','${lines}'::jsonb,'${extras}'::jsonb,200500,212500,now()) returning id`).split('\n')[0];
+  const room = async () => (await call(`/v1/admin/clients/${rc}/quote-builder`, { token: colby })).json.quotes.find(q => q.id === qid);
+  ok((await room())?.contract === null, 'in the room the quote has no contract yet, so it offers to make one');
+  const salesDeal = async () => (await call('/v1/sales/deals', { token: colby })).json.deals.find(d => d.id === deal);
+  const sd = await salesDeal();
+  ok(sd?.quotes?.length === 1 && sd.quotes[0].id === qid && sd.quotes[0].kind === 'order' && sd.quotes[0].totalCents === 212500 && sd.quotes[0].contract === null && sd.contract === null, 'Sales shows the deal\'s quote, its total and that no contract is made yet', sd?.quotes);
+  ok((await call('/v1/money/overview', { token: kyle })).json.toInvoice?.some(t => t.id === deal), 'Money lists the won deal as not invoiced while nothing bills it');
+  sql(`update order_quotes set shopify_draft_order_id='gid://shopify/DraftOrder/9', pay_url='https://pay.example/x' where id='${qid}'`);
+  ok(!(await call('/v1/money/overview', { token: kyle })).json.toInvoice?.some(t => t.id === deal), 'once the quote\'s Shopify checkout is made, Money stops asking to invoice the deal');
+  const d = (await C(`/draft?quote=${qid}`)).json;
+  ok(d.quote?.id === qid && d.content.fee.units.some(u => /Collared Knit Shirt \(60 M, 40 L\)/.test(u.item)), 'Turn into a contract drafts from the quote, sizes named', d.content.fee.units);
+  const content = { ...d.content, client: { ...d.content.client, company: `Shirts ${stamp}`, address: '2 Knit Ave, Austin TX', signerName: 'Sam Shirt', signerEmail: `sam-${stamp}@shirts.test` } };
+  const made = (await C('', { body: { content, projectId: pid, dealId: deal, quoteId: qid } })).json, kid = made.contract?.id;
+  ok(kid && made.contract.quoteId === qid, 'the contract keeps the quote it was made from', made.contract?.quoteId);
+  ok((await room())?.contract?.id === kid && (await salesDeal())?.quotes?.[0]?.contract?.number === made.contract.number && (await salesDeal())?.contract?.id === kid, 'now the room\'s quote card and the deal in Sales open that contract instead of offering another');
+  // a product quote, issued from the product's page, drafts the same way
+  const prod = sql(`insert into products(client_id,project_id,title) values('${rc}','${pid}','Retro World Hat') returning id`).split('\n')[0];
+  const deal2 = sql(`insert into sales_deals(title,stage,value_cents) values('Hat quote ${stamp}','won',500000) returning id`).split('\n')[0];
+  const pq = sql(`insert into quotes(product_id,version,quantity,unit_cost_cents,wholesale_cents,tooling_cents,freight_cents,status,deal_id) values('${prod}',1,400,800,1150,20000,20000,'accepted','${deal2}') returning id`).split('\n')[0];
+  const sd2 = await call('/v1/sales/deals', { token: colby }).then(x => x.json.deals.find(dd => dd.id === deal2));
+  ok(sd2?.quotes?.[0]?.kind === 'product' && sd2.quotes[0].id === pq && sd2.quotes[0].totalCents === 500000, 'a product quote shows on its deal in Sales too', sd2?.quotes);
+  const pd = (await C(`/draft?productQuote=${pq}`)).json.content?.fee;
+  ok(pd?.units?.length === 3 && pd.units[0].qty === 400 && pd.units[0].unitCents === 1150 && pd.units.filter(u => u.taxable === false).length === 2 && pd.subtotalCents === 500000 && pd.taxCents === 27600, 'it drafts per unit at the client\'s price, tooling and freight untaxed, tax on the hats', pd);
+  ok((await C(`/draft?deal=${deal2}`)).json.content?.fee?.totalCents === 527600, 'and Make a contract on the deal finds the product quote');
+  // a closed-out contract bills its deal
+  const deal3 = sql(`insert into sales_deals(title,stage,value_cents) values('Closed ${stamp}','won',100000) returning id`).split('\n')[0];
+  ok((await call('/v1/money/overview', { token: kyle })).json.toInvoice?.some(t => t.id === deal3), 'a won deal with nothing billing it is listed');
+  sql(`insert into contracts(number,kind,title,content,total_cents,currency,deal_id,status,closed_at,closed_from) values('FB-C-J319-${stamp}','product','Closed','{}'::jsonb,100000,'USD','${deal3}','closed',now(),'sent')`);
+  ok(!(await call('/v1/money/overview', { token: kyle })).json.toInvoice?.some(t => t.id === deal3), 'a contract closed out on it takes it off the list');
+});
+
 await journey('J316', 'A contract paid but never signed: its invoice, made in Money on its own and paid, is linked to the contract, which is then closed out; the deal is won, and it can be reopened', async () => {
   await C('/settings', { method: 'PUT', body: { providerName: 'Future Basics', providerAddress: '10 Studio Way, Norristown PA', signerName: 'Kyle Riggle', signerTitle: 'Founder', governingLaw: 'Pennsylvania' } });
   const company = `Retro Hat Co ${stamp}`, rSign = `devon-${stamp}@retro.test`;

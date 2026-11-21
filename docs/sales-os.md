@@ -123,6 +123,8 @@ Each card says why in plain words and offers **Make a task** (with a suggested t
 
 The pipeline's money is what is in front of clients: every order quote, product quote and contract is a deal, opened and moved as it is sent, signed, accepted or declined. The rules are in [contracts.md](contracts.md#every-contract-is-in-the-sales-pipeline) and `src/sales-deals.js`.
 
+The deal window lists the deal's quotes (order quotes from the room and quotes issued from a product's page, not drafts) with their total and status, **Open in the room**, and **Turn into a contract**, which drafts a contract priced per unit from that quote. Once a contract is made from a quote, the quote shows **Contract FB-C-…** instead, and **Make a contract** becomes **Open contract** when the deal already has one.
+
 ## Won deal to work: Start project
 Moving a deal to **Won** is where the sale ends and the work begins. In the deal window a won deal shows **Start project** with the kind of work (software or product development). One click:
 - finds the client's room (the contact's own, else one with the company's name) or makes one, and the contact can sign in to it;

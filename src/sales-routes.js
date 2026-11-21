@@ -257,7 +257,14 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
   });
 
   // ---------- deals ----------
-  const DEAL_SELECT = `select d.id,d.title,d.stage,d.value_cents,d.expected_close,d.source,d.lost_reason,d.last_activity_at,d.closed_at,d.created_at,d.contact_id,c.name contact_name,c.email contact_email,co.name company_name,d.owner_id,d.project_id,(select u.name from users u where u.id=d.owner_id) owner_name,(select p.client_id from projects p where p.id=d.project_id) project_client_id from sales_deals d left join sales_contacts c on c.id=d.contact_id left join sales_companies co on co.id=c.company_id`;
+  const DEAL_SELECT = `select d.id,d.title,d.stage,d.value_cents,d.expected_close,d.source,d.lost_reason,d.last_activity_at,d.closed_at,d.created_at,d.contact_id,c.name contact_name,c.email contact_email,co.name company_name,d.owner_id,d.project_id,(select u.name from users u where u.id=d.owner_id) owner_name,(select p.client_id from projects p where p.id=d.project_id) project_client_id,
+    (select coalesce(jsonb_agg(x order by x->>'at' desc), '[]'::jsonb) from (
+      select jsonb_build_object('kind','order','id',q.id,'number',q.number,'title',coalesce(q.title,''),'status',q.status,'totalCents',q.total_cents,'clientId',q.client_id,'at',q.created_at,
+        'contract',(select jsonb_build_object('id',k.id,'number',k.number,'status',k.status) from contracts k where k.quote_id=q.id and k.status<>'void' order by k.created_at desc limit 1)) x from order_quotes q where q.deal_id=d.id and q.status<>'draft'
+      union all
+      select jsonb_build_object('kind','product','id',pq.id,'number',pr.title||' v'||pq.version,'title',pr.title||' quote','status',pq.status,'totalCents',pq.quantity*coalesce(pq.wholesale_cents,pq.unit_cost_cents)+pq.tooling_cents+pq.freight_cents,'clientId',pr.client_id,'productId',pr.id,'at',pq.created_at,'contract',null) from quotes pq join products pr on pr.id=pq.product_id where pq.deal_id=d.id and pq.status<>'draft') qs) quotes,
+    (select jsonb_build_object('id',k.id,'number',k.number,'status',k.status) from contracts k where k.deal_id=d.id and k.status<>'void' order by k.created_at desc limit 1) contract
+    from sales_deals d left join sales_contacts c on c.id=d.contact_id left join sales_companies co on co.id=c.company_id`;
   app.get('/v1/sales/deals', { preHandler: pre }, async (req) => {
     const stage = STAGES.includes(req.query?.stage) ? req.query.stage : null;
     const rows = (await pool.query(`${DEAL_SELECT} ${stage ? 'where d.stage=$1' : ''} order by d.updated_at desc limit 500`, stage ? [stage] : [])).rows;
