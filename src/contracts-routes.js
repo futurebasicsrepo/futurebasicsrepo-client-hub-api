@@ -4,7 +4,7 @@
 //   Staff (any signed-in teammate unless noted)
 //   GET  /v1/contracts                      the list, newest first (?status=, ?q=)
 //   GET  /v1/contracts/sources              deals and projects a contract can be made from, with the contracts already made for each
-//   GET  /v1/contracts/draft?deal=|project=|quote= a contract filled in from one (nothing is saved). With an order quote (named, or the deal's or
+//   GET  /v1/contracts/draft?deal=|project=|quote=|productQuote= a contract filled in from one (nothing is saved). With an order quote (named, or the deal's or
 //                                           project's: accepted first, else the latest sent) it is priced per unit from the quote's lines, its other
 //                                           lines (setup, freight) and the sales tax rate in Settings
 //   GET  /v1/contracts/account-address?company=&email=&project=&client=   the client's address on file (hub account, last contract, last invoice, Shopify)
@@ -88,7 +88,7 @@ export function registerContractRoutes(app, d) {
     id: r.id, number: r.number, version: r.version, supersedesId: r.supersedes_id, kind: r.kind, kindLabel: KINDS[r.kind] || '', title: r.title, status: r.status, clientCompany: r.content?.client?.company || '', signerName: r.content?.client?.signerName || '', signerEmail: r.content?.client?.signerEmail || '',
     totalCents: Number(r.total_cents), currency: r.currency, dealId: r.deal_id || null, dealTitle: r.deal_title || '', projectId: r.project_id || null, projectName: r.project_name || '', clientId: r.client_id || null, contactId: r.contact_id || null,
     sentAt: r.sent_at, sentTo: r.sent_to || '', expiresAt: r.expires_at, firstViewedAt: r.first_viewed_at, lastViewedAt: r.last_viewed_at, viewCount: r.view_count, clientSignature: sigView(r.client_signature, staff), providerSignature: sigView(r.provider_signature, staff),
-    declined: r.declined || null, voidReason: r.void_reason || '', executedAt: r.executed_at, invoicesAt: r.invoices_at, closedAt: r.closed_at || null, closedBy: r.closed_by || '', closeNote: r.close_note || '', closedFrom: r.closed_from || '', createdAt: r.created_at, updatedAt: r.updated_at, docHash: r.doc_hash || ''
+    declined: r.declined || null, voidReason: r.void_reason || '', executedAt: r.executed_at, invoicesAt: r.invoices_at, closedAt: r.closed_at || null, closedBy: r.closed_by || '', closeNote: r.close_note || '', closedFrom: r.closed_from || '', quoteId: r.quote_id || null, createdAt: r.created_at, updatedAt: r.updated_at, docHash: r.doc_hash || ''
   });
   const stateFor = async r => ({ status: r.status, sentAt: r.sent_at, hash: r.doc_hash || '', clientSignature: r.client_signature, providerSignature: r.provider_signature, declined: r.declined, events: (await pool.query(`select kind, at, ip, meta from contract_events where contract_id=$1 and kind='viewed' order by at limit 1`, [r.id])).rows });
   // the PDF draws the ink itself, so it is read in with the state
@@ -112,10 +112,22 @@ export function registerContractRoutes(app, d) {
   const ADDRESS_FROM = { account: 'the client\'s account', contract: 'their last contract', invoice: 'their last invoice', shopify: 'their Shopify customer record' };
 
   // The order quote a contract is drawn up from: the one named, else the deal's or the project's (accepted first, then the latest sent).
-  async function quoteFor({ quoteId = null, dealId = null, projectId = null }) {
+  async function quoteFor({ quoteId = null, dealId = null, projectId = null, productQuoteId = null }) {
     if (quoteId) return (await pool.query('select * from order_quotes where id=$1', [quoteId])).rows[0] || null;
+    if (productQuoteId) return productQuote(productQuoteId);
     if (!dealId && !projectId) return null;
-    return (await pool.query(`select * from order_quotes where ((deal_id is not null and deal_id=$1) or (project_id is not null and project_id=$2)) and status in ('accepted','sent') order by (status='accepted') desc, updated_at desc limit 1`, [dealId, projectId])).rows[0] || null;
+    const oq = (await pool.query(`select * from order_quotes where ((deal_id is not null and deal_id=$1) or (project_id is not null and project_id=$2)) and status in ('accepted','sent') order by (status='accepted') desc, updated_at desc limit 1`, [dealId, projectId])).rows[0];
+    if (oq || !dealId) return oq || null;
+    const pq = (await pool.query(`select id from quotes where deal_id=$1 and status not in ('draft','declined') order by (status='accepted') desc, version desc limit 1`, [dealId])).rows[0];
+    return pq ? productQuote(pq.id) : null;
+  }
+  // a product quote (one product, issued from its page) in the order quote's shape: its quantity at the client's unit price, tooling and freight as other lines
+  async function productQuote(id) {
+    const q = (await pool.query(`select q.*, p.title, p.client_id, p.project_id from quotes q join products p on p.id=q.product_id where q.id=$1`, [id])).rows[0]; if (!q) return null;
+    const unit = Number(q.wholesale_cents || q.unit_cost_cents || 0);
+    return { id: null, productQuoteId: q.id, number: `${q.title} v${q.version}`, title: `${q.title} quote`, status: q.status, client_id: q.client_id, project_id: q.project_id, deal_id: q.deal_id, currency: q.currency, notes: q.notes || '',
+      lines: [{ title: q.title, quantity: Number(q.quantity), sizes: {}, unitCents: unit, totalCents: unit * Number(q.quantity) }],
+      extras: [...(Number(q.tooling_cents) > 0 ? [{ label: `Tooling and setup · ${q.title}`, cents: Number(q.tooling_cents) }] : []), ...(Number(q.freight_cents) > 0 ? [{ label: `Freight · ${q.title}`, cents: Number(q.freight_cents) }] : [])] };
   }
   // A quote priced per unit: every product line at its quantity and unit price (sizes named), every other line (setup, freight) as charged
   // on the invoice (a comped line at $0, a discount as a negative line), and the sales tax rate from Settings. Tax is on the products only
@@ -132,9 +144,9 @@ export function registerContractRoutes(app, d) {
     return { fee: { totalCents: subtotal + taxCents, currency: q.currency || 'USD', charge: 'unit', units, subtotalCents: subtotal, taxableCents: taxable, taxRatePct, taxCents }, scope };
   }
 
-  async function draftFrom({ dealId = null, projectId = null, quoteId = null }, st) {
+  async function draftFrom({ dealId = null, projectId = null, quoteId = null, productQuoteId = null }, st) {
     let deal = null, project = null, client = null;
-    const quote = await quoteFor({ quoteId, dealId, projectId });
+    const quote = await quoteFor({ quoteId, dealId, projectId, productQuoteId });
     if (quote) { dealId = dealId || quote.deal_id || null; projectId = projectId || quote.project_id || null; }
     if (dealId) deal = (await pool.query(`select d.*, ct.name contact_name, ct.email contact_email, ct.title contact_title, coalesce(co.name, co2.name, '') company from sales_deals d left join sales_contacts ct on ct.id=d.contact_id left join sales_companies co on co.id=d.company_id left join sales_companies co2 on co2.id=ct.company_id where d.id=$1`, [dealId])).rows[0];
     if (projectId || deal?.project_id) project = (await pool.query('select * from projects where id=$1', [projectId || deal.project_id])).rows[0];
@@ -179,9 +191,9 @@ export function registerContractRoutes(app, d) {
   });
 
   app.get('/v1/contracts/draft', { preHandler: pre }, async (req, reply) => {
-    const dealId = UUID.test(String(req.query?.deal || '')) ? req.query.deal : null, projectId = UUID.test(String(req.query?.project || '')) ? req.query.project : null, quoteId = UUID.test(String(req.query?.quote || '')) ? req.query.quote : null;
-    if (!dealId && !projectId && !quoteId) return bad(reply, 'Choose a deal, a project or a quote to start from');
-    const st = await settings(), r = await draftFrom({ dealId, projectId, quoteId }, st); if (!r) return bad(reply, 'Not found', 404);
+    const dealId = UUID.test(String(req.query?.deal || '')) ? req.query.deal : null, projectId = UUID.test(String(req.query?.project || '')) ? req.query.project : null, quoteId = UUID.test(String(req.query?.quote || '')) ? req.query.quote : null, productQuoteId = UUID.test(String(req.query?.productQuote || '')) ? req.query.productQuote : null;
+    if (!dealId && !projectId && !quoteId && !productQuoteId) return bad(reply, 'Choose a deal, a project or a quote to start from');
+    const st = await settings(), r = await draftFrom({ dealId, projectId, quoteId, productQuoteId }, st); if (!r) return bad(reply, 'Not found', 404);
     const c = cleanContent(r.content, { settings: st, lenient: true });
     return { ...r, content: c.value, problems: [...c.errors, ...sendProblems(c.value, st)] };
   });
@@ -239,11 +251,12 @@ export function registerContractRoutes(app, d) {
     if (!c.value.title) return bad(reply, 'Give the contract a title');
     const dealId = UUID.test(String(req.body?.dealId || '')) ? req.body.dealId : existing?.deal_id || null, projectId = UUID.test(String(req.body?.projectId || '')) ? req.body.projectId : existing?.project_id || null;
     let clientId = existing?.client_id || null, contactId = existing?.contact_id || null;
+    const quoteId = UUID.test(String(req.body?.quoteId || '')) ? req.body.quoteId : existing?.quote_id || null;
     if (projectId) clientId = (await pool.query('select client_id from projects where id=$1', [projectId])).rows[0]?.client_id || clientId;
     if (!clientId) clientId = await resolveClient({ projectId, signerEmail: c.value.client?.signerEmail, company: c.value.client?.company });
     if (dealId) contactId = (await pool.query('select contact_id from sales_deals where id=$1', [dealId])).rows[0]?.contact_id || contactId;
     if (existing) {
-      await pool.query('update contracts set title=$2, kind=$3, content=$4::jsonb, total_cents=$5, currency=$6, deal_id=$7, project_id=$8, client_id=$9, contact_id=$10, updated_at=now() where id=$1', [existing.id, c.value.title, c.value.kind, JSON.stringify(c.value), c.value.fee.totalCents, c.value.fee.currency, dealId, projectId, clientId, contactId]);
+      await pool.query('update contracts set title=$2, kind=$3, content=$4::jsonb, total_cents=$5, currency=$6, deal_id=$7, project_id=$8, client_id=$9, contact_id=$10, quote_id=$11, updated_at=now() where id=$1', [existing.id, c.value.title, c.value.kind, JSON.stringify(c.value), c.value.fee.totalCents, c.value.fee.currency, dealId, projectId, clientId, contactId, quoteId]);
       await ev(existing.id, 'edited', { actor: (await userOf(req))?.email || '' });
       await syncContractDeal(pool, await one(existing.id), { actorId: actorId(req), log });
       return existing.id;
@@ -252,7 +265,7 @@ export function registerContractRoutes(app, d) {
     for (let tries = 0; tries < 5; tries++) {
       const number = nextNumber((await pool.query('select number from contracts')).rows.map(r => r.number), year);
       try {
-        const id = (await pool.query(`insert into contracts(number,kind,title,content,total_cents,currency,deal_id,project_id,client_id,contact_id,created_by) values($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11) returning id`, [number, c.value.kind, c.value.title, JSON.stringify(c.value), c.value.fee.totalCents, c.value.fee.currency, dealId, projectId, clientId, contactId, actorId(req)])).rows[0].id;
+        const id = (await pool.query(`insert into contracts(number,kind,title,content,total_cents,currency,deal_id,project_id,client_id,contact_id,created_by,quote_id) values($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12) returning id`, [number, c.value.kind, c.value.title, JSON.stringify(c.value), c.value.fee.totalCents, c.value.fee.currency, dealId, projectId, clientId, contactId, actorId(req), quoteId])).rows[0].id;
         await ev(id, 'created', { actor: (await userOf(req))?.email || '', detail: number });
         await syncContractDeal(pool, await one(id), { actorId: actorId(req), log }); return id;
       } catch (e) { if (e.code !== '23505') throw e; }

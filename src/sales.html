@@ -286,8 +286,9 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
   </div>
   <div class="panel hidden" id="dProject" style="margin:0 0 12px;padding:14px;display:grid;gap:8px"><b>Won: start the work</b><span class="sub" id="dProjectSub">This makes the client's room (or uses theirs), a project in it, and for software a build record. You become the account owner.</span>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select class="t" id="dProjectKind" aria-label="Kind of work"><option value="software">Software development</option><option value="product">Product development</option></select><button class="btn go" type="button" id="dProjectGo">Start project</button><a class="btn hidden" id="dProjectOpen" href="#">Open the project</a></div></div>
+  <div class="panel hidden" id="dQuotes" style="margin:0 0 12px;padding:14px;display:grid;gap:6px"></div>
   <p class="msg" id="dMsg" role="status"></p>
-  <div style="display:flex;justify-content:space-between;gap:8px"><button class="btn danger hidden" type="button" id="dDelete">Delete</button><a class="btn hidden" id="dContract" href="/contracts" title="Draft a fixed-fee agreement from this deal and send it for signature">Make a contract</a><a class="btn hidden" id="dInvoice" href="/money" title="Open Money with an invoice started from this deal (Money is open to the people named for it)">Make an invoice</a><button class="btn go" type="submit" style="margin-left:auto">Save</button></div>
+  <div style="display:flex;justify-content:space-between;gap:8px"><button class="btn danger hidden" type="button" id="dDelete">Delete</button><a class="btn hidden" id="dContract" href="/contracts" title="Draft an agreement from this deal (priced per unit from its quote when it has one) and send it for signature">Make a contract</a><a class="btn hidden" id="dInvoice" href="/money" title="Open Money with an invoice started from this deal (Money is open to the people named for it)">Make an invoice</a><button class="btn go" type="submit" style="margin-left:auto">Save</button></div>
 </form></dialog>
 
 <script src="/chat.js"></script>
@@ -340,13 +341,22 @@ async function fillContactOptions(sel,selected){const {contacts}=await api('/v1/
 $('#dStage').innerHTML=STAGES.map(s=>`<option value="${s}">${LABEL[s]}</option>`).join('');
 $('#dStage').onchange=()=>$('#dLostRow').classList.toggle('hidden',$('#dStage').value!=='lost');
 let EDIT_DEAL=null,DEAL_CONTACT=null;
+// The deal's quotes (order quotes from the client's room, and quotes issued from a product's page): each opens in the room and turns into a
+// contract priced per unit from it, or opens the contract already made from it.
+const QST={sent:'Sent',accepted:'Accepted',changes:'Changes asked',issued:'Issued',declined:'Declined',expired:'Expired'};
+function dealQuotes(d){const box=$('#dQuotes'),qs=(d&&d.quotes)||[];box.classList.toggle('hidden',!qs.length);if(!qs.length){box.innerHTML='';return}
+  const usd=c=>'$'+(Number(c||0)/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  box.innerHTML='<b>Quotes</b>'+qs.map(q=>`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between"><span><b>${esc(q.number)}</b> <span class="sub">${esc(q.title&&q.title!==q.number?q.title+' · ':'')}${usd(q.totalCents)} · ${esc(QST[q.status]||q.status)}</span></span><span style="display:flex;gap:12px;flex-wrap:wrap">`
+    +`<a class="sub" href="/clients/${encodeURIComponent(q.clientId)}${q.kind==='product'&&q.productId?'#product='+encodeURIComponent(q.productId):'#invoices'}">Open in the room ↗</a>`
+    +(q.contract?`<a href="/contracts?open=${encodeURIComponent(q.contract.id)}"><b>Contract ${esc(q.contract.number)} ↗</b></a>`:['declined','expired'].includes(q.status)?'':`<a href="/contracts?${q.kind==='product'?'productQuote':'quote'}=${encodeURIComponent(q.id)}"><b>Turn into a contract ↗</b></a>`)+'</span></div>').join('')}
 async function openDeal(id,contactId){
   const d=id?DEALS.find(x=>x.id===id)||(await api('/v1/sales/deals')).deals.find(x=>x.id===id):null;EDIT_DEAL=d||null;DEAL_CONTACT=contactId||d?.contact_id||null;
   $('#dTitle').textContent=d?d.title:'New deal';$('#dName').value=d?.title||'';$('#dStage').value=d?.stage||'new';$('#dValue').value=d?.value_cents?String(Math.round(d.value_cents/100)):'';$('#dClose').value=d?.expected_close?String(d.expected_close).slice(0,10):'';$('#dLost').value=d?.lost_reason||'';$('#dLostRow').classList.toggle('hidden',(d?.stage||'new')!=='lost');$('#dMsg').textContent='';$('#dDelete').classList.toggle('hidden',!d);
   {const won=Boolean(d&&d.stage==='won'),started=Boolean(d&&d.project_id);$('#dProject').classList.toggle('hidden',!won);
    $('#dProjectGo').classList.toggle('hidden',started);$('#dProjectKind').classList.toggle('hidden',started);$('#dProjectOpen').classList.toggle('hidden',!started);
    if(started)$('#dProjectOpen').href='/clients/'+d.project_client_id+'#project='+d.project_id;
-   $('#dProjectSub').textContent=started?'The project for this deal has started'+(d.owner_name?'. Account owner: '+d.owner_name+'.':'.'):"This makes the client's room (or uses theirs), a project in it, and for software a build record. You become the account owner."}$('#dInvoice').classList.toggle('hidden',!(d&&d.stage==='won'));if(d)$('#dInvoice').href='/money?deal='+encodeURIComponent(d.id);$('#dContract').classList.toggle('hidden',!(d&&['meeting','proposal','won'].includes(d.stage)));if(d)$('#dContract').href='/contracts?deal='+encodeURIComponent(d.id);
+   $('#dProjectSub').textContent=started?'The project for this deal has started'+(d.owner_name?'. Account owner: '+d.owner_name+'.':'.'):"This makes the client's room (or uses theirs), a project in it, and for software a build record. You become the account owner."}$('#dInvoice').classList.toggle('hidden',!(d&&d.stage==='won'));if(d)$('#dInvoice').href='/money?deal='+encodeURIComponent(d.id);$('#dContract').classList.toggle('hidden',!(d&&['meeting','proposal','won'].includes(d.stage)));if(d)$('#dContract').href=d.contract?'/contracts?open='+encodeURIComponent(d.contract.id):'/contracts?deal='+encodeURIComponent(d.id);if(d)$('#dContract').textContent=d.contract?'Open contract '+d.contract.number:'Make a contract';
+  dealQuotes(d);
   await fillContactOptions('#dContact',DEAL_CONTACT);$('#dContactRow').classList.toggle('hidden',Boolean(d));
   if($('#cdlg').open)$('#cdlg').close();$('#ddlg').showModal();$('#dName').focus();
 }

@@ -2433,6 +2433,8 @@ export async function migrate() {
     alter table contracts add column if not exists closed_by text;
     alter table contracts add column if not exists close_note text not null default '';
     alter table contracts add column if not exists closed_from text;
+    -- the order quote a contract was drawn up from, so the quote (in the room and in Sales) opens its contract instead of offering another
+    alter table contracts add column if not exists quote_id uuid references order_quotes(id) on delete set null;
     create table if not exists contract_payment_methods (
       id uuid primary key default gen_random_uuid(),
       contract_id uuid not null references contracts(id) on delete cascade,

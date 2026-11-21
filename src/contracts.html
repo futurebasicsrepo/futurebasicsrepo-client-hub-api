@@ -171,7 +171,7 @@ async function chooser(){
    <div><button class="btn" id="blank">Start blank</button></div><p class="msg bad" id="dMsg"></p>`;
   $('#dX').onclick=()=>$('#dlg').close();
   B.onclick=async e=>{const d=e.target.closest('[data-deal],[data-project]'),bl=e.target.closest('#blank');if(!d&&!bl)return;
-    try{const q=d?(d.dataset.deal?'deal='+d.dataset.deal:'project='+d.dataset.project):null;const want=$('#dKind').value;let r=q?await api('/v1/contracts/draft?'+q):await blankDraft(want||'website');if(q&&want&&want!==r.content.kind)r=await withKind(r,want);$('#dlg').close();editor({contract:null,content:r.content,problems:r.problems||[],dealId:r.dealId,projectId:r.projectId,addressFrom:r.addressFrom})}catch(x){$('#dMsg').textContent=x.message}};
+    try{const q=d?(d.dataset.deal?'deal='+d.dataset.deal:'project='+d.dataset.project):null;const want=$('#dKind').value;let r=q?await api('/v1/contracts/draft?'+q):await blankDraft(want||'website');if(q&&want&&want!==r.content.kind)r=await withKind(r,want);$('#dlg').close();editor({contract:null,content:r.content,problems:r.problems||[],dealId:r.dealId,projectId:r.projectId,addressFrom:r.addressFrom,quote:r.quote})}catch(x){$('#dMsg').textContent=x.message}};
   $('#dlg').showModal();
 }
 async function blankDraft(kind='website'){const st=(await api('/v1/contracts/settings')).settings;const r=await api('/v1/contracts/render',{body:{content:{title:'',kind,client:{},scope:[],fee:{totalCents:0},provider:{name:st.providerName,address:st.providerAddress,signerName:st.signerName,signerTitle:st.signerTitle},terms:{governingLaw:st.governingLaw}}}});return {content:r.content,problems:r.problems}}
@@ -188,7 +188,7 @@ function planUI(c){const p=c.plan,total=c.fee.totalCents||0,ins=p?.installments|
   return {type:p?.type||'split',depUnit:pct!=null&&!round?'$':'%',depositAmt:dep?String(dep.amountCents/100):'',depositPct:pct!=null?pct:(p?.type==='monthly'?'':50),months:dated.length||6,firstDueOn:dated[0]?.dueOn||'',deliveryOn:'',method:p?.method||'invoice',autopay:!!p?.autopay,note:p?.note||'',
     milestones:p?.type==='milestones'?ins.map(i=>({label:i.label,pct:total?Math.round(i.amountCents/total*10000)/100:0,dueOn:i.dueOn||'',event:i.event||'delivery'})):isProd(c.kind)?[{label:'Kick-off',pct:40,dueOn:'',event:'signing'},{label:'Final sample approved',pct:60,dueOn:'',event:'delivery'}]:[{label:'Design approved',pct:30,dueOn:'',event:'signing'},{label:'Build complete',pct:40,dueOn:'',event:'delivery'},{label:'Launch',pct:30,dueOn:'',event:'delivery'}]}}
 function editor(r){
-  const c=JSON.parse(JSON.stringify(r.content));E={id:r.contract?.id||null,c,pu:planUI(c),dealId:r.dealId??r.contract?.dealId??null,projectId:r.projectId??r.contract?.projectId??null,problems:r.problems||[],number:r.contract?.number||'',addrFrom:r.addressFrom&&c.client?.address?r.addressFrom:''};
+  const c=JSON.parse(JSON.stringify(r.content));E={id:r.contract?.id||null,c,pu:planUI(c),dealId:r.dealId??r.contract?.dealId??null,projectId:r.projectId??r.contract?.projectId??null,problems:r.problems||[],number:r.contract?.number||'',quoteId:r.quote?.id||r.contract?.quoteId||null,addrFrom:r.addressFrom&&c.client?.address?r.addressFrom:''};
   // a draft with no address takes the one on file for the client (it is saved with the contract, and can be changed for this contract only)
   if(r.accountAddress&&!String(c.client?.address||'').trim()){c.client=c.client||{};c.client.address=r.accountAddress.address;E.addrFrom=r.accountAddress.from;E.problems=E.problems.filter(x=>!/client's address/.test(x))}
   drawEditor();$('#edlg').showModal();
@@ -306,7 +306,7 @@ function wire(){const B=$('#eBody');
   $('#eSave').onclick=()=>save().catch(x=>emsg(x.message,'bad'));$('#ePrev').onclick=()=>preview().catch(x=>emsg(x.message,'bad'));$('#ePdf').onclick=()=>previewPdf().catch(x=>emsg(x.message,'bad'));$('#eSend').onclick=()=>sendFlow().catch(x=>emsg(x.message,'bad'));
 }
 const emsg=(t,k='ok')=>{const m=$('#eMsg');if(m){m.className='msg '+k;m.textContent=t}};
-function payload(){const c=JSON.parse(JSON.stringify(E.c));c.scope=String(E.c.scopeText||'').split('\n');c.notIncluded=String(E.c.notText||'').split('\n');delete c.scopeText;delete c.notText;if(!c.plan)delete c.plan;return {content:c,dealId:E.dealId||undefined,projectId:E.projectId||undefined}}
+function payload(){const c=JSON.parse(JSON.stringify(E.c));c.scope=String(E.c.scopeText||'').split('\n');c.notIncluded=String(E.c.notText||'').split('\n');delete c.scopeText;delete c.notText;if(!c.plan)delete c.plan;return {content:c,dealId:E.dealId||undefined,projectId:E.projectId||undefined,quoteId:E.quoteId||undefined}}
 // What is wrong with the draft. When it is Future Basics' own details (who signs, the address, the governing law), they can be filled in right here instead of in the Settings tab.
 const needsSetup=()=>E.problems.some(p=>/\(Contracts, Settings\)/.test(p));
 function probsHtml(){return `<b>Not ready to send yet</b><ul>${E.problems.map(x=>`<li>${esc(String(x).replace(/ \(Contracts, Settings\)$/,''))}</li>`).join('')}</ul>${needsSetup()?'<div id="setupBox" class="setup"><span class="sub">Loading…</span></div>':''}`}
@@ -399,9 +399,9 @@ $('#newBtn').onclick=()=>chooser().catch(x=>say(x.message,'bad'));
   try{await api('/v1/contracts/settings')}catch(x){$('#needSignin').classList.remove('hidden');return}
   try{const u=await api('/v1/money/me');ME.signer=!!u;ME.email=u?.email||''}catch{ME.signer=false}
   $('#app').classList.remove('hidden');await show('list');
-  const qs=new URLSearchParams(location.search),open=qs.get('open'),deal=qs.get('deal'),project=qs.get('project'),quote=qs.get('quote');
+  const qs=new URLSearchParams(location.search),open=qs.get('open'),deal=qs.get('deal'),project=qs.get('project'),quote=qs.get('quote'),pquote=qs.get('productQuote');
   if(open&&/^[0-9a-f-]{36}$/i.test(open))openContract(open).catch(x=>say(x.message,'bad'));
-  else if(deal||project||quote){try{const r=await api('/v1/contracts/draft?'+(quote?'quote='+encodeURIComponent(quote):deal?'deal='+encodeURIComponent(deal):'project='+encodeURIComponent(project)));editor({contract:null,content:r.content,problems:r.problems||[],dealId:r.dealId,projectId:r.projectId,addressFrom:r.addressFrom})}catch(x){say(x.message,'bad')}}
+  else if(deal||project||quote||pquote){try{const r=await api('/v1/contracts/draft?'+(quote?'quote='+encodeURIComponent(quote):pquote?'productQuote='+encodeURIComponent(pquote):deal?'deal='+encodeURIComponent(deal):'project='+encodeURIComponent(project)));editor({contract:null,content:r.content,problems:r.problems||[],dealId:r.dealId,projectId:r.projectId,addressFrom:r.addressFrom,quote:r.quote})}catch(x){say(x.message,'bad')}}
 })();
 </script>
 <script src="/console-nav.js" defer></script>
