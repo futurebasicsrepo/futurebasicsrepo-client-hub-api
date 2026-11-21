@@ -1136,6 +1136,14 @@ await journey('J94', 'All files: a client sends files outside a product and sees
   ok((await mine(other.token)).files.length === 0 && (await call(a.json.file.url, { token: other.token })).status === 404, 'another client sees nothing of it and cannot take it');
   const dl = await call(a.json.file.url, { token: m.token }); ok(dl.status === 200 && dl.text === 'the client brief', 'the sender can take it back');
   ok((await call(a.json.file.url, { token: admin })).status === 200, 'staff can take it');
+  // In Messages, the update line about it links to the file; a file the client took back links nowhere
+  const events = async key => (await adm(`/v1/admin/message-center/${key}`)).json.events || [];
+  const line = (await events(`general-${m.cid}`)).find(e => e.title === 'Secret Brand Co sent brief.pdf');
+  ok(line?.link?.kind === 'file' && line.link.id === a.json.file.id && line.link.name === 'brief.pdf', 'in Messages, the update line about it links to the file', line);
+  ok((await call(line.link.url, { token: admin })).text === 'the client brief', 'and the link downloads it');
+  const gone = await send('/v1/room-files', m.token, 'gone.pdf'); await call(`/v1/room-files/${encodeURIComponent(gone.json.file.id)}`, { method: 'DELETE', token: m.token });
+  const goneLine = (await events(`general-${m.cid}`)).find(e => e.title === 'Secret Brand Co sent gone.pdf');
+  ok(goneLine && goneLine.link === null, 'a file the client took back keeps its line, with no link to a missing file', goneLine);
 
   const own = (await adm(`/v1/admin/clients/${m.cid}/room-files`)).json; ok(names(own).join() === 'brief.pdf' && own.projects.length >= 1 && own.products.some(p => p.id === m.id), 'staff see it in the room, with the projects and products to file it under', own);
   ok((await send(`/v1/admin/clients/${m.cid}/room-files`, m.token, 'x.pdf')).status === 403 && (await call(`/v1/admin/clients/${m.cid}/room-files`, { token: m.token })).status === 403, 'a client cannot use the staff routes');
@@ -1153,6 +1161,7 @@ await journey('J94', 'All files: a client sends files outside a product and sees
   // filed under a project, it shows in that project's files too: on the client's project page (what they may see) and on staff's
   ok((await call('/v1/dashboard', { token: m.token })).json.projectRoomFiles?.some(f => f.original_name === 'spec.pdf' && f.project_id === projectId), 'the project\'s files list it for the client, now it is shared', (await call('/v1/dashboard', { token: m.token })).json.projectRoomFiles);
   const sentTo = await adm(`/v1/admin/room-files/${encodeURIComponent(a.json.file.id)}`, { method: 'PATCH', body: { projectId } }); ok(sentTo.status === 200, 'the client\'s own file is filed under the project too');
+  ok((await events(projectId)).some(e => e.link?.id === a.json.file.id) && !(await events(`general-${m.cid}`)).some(e => e.link?.id === a.json.file.id), 'and its update line moves to that project\'s conversation in Messages');
   const staffView = (await adm(`/v1/admin/clients/${m.cid}`)).json.projectRoomFiles || [];
   ok(['brief.pdf', 'spec.pdf'].every(n => staffView.some(f => f.original_name === n && f.project_id === projectId)), 'and staff see both in the project\'s files', staffView.map(f => f.original_name));
   ok(!((await call('/v1/dashboard', { token: other.token })).json.projectRoomFiles || []).length, 'another client sees none of it');

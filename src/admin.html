@@ -247,7 +247,7 @@ body{overflow-x:clip}
 @keyframes gateDone{0%{box-shadow:0 0 0 0 rgba(31,157,91,.55)}100%{box-shadow:0 0 0 22px rgba(31,157,91,0)}}@keyframes gateNext{0%{transform:scale(.94);box-shadow:0 0 0 0 rgba(75,255,154,.7)}40%{transform:scale(1.04)}100%{transform:none;box-shadow:0 0 0 20px rgba(75,255,154,0)}}
 #toast{position:fixed;left:50%;bottom:26px;z-index:99;display:flex;align-items:center;gap:16px;max-width:min(560px,92vw);padding:12px 14px 12px 20px;border-radius:999px;background:var(--ink);color:#fff;font-size:14px;box-shadow:0 14px 44px #0006;transform:translate(-50%,24px);opacity:0;pointer-events:none;transition:opacity .3s,transform .4s var(--ease)}#toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}#toast button{border:1px solid #fff6;background:transparent;color:#fff;border-radius:99px;padding:6px 14px;font-size:13px}#toast button:hover{background:#fff2}
 @media(prefers-reduced-motion:reduce){.gate,.gate-tick,#toast{transition:none}.gate.just-done,.gate.just-next,.gate.just-reopened{animation:none}}
-#roomFilesBox .action{border-radius:22px;padding:16px 20px;margin:10px 0}#roomFilesBox .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}#roomFilesBox .tools select,#roomFilesBox .tools input[type=text]{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:#fff}#roomFilesBox .tools label{font-size:13px;display:inline-flex;gap:5px;align-items:center}#roomFilesBox .tools button.quiet{opacity:.75}#roomFilesBox .tools button[disabled]{opacity:.45;cursor:not-allowed}
+#roomFilesBox .action{border-radius:22px;padding:16px 20px;margin:10px 0}#roomFilesBox .rf-focus{box-shadow:0 0 0 2px var(--c-cue,#7be39a);animation:rfFocus 2.4s ease-out}@keyframes rfFocus{0%,40%{background:#eafbef}}@media (prefers-reduced-motion:reduce){#roomFilesBox .rf-focus{animation:none}}#roomFilesBox .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}#roomFilesBox .tools select,#roomFilesBox .tools input[type=text]{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:#fff}#roomFilesBox .tools label{font-size:13px;display:inline-flex;gap:5px;align-items:center}#roomFilesBox .tools button.quiet{opacity:.75}#roomFilesBox .tools button[disabled]{opacity:.45;cursor:not-allowed}
 .sw-rail{display:flex;gap:6px;flex-wrap:wrap;list-style:none;margin:6px 0 14px;padding:0}.sw-rail li{border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:13px;color:var(--dim);background:#fff}.sw-rail li.done{background:#e5f6ec;border-color:#a9dcbf;color:#1a7a43}.sw-rail li.now{background:var(--ink);border-color:var(--ink);color:#fff}
 .sw-build{display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px;background:#fff}.sw-build h4{margin:2px 0;font-size:20px}.sw-build p{margin:4px 0}.sw-stack{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.sw-stack span{border:1px solid var(--line);background:#f5f5f2;border-radius:999px;padding:2px 9px;font-size:12px}.sw-feat{margin:6px 0 0;padding-left:18px;font-size:14px}
 .sw-actions{display:flex;flex-direction:column;gap:8px;align-items:stretch}.btn-link{display:inline-block;text-align:center;border:1px solid var(--ink);border-radius:999px;padding:9px 16px;text-decoration:none;color:var(--ink);font-weight:600}.btn-link.primary{background:var(--ink);color:#fff}
@@ -545,7 +545,7 @@ function buildThread(d){
     send:o=>adminSend(c.projectId,o),
     refresh:async()=>{const x=await api('/v1/admin/message-center/'+MC.sel);MC.thread=x;loadMessageCenter();return x},
     download:(id,name)=>authenticatedDownload('/v1/project-files/'+id+'/download',name),
-    openProduct:pid=>mcOpenProduct(c.clientId,pid)});
+    openLink:(l,act)=>followLink(c.clientId,l,act)});
 }
 // Sending as staff, from the Message Center and from a room's project thread alike.
 async function adminSend(projectId,{body,file,replyToId}){
@@ -553,6 +553,16 @@ async function adminSend(projectId,{body,file,replyToId}){
   else await api('/v1/admin/projects/'+projectId+'/messages',{method:'POST',body:JSON.stringify({body,replyToId})});
 }
 window.mcOpenProduct=(clientId,productId)=>openClient(clientId).then(()=>selectRoom('product',productId));
+// An update line's link, from Messages or a room's thread: open the product or the project in the client's room, download the file a
+// client sent, or show it in the room's All files with its row picked out.
+let rfFocus=null;
+window.followLink=async(clientId,l,act)=>{
+  if(l.kind==='file'&&act==='download')return downloadRoomFile(l.url,l.name);
+  if(activeClient?.client.id!==clientId)await openClient(clientId);
+  if(l.kind==='product')return selectRoom('product',l.id);
+  if(l.kind==='project')return selectRoom('project',l.id);
+  if(l.kind==='file'){rfFocus=l.id;selectRoom('files')}
+};
 window.mcOpenRoom=()=>{const c=MC.thread.conversation;openClient(c.clientId).then(()=>{if(c.projectId)selectRoom('project',c.projectId)})};
 // ---- Platform health (staff only): connections, background jobs, settings, and what people are doing ----
 const PF={tab:'health',days:30,health:null,insights:null,timer:null,busy:false};
@@ -700,7 +710,7 @@ function mountRoomChat(){
   ROOMCHAT?.destroy();ROOMCHAT=null;const el=document.getElementById('roomChat');if(!el)return;
   const pid=el.dataset.project,name=activeClient?.client.name||'the client',load=()=>api('/v1/admin/message-center/'+pid);
   ROOMCHAT=FBChat.mount(el,{id:'rc',viewer:'admin',canCompose:true,placeholder:`Message ${name}`,emptyText:'No messages yet. Say hello: the client sees it in their room.',
-    send:o=>adminSend(pid,o),refresh:load,download:(id,fname)=>authenticatedDownload('/v1/project-files/'+id+'/download',fname),openProduct:id=>selectRoom('product',id)});
+    send:o=>adminSend(pid,o),refresh:load,download:(id,fname)=>authenticatedDownload('/v1/project-files/'+id+'/download',fname),openLink:(l,act)=>followLink(activeClient.client.id,l,act)});
   load().then(d=>{ROOMCHAT.update(d,{toBottom:true});if((d.events||[]).some(e=>e.unread))api('/v1/admin/message-center/'+pid+'/read',{method:'POST'}).then(()=>loadMessageCenter()).catch(()=>{})}).catch(e=>{el.innerHTML=`<div class="mc-empty"><b>Could not load the messages</b><span>${esc(e.message)}</span></div>`});
 }
 function editor(title,fields,save){editorForm.classList.remove('share-mode');editorTitle.textContent=title;editorFields.innerHTML=fields.map(f=>`<label class="editor-field ${f.full?'full':''}"><span>${esc(f.label)}</span>${f.type==='textarea'?`<textarea name="${esc(f.name)}" ${f.required?'required':''}>${esc(f.value)}</textarea>`:f.type==='select'?`<select name="${esc(f.name)}" ${f.required?'required':''}>${(f.options||[]).map(o=>`<option value="${esc(o.value)}" ${String(o.value)===String(f.value)?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`:f.type==='file'?`${f.photos?`<input name="${esc(f.name)}" type="file" accept="image/*" multiple data-photos>`:`<input name="${esc(f.name)}" type="file" ${f.accept?`accept="${esc(f.accept)}"`:''} ${f.required?'required':''}>`}${f.hint?`<small class="meta">${esc(f.hint)}</small>`:''}`:`<input name="${esc(f.name)}" type="${esc(f.type||'text')}" value="${esc(f.value)}" ${f.type==='number'?'step="any"':''} ${f.required?'required':''}>`}</label>`).join('');editorMessage.textContent='';editorForm.onsubmit=async e=>{e.preventDefault();let y=scrollY,clientId=activeClient?.client.id,button=editorForm.querySelector('button[type="submit"]');if(button)button.disabled=true;editorMessage.textContent='Saving…';try{const v={};for(const [k,val] of new FormData(editorForm).entries())if(!(val instanceof File))v[k]=val;for(const inp of editorForm.querySelectorAll('input[type=file]')){
@@ -1310,7 +1320,7 @@ new MutationObserver(()=>document.querySelectorAll('[data-thumb]:not([data-tq])'
 function drawRoomFiles(id){const box=document.getElementById('roomFilesBox');if(!box||!roomFilesState)return;const st=roomFilesState;
   const projOpts=(sel)=>`<option value="">No project</option>`+st.projects.map(pr=>`<option value="${esc(pr.id)}" ${pr.id===sel?'selected':''}>${esc(pr.name)}</option>`).join('');
   const rows=st.files.map(f=>{const room=f.source==='room',mine=f.by==='client';
-    return `<div class="action rf-row">${thumbFor(f.name,f.url,f.bytes)}<strong>${esc(f.name)}</strong> <span class="via">${mine?'from the client':f.source==='chat'?'staff, in project chat':'Future Basics'}</span><br><span class="contact-line">${esc(new Date(f.at).toLocaleString())} · ${rfSize(f.bytes)}${f.byName?' · '+esc(f.byName):''}${f.note?' · '+esc(f.note):''}</span>
+    return `<div class="action rf-row${f.id===rfFocus?' rf-focus':''}" data-fid="${esc(f.id)}">${thumbFor(f.name,f.url,f.bytes)}<strong>${esc(f.name)}</strong> <span class="via">${mine?'from the client':f.source==='chat'?'staff, in project chat':'Future Basics'}</span><br><span class="contact-line">${esc(new Date(f.at).toLocaleString())} · ${rfSize(f.bytes)}${f.byName?' · '+esc(f.byName):''}${f.note?' · '+esc(f.note):''}</span>
       <div class="tools">${room?`<select onchange="rfFile('${esc(f.id)}',{projectId:this.value||null,productId:null},'${id}')" aria-label="Project">${projOpts(f.projectId)}</select>`:`<span class="via">${esc(f.projectName)}</span>`}
       ${room?`<button class="${f.clientVisible?'':'quiet'}" ${mine?'disabled title="The client always sees what they sent"':''} onclick="rfFile('${esc(f.id)}',{clientVisible:${!f.clientVisible}},'${id}')">${mine||f.clientVisible?'Client sees it':'Hidden from client'}</button>`:'<span class="via">Client sees it (in the thread)</span>'}
       <button class="${f.factoryVisible?'':'quiet'}" ${f.projectId?'':'disabled title="Choose a project first: a factory only sees files in the project it is assigned to"'} onclick="rfFile('${esc(f.id)}',{factoryVisible:${!f.factoryVisible}},'${id}')">${f.factoryVisible?'Factory sees it':'Not shared with factory'}</button>
@@ -1319,7 +1329,8 @@ function drawRoomFiles(id){const box=document.getElementById('roomFilesBox');if(
   box.innerHTML=`<h2>All files</h2><p class="contact-line">Everything ${esc(st.client.name)} sends outside a product, and what you add for them. They see what they sent plus anything you switch on. A factory sees a file only if you switch it on and it sits in a project the factory is assigned a pack in. Product files (tech pack PDFs, artwork, design files, 3D) stay in each product's folder.</p>
     <div class="action" id="rfDrop"><span class="meta">add a file</span><div class="tools"><input type="file" id="rfFileIn" multiple><select id="rfProj" onchange="rfFactoryOk()">${projOpts('')}</select>
       <label><input type="checkbox" id="rfCli"> Client sees it</label><label><input type="checkbox" id="rfFac" disabled> Factory sees it</label><input type="text" id="rfNote" placeholder="Note (optional)" maxlength="500"><button onclick="rfUpload('${id}')">Add</button></div><p class="contact-line" id="rfMsgA"></p></div>
-    ${rows||'<p class="contact-line">No files yet.</p>'}`}
+    ${rows||'<p class="contact-line">No files yet.</p>'}`;
+  if(rfFocus){const row=[...box.querySelectorAll('.rf-row')].find(r=>r.dataset.fid===rfFocus);rfFocus=null;if(row)requestAnimationFrame(()=>row.scrollIntoView({behavior:'smooth',block:'center'}));else toast('That file is no longer in the room')}}
 window.rfFactoryOk=()=>{const f=document.getElementById('rfFac');if(!f)return;const has=Boolean(document.getElementById('rfProj').value);f.disabled=!has;if(!has)f.checked=false};
 window.rfUpload=async id=>{const input=document.getElementById('rfFileIn'),msg=document.getElementById('rfMsgA');const files=[...(input.files||[])];if(!files.length){msg.textContent='Choose a file first.';return}
   const q=new URLSearchParams();const proj=document.getElementById('rfProj').value;if(proj)q.set('projectId',proj);if(document.getElementById('rfCli').checked)q.set('clientVisible','1');if(document.getElementById('rfFac').checked)q.set('factoryVisible','1');const note=document.getElementById('rfNote').value.trim();if(note)q.set('note',note);

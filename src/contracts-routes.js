@@ -5,6 +5,7 @@
 //   GET  /v1/contracts                      the list, newest first (?status=, ?q=)
 //   GET  /v1/contracts/sources              deals and projects a contract can be made from, with the contracts already made for each
 //   GET  /v1/contracts/draft?deal=|project= a contract filled in from one (nothing is saved)
+//   GET  /v1/contracts/account-address?company=&email=&project=&client=   the client's address on file (hub account, last contract, last invoice, Shopify)
 //   GET  /v1/contracts/template?kind=        the standard wording for a kind (digital work or a physical product) and the product options
 //   POST /v1/contracts/render               { content } → the finished text and what is still missing (nothing is saved)
 //   POST /v1/contracts/render.pdf           { content, number? } → the PDF of it, marked as a draft (nothing is saved)
@@ -28,6 +29,7 @@
 //
 // Sales: every contract is a deal (sales-deals.js syncContractDeal). Saving a draft opens one at Meeting worth the contract's total (or uses the deal it
 // was made from), sending moves it to Proposal, signing by both wins it, and declining, expiring or voiding loses it unless something else on it is live.
+import { addressLine } from './onboarding.js';
 import { cleanContent, renderContract, sendProblems, docHash, signToken, readToken, nextNumber, checkSignature, buildPlan, planWords, schedule, defaultSections, dollars, longDate, todayISO, addDays, KINDS, TERMS, isProduct, defaultProduct, PRODUCT_CATEGORIES, INCOTERMS, PRODUCTION_MODES } from './contracts.js';
 import { contractPdf } from './contract-pdf.js';
 import { markUrl } from './signatures.js';
@@ -91,6 +93,20 @@ export function registerContractRoutes(app, d) {
 
   // ---- drafting from the platform -----------------------------------------------------------------------------------------------------------
   const kindFrom = text => (/\b(web ?site|site|landing|storefront|shop)\b/i.test(text) ? 'website' : /\b(app|software|platform|portal|dashboard|system|integration)\b/i.test(text) ? 'app' : /\b(hats?|caps?|shirts?|tees?|hoodies?|apparel|garments?|shoes?|sneakers?|footwear|boots?|electronics?|devices?|hardware|bags?|jackets?|sample|samples|factory|manufactur\w*|product development)\b/i.test(text) ? 'product' : 'other');
+  // The client's address on file, for the contract's Address line: what they gave in the hub (Business address and billing), else the
+  // address on their last contract, else on their last invoice, else their Shopify customer's default address. '' when there is none.
+  // The contract keeps its own copy: changing it in a contract never changes the account.
+  async function accountAddress({ clientId = null, projectId = null, signerEmail = '', company = '' } = {}) {
+    const id = clientId || await resolveClient({ projectId, signerEmail, company }); if (!id) return { address: '', source: '' };
+    const c = (await pool.query('select onboarding, shopify_default_address from clients where id=$1', [id])).rows[0]; if (!c) return { address: '', source: '' };
+    const own = addressLine(c.onboarding?.address); if (own) return { address: own, source: 'account' };
+    const k = (await pool.query(`select content->'client'->>'address' a from contracts where client_id=$1 and coalesce(content->'client'->>'address','')<>'' order by updated_at desc limit 1`, [id])).rows[0]?.a; if (k) return { address: k, source: 'contract' };
+    const inv = (await pool.query(`select address from money_invoices where client_id=$1 and address<>'' and status<>'void' order by created_at desc limit 1`, [id])).rows[0]?.address; if (inv) return { address: inv.replace(/\s*\n\s*/g, ', '), source: 'invoice' };
+    const s = c.shopify_default_address, shop = s ? [s.address1, s.address2, [s.city, s.provinceCode, s.zip].filter(Boolean).join(' '), s.countryCodeV2].filter(Boolean).join(', ') : '';
+    return shop ? { address: shop, source: 'shopify' } : { address: '', source: '' };
+  }
+  const ADDRESS_FROM = { account: 'the client\'s account', contract: 'their last contract', invoice: 'their last invoice', shopify: 'their Shopify customer record' };
+
   async function draftFrom({ dealId = null, projectId = null }, st) {
     let deal = null, project = null, client = null;
     if (dealId) deal = (await pool.query(`select d.*, ct.name contact_name, ct.email contact_email, ct.title contact_title, coalesce(co.name, co2.name, '') company from sales_deals d left join sales_contacts ct on ct.id=d.contact_id left join sales_companies co on co.id=d.company_id left join sales_companies co2 on co2.id=ct.company_id where d.id=$1`, [dealId])).rows[0];
@@ -101,9 +117,10 @@ export function registerContractRoutes(app, d) {
     const company = deal?.company || client?.name || '', projectName = project?.name || deal?.title || '', title = clip(deal?.title || projectName, 160);
     const total = deal ? Number(deal.value_cents) : 0, kind = project ? (project.kind === 'software' ? 'app' : 'product') : kindFrom(`${title} ${projectName}`);
     const plan = total > 0 ? buildPlan({ type: 'split', totalCents: total, depositPct: 50 }).plan : null;
-    const content = { title, kind, provider: { name: st.providerName, address: st.providerAddress, signerName: st.signerName, signerTitle: st.signerTitle }, client: { company, address: '', signerName: deal?.contact_name || client?.contact_name || '', signerTitle: deal?.contact_title || '', signerEmail: deal?.contact_email || client?.contact_email || '' },
+    const onFile = await accountAddress({ clientId: client?.id || null, projectId: project?.id || null, signerEmail: deal?.contact_email || client?.contact_email || '', company });
+    const content = { title, kind, provider: { name: st.providerName, address: st.providerAddress, signerName: st.signerName, signerTitle: st.signerTitle }, client: { company, address: onFile.address, signerName: deal?.contact_name || client?.contact_name || '', signerTitle: deal?.contact_title || '', signerEmail: deal?.contact_email || client?.contact_email || '' },
       project: { name: projectName }, scope: [title ? `Deliver: ${title}` : ''].filter(Boolean), notIncluded: [], timeline: { effectiveOn: todayISO(), startOn: '', completionOn: '' }, fee: { totalCents: total, currency: 'USD' }, plan, hosting: { included: false, monthlyCents: 0, note: '' }, terms: { ...TERMS, governingLaw: st.governingLaw }, sections: defaultSections(kind), ...(isProduct(kind) ? { product: defaultProduct() } : {}) };
-    return { content, dealId: deal?.id || null, projectId: project?.id || null, clientId: project?.client_id || null, contactId: deal?.contact_id || null };
+    return { content, dealId: deal?.id || null, projectId: project?.id || null, clientId: project?.client_id || null, contactId: deal?.contact_id || null, addressFrom: ADDRESS_FROM[onFile.source] || '' };
   }
 
   // Which payment processor takes new card and bank details (QuickBooks Payments or Stripe), and whether each is ready. Only the signers can change it.
@@ -142,6 +159,13 @@ export function registerContractRoutes(app, d) {
   });
 
   // The editor asks for a payment plan as it is being set up: the same builder that checks it when the contract is sent.
+  // The address on file for whoever the editor names (the company, the signer's email, the project), so a blank Address fills itself
+  app.get('/v1/contracts/account-address', { preHandler: pre }, async (req) => {
+    const q = req.query || {}, projectId = UUID.test(String(q.project || '')) ? q.project : null, clientId = UUID.test(String(q.client || '')) ? q.client : null;
+    const r = await accountAddress({ clientId, projectId, signerEmail: clip(q.email, 254), company: clip(q.company, 200) });
+    return { address: r.address, from: ADDRESS_FROM[r.source] || '' };
+  });
+
   app.post('/v1/contracts/plan', { preHandler: pre }, async (req, reply) => {
     const b = req.body || {}, total = Math.round(Number(b.totalCents));
     const r = buildPlan({ type: b.type, totalCents: total, depositPct: b.depositPct === '' ? null : b.depositPct, depositCents: b.depositCents === '' ? null : b.depositCents, months: b.months, firstDueOn: b.firstDueOn || null, deliveryOn: b.deliveryOn || null, milestones: Array.isArray(b.milestones) ? b.milestones : [], method: b.method, autopay: b.autopay === true, note: b.note });
@@ -211,7 +235,8 @@ export function registerContractRoutes(app, d) {
     const st = await settings(), rendered = await renderOf(r, st), invoices = (await pool.query(`select i.id, i.number, i.status, i.total_cents, i.due_on, i.contract_seq, coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id),0)::bigint paid_cents from money_invoices i where i.contract_id=$1 order by i.contract_seq nulls last, i.created_at`, [r.id])).rows;
     const live = invoices.filter(i => i.status !== 'void'), money = { invoicedCents: live.reduce((a, i) => a + Number(i.total_cents), 0), paidCents: live.reduce((a, i) => a + Number(i.paid_cents), 0) };
     const ap = autopay ? await autopay.overview(r) : null, rd = ap ? await autopay.readiness() : null;
-    return { contract: view(r), content: r.content, rendered, autopay: ap ? { ...ap, ready: rd.ready, notReadyWhy: rd.why } : null, problems: r.status === 'draft' ? [...cleanContent(r.content, { settings: st, lenient: true }).errors, ...sendProblems(r.content, st)] : [],
+    const onFile = r.status === 'draft' && !String(r.content?.client?.address || '').trim() ? await accountAddress({ clientId: r.client_id, projectId: r.project_id, signerEmail: r.content?.client?.signerEmail, company: r.content?.client?.company }) : null;
+    return { contract: view(r), content: r.content, rendered, accountAddress: onFile?.address ? { address: onFile.address, from: ADDRESS_FROM[onFile.source] } : null, autopay: ap ? { ...ap, ready: rd.ready, notReadyWhy: rd.why } : null, problems: r.status === 'draft' ? [...cleanContent(r.content, { settings: st, lenient: true }).errors, ...sendProblems(r.content, st)] : [],
       events: (await pool.query('select kind, actor, detail, at, ip from contract_events where contract_id=$1 order by at, id', [r.id])).rows.map(e => ({ kind: e.kind, actor: e.actor, detail: e.detail, at: e.at, ip: e.ip })),
       link: OPEN.includes(r.status) || r.status === 'executed' ? linkOf(r) : null, invoices: invoices.map(i => ({ id: i.id, number: i.number, status: i.status, totalCents: Number(i.total_cents), paidCents: Number(i.paid_cents), dueOn: iso(i.due_on), seq: i.contract_seq, linked: i.contract_seq == null })), money };
   };

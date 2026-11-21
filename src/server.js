@@ -2067,7 +2067,8 @@ app.get('/v1/admin/products/:id/thread',{preHandler:[authenticate,adminOnly]},as
 const NOTE_SCOPED_SQL=`select n.id,n.client_id,n.type,n.title,n.entity_type,n.entity_id,n.read_at,n.created_at,
   case n.entity_type when 'project' then n.entity_id
     when 'product' then (select p.project_id::text from products p where p.id::text=n.entity_id)
-    when 'quote' then (select p.project_id::text from quotes q join products p on p.id=q.product_id where q.id::text=n.entity_id) end project_id
+    when 'quote' then (select p.project_id::text from quotes q join products p on p.id=q.product_id where q.id::text=n.entity_id)
+    when 'room-file' then (select rf.project_id::text from room_files rf where rf.id::text=n.entity_id) end project_id
   from notifications n`;
 const OWN_NOTE_TYPES=['project-message','project-file'],BUBBLE_NOTE_TYPES=['project-message','project-file','client-project-message','client-project-file'];
 const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -2113,11 +2114,29 @@ app.get('/v1/admin/message-center/:key',{preHandler:[authenticate,adminOnly]},as
     meta={...meta,project_id:null,project_name:'General'};
     events=(await pool.query(`select s.id,s.type,s.title,s.entity_type,s.entity_id,s.read_at,s.created_at from (${NOTE_SCOPED_SQL}) s where s.client_id=$1 and (s.project_id is null or not exists(select 1 from projects pr where pr.id::text=s.project_id and pr.archived_at is null)) and not (s.type=any($2)) order by s.created_at desc limit 60`,[k.general,BUBBLE_NOTE_TYPES])).rows.reverse();
   }
-  const productIds=events.filter(e=>e.entity_type==='product').map(e=>e.entity_id).filter(id=>UUID_RE.test(id));
+  const links=await eventLinks(events,meta.client_id);
   return {conversation:{key:req.params.key,kind:k.project?'project':'general',clientId:meta.client_id,clientName:meta.client_name,projectId:meta.project_id,projectName:meta.project_name},
     messages:messages.map(m=>({...m,files:files.filter(f=>f.message_id===m.id)})),
-    events:events.map(e=>({id:e.id,type:e.type,title:e.title,createdAt:e.created_at,unread:!e.read_at,productId:e.entity_type==='product'&&productIds.includes(e.entity_id)?e.entity_id:null}))};
+    events:events.map(e=>{const link=links.get(e.id)||null;return {id:e.id,type:e.type,title:e.title,createdAt:e.created_at,unread:!e.read_at,productId:link?.kind==='product'?link.id:null,link}})};
 });
+// Where an update line leads: the file a client sent (while it is still in the room), the product a comment, quote or file is on, or the
+// project. Nothing when the thing is gone, so a line never links to a missing page.
+async function eventLinks(events,clientId){
+  const out=new Map(),ids=t=>[...new Set(events.filter(e=>e.entity_type===t&&UUID_RE.test(String(e.entity_id))).map(e=>String(e.entity_id)))];
+  const q=async(t,sql)=>{const a=ids(t);return a.length?(await pool.query(sql,[a,clientId])).rows:[]};
+  const [files,products,comments,quotes,projects]=await Promise.all([
+    q('room-file','select id::text,original_name from room_files where id::text=any($1) and client_id=$2'),
+    q('product','select id::text from products where id::text=any($1) and client_id=$2'),
+    q('comment','select id::text,product_id::text from comments where id::text=any($1) and client_id=$2 and product_id is not null'),
+    q('quote','select q.id::text,q.product_id::text from quotes q join products p on p.id=q.product_id where q.id::text=any($1) and p.client_id=$2'),
+    q('project','select id::text from projects where id::text=any($1) and client_id=$2')]);
+  const by=(rows,f)=>new Map(rows.map(r=>[r.id,f(r)]));
+  const maps={'room-file':by(files,r=>({kind:'file',id:`rf:${r.id}`,name:r.original_name,url:`/v1/room-files/${encodeURIComponent('rf:'+r.id)}/download`})),
+    product:by(products,r=>({kind:'product',id:r.id})),comment:by(comments,r=>({kind:'product',id:r.product_id})),quote:by(quotes,r=>({kind:'product',id:r.product_id})),
+    project:by(projects,r=>({kind:'project',id:r.id}))};
+  for(const e of events){const l=maps[e.entity_type]?.get(String(e.entity_id));if(l)out.set(e.id,l)}
+  return out;
+}
 app.post('/v1/admin/message-center/:key/read',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const k=convKey(req.params.key);if(!k)return reply.code(404).send({error:'Conversation not found'});
   const r=k.project

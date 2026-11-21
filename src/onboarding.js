@@ -46,7 +46,7 @@ export function cleanOnboarding(b = {}) {
   return { value: { name, company, phone, goal, role: clip(b.role, 100), legalName: clip(b.legalName, 160), website: website || '', storePlatform, storeUrl: storeUrl || '', address, billingEmail: billingEmail || '', contactPref, bestTime: clip(b.bestTime, 80), timezone: clip(b.timezone, 60), heardFrom: clip(b.heardFrom, 160) } };
 }
 
-const addressLine = a => [a?.line1, a?.line2, [a?.city, a?.region, a?.postal].filter(Boolean).join(' '), a?.country].filter(Boolean).join(', ');
+export const addressLine = a => [a?.line1, a?.line2, [a?.city, a?.region, a?.postal].filter(Boolean).join(' '), a?.country].filter(Boolean).join(', ');
 export const summaryRows = v => [['Name', v.name + (v.role ? ` (${v.role})` : '')], ['Company', v.company + (v.legalName && v.legalName !== v.company ? ` · legal name ${v.legalName}` : '')], ['Phone', v.phone], ['Prefers', CONTACT_PREFS[v.contactPref] + (v.bestTime ? `, ${v.bestTime}` : '') + (v.timezone ? ` (${v.timezone})` : '')],
   ['Website', v.website], ['Store', v.storePlatform ? STORE_PLATFORMS[v.storePlatform] + (v.storeUrl ? ` · ${v.storeUrl}` : '') : ''], ['Address', addressLine(v.address)], ['Billing email', v.billingEmail], ['Heard about us', v.heardFrom], ['Wants to get done', v.goal]].filter(r => r[1]);
 

@@ -171,7 +171,7 @@ async function chooser(){
    <div><button class="btn" id="blank">Start blank</button></div><p class="msg bad" id="dMsg"></p>`;
   $('#dX').onclick=()=>$('#dlg').close();
   B.onclick=async e=>{const d=e.target.closest('[data-deal],[data-project]'),bl=e.target.closest('#blank');if(!d&&!bl)return;
-    try{const q=d?(d.dataset.deal?'deal='+d.dataset.deal:'project='+d.dataset.project):null;const want=$('#dKind').value;let r=q?await api('/v1/contracts/draft?'+q):await blankDraft(want||'website');if(q&&want&&want!==r.content.kind)r=await withKind(r,want);$('#dlg').close();editor({contract:null,content:r.content,problems:r.problems||[],dealId:r.dealId,projectId:r.projectId})}catch(x){$('#dMsg').textContent=x.message}};
+    try{const q=d?(d.dataset.deal?'deal='+d.dataset.deal:'project='+d.dataset.project):null;const want=$('#dKind').value;let r=q?await api('/v1/contracts/draft?'+q):await blankDraft(want||'website');if(q&&want&&want!==r.content.kind)r=await withKind(r,want);$('#dlg').close();editor({contract:null,content:r.content,problems:r.problems||[],dealId:r.dealId,projectId:r.projectId,addressFrom:r.addressFrom})}catch(x){$('#dMsg').textContent=x.message}};
   $('#dlg').showModal();
 }
 async function blankDraft(kind='website'){const st=(await api('/v1/contracts/settings')).settings;const r=await api('/v1/contracts/render',{body:{content:{title:'',kind,client:{},scope:[],fee:{totalCents:0},provider:{name:st.providerName,address:st.providerAddress,signerName:st.signerName,signerTitle:st.signerTitle},terms:{governingLaw:st.governingLaw}}}});return {content:r.content,problems:r.problems}}
@@ -188,10 +188,18 @@ function planUI(c){const p=c.plan,total=c.fee.totalCents||0,ins=p?.installments|
   return {type:p?.type||'split',depUnit:pct!=null&&!round?'$':'%',depositAmt:dep?String(dep.amountCents/100):'',depositPct:pct!=null?pct:(p?.type==='monthly'?'':50),months:dated.length||6,firstDueOn:dated[0]?.dueOn||'',deliveryOn:'',method:p?.method||'invoice',autopay:!!p?.autopay,note:p?.note||'',
     milestones:p?.type==='milestones'?ins.map(i=>({label:i.label,pct:total?Math.round(i.amountCents/total*10000)/100:0,dueOn:i.dueOn||'',event:i.event||'delivery'})):isProd(c.kind)?[{label:'Kick-off',pct:40,dueOn:'',event:'signing'},{label:'Final sample approved',pct:60,dueOn:'',event:'delivery'}]:[{label:'Design approved',pct:30,dueOn:'',event:'signing'},{label:'Build complete',pct:40,dueOn:'',event:'delivery'},{label:'Launch',pct:30,dueOn:'',event:'delivery'}]}}
 function editor(r){
-  const c=JSON.parse(JSON.stringify(r.content));E={id:r.contract?.id||null,c,pu:planUI(c),dealId:r.dealId??r.contract?.dealId??null,projectId:r.projectId??r.contract?.projectId??null,problems:r.problems||[],number:r.contract?.number||''};
+  const c=JSON.parse(JSON.stringify(r.content));E={id:r.contract?.id||null,c,pu:planUI(c),dealId:r.dealId??r.contract?.dealId??null,projectId:r.projectId??r.contract?.projectId??null,problems:r.problems||[],number:r.contract?.number||'',addrFrom:r.addressFrom&&c.client?.address?r.addressFrom:''};
+  // a draft with no address takes the one on file for the client (it is saved with the contract, and can be changed for this contract only)
+  if(r.accountAddress&&!String(c.client?.address||'').trim()){c.client=c.client||{};c.client.address=r.accountAddress.address;E.addrFrom=r.accountAddress.from;E.problems=E.problems.filter(x=>!/client's address/.test(x))}
   drawEditor();$('#edlg').showModal();
 }
 const val=(path)=>path.split('.').reduce((o,k)=>o?.[k],E.c);
+const addrNote=()=>E.addrFrom?`Address filled in from ${esc(E.addrFrom)}. Change it here for this contract only: the account keeps its own.`:'';
+// Address left empty: look for one on file for the company, the signer or the project named in the editor
+async function addrOnFile(){if(String(E.c.client?.address||'').trim())return;
+  const q=new URLSearchParams({company:E.c.client?.company||'',email:E.c.client?.signerEmail||'',project:E.projectId||''});
+  try{const r=await api('/v1/contracts/account-address?'+q);if(!r.address||String(E.c.client?.address||'').trim())return;setv('client.address',r.address);E.addrFrom=r.from;
+    const i=document.querySelector('[data-k="client.address"]');if(i)i.value=r.address;const n=$('#addrNote');if(n)n.innerHTML=addrNote();showProblems(E.problems.filter(x=>!/client's address/.test(x)))}catch{/* nothing on file: the field stays empty */}}
 const setv=(path,v)=>{const ks=path.split('.'),last=ks.pop();let o=E.c;for(const k of ks){o[k]=o[k]||{};o=o[k]}o[last]=v};
 const fld=(label,path,o={})=>`<label class="f"><span>${label}</span>${o.area?`<textarea class="t" data-k="${path}" rows="${o.rows||4}" placeholder="${esc(o.ph||'')}">${esc(val(path)??'')}</textarea>`:`<input class="t" data-k="${path}" type="${o.type||'text'}" value="${esc(val(path)??'')}" placeholder="${esc(o.ph||'')}">`}</label>`;
 function drawEditor(){
@@ -199,7 +207,7 @@ function drawEditor(){
   B.innerHTML=`<div class="dh"><div><span class="mono" style="color:var(--dim)">${esc(E.number||'New contract')} · draft</span><h2>${esc(c.title||'New contract')}</h2></div><button class="btn sm" id="eX">Close</button></div>
    <div class="probs ${E.problems.length?'':'hidden'}" id="probs">${probsHtml()}</div>
    <fieldset><legend>The agreement</legend><div class="g2">${fld('Title','title',{ph:'Salon website and booking'})}<label class="f"><span>Type of agreement</span><select class="t" data-k="kind"><optgroup label="Digital work"><option value="website">Website</option><option value="app">App or software</option><option value="other">Other digital work</option></optgroup><optgroup label="Physical product"><option value="product">Physical product development (hats, shirts, shoes, electronics)</option></optgroup></select></label></div>${isProd(c.kind)?'<p class="sub">The physical product agreement covers samples, production runs, quality checks, compliance, shipping and who owns the tooling. Switching type swaps the standard wording of every clause.</p>':''}</fieldset>
-   <fieldset><legend>The client</legend><div class="g2">${fld('Company','client.company')}${fld('Address (printed in the contract)','client.address')}</div><div class="g3">${fld('Who signs','client.signerName')}${fld('Their title','client.signerTitle')}${fld('Their email (the link goes here)','client.signerEmail',{type:'email'})}</div></fieldset>
+   <fieldset><legend>The client</legend><div class="g2">${fld('Company','client.company')}${fld('Address (printed in the contract)','client.address')}</div><div class="g3">${fld('Who signs','client.signerName')}${fld('Their title','client.signerTitle')}${fld('Their email (the link goes here)','client.signerEmail',{type:'email'})}</div><p class="sub" id="addrNote">${addrNote()}</p></fieldset>
    <fieldset><legend>Scope of work</legend>${fld('What is delivered (one per line)','scopeText',{area:1,rows:6,ph:isProd(c.kind)?'A complete tech pack\nSourcing and quotes from up to three factories\nUp to two rounds of samples':'A five-page website\nOnline booking link\nContact form'})}${fld('Not included (optional, one per line)','notText',{area:1,rows:3})}
     <div class="g3">${fld('Agreement date','timeline.effectiveOn',{type:'date'})}${fld('Work begins','timeline.startOn',{type:'date'})}${fld(isProd(c.kind)?'Estimated final sample approval':'Estimated completion','timeline.completionOn',{type:'date'})}</div></fieldset>
    <fieldset><legend>${isProd(c.kind)?'Price':'Fixed fee'} and how it is paid</legend>${isProd(c.kind)?unitsUI(c):''}<div class="g3"><label class="f"><span>${c.fee.charge==='unit'?'Total (USD), from the items':'Fixed fee (USD)'}</span><input class="t" id="feeIn" value="${c.fee.totalCents?(c.fee.totalCents/100).toFixed(2):''}" inputmode="decimal" placeholder="12000"${c.fee.charge==='unit'?' readonly':''}></label>
@@ -270,7 +278,9 @@ function wire(){const B=$('#eBody');
     if(t.dataset.circ){const pr=E.c.product=E.c.product||{categories:[]};pr.circumventionMonths=t.checked?24:0;c_scope_sync();drawEditor();return}
     if(t.dataset.cat){const pr=E.c.product=E.c.product||{categories:[]},set=new Set(pr.categories||[]);t.checked?set.add(t.dataset.cat):set.delete(t.dataset.cat);pr.categories=[...set];return}
     if(t.dataset.k==='kind'){switchKind(t.value).catch(x=>{emsg(x.message,'bad');t.value=E.c.kind});return}
-    if(t.dataset.k){let v=t.value;if(t.type==='number')v=Number(v);setv(t.dataset.k,v);if(t.dataset.k==='product.production.mode'&&e.type==='change'){c_scope_sync();drawEditor()}return}
+    if(t.dataset.k){let v=t.value;if(t.type==='number')v=Number(v);setv(t.dataset.k,v);
+      if(t.dataset.k==='client.address'&&E.addrFrom){E.addrFrom='';const n=$('#addrNote');if(n)n.innerHTML=''}
+      if((t.dataset.k==='client.company'||t.dataset.k==='client.signerEmail')&&e.type==='change')addrOnFile();if(t.dataset.k==='product.production.mode'&&e.type==='change'){c_scope_sync();drawEditor()}return}
     if(t.dataset.sec!==undefined){E.c.sections[+t.dataset.sec][t.dataset.f]=t.value;return}
     if(t.id==='feeIn'||t.id==='pType'||t.id==='pMethod'||t.id==='pAuto'){if(t.id==='pType'){E.pu.type=t.value;if(t.value==='monthly'){if(E.pu.depositPct===50)E.pu.depositPct='';if(!E.pu.firstDueOn){const d=new Date();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+1);E.pu.firstDueOn=d.toISOString().slice(0,10)}if(E.pu.method==='invoice'){E.pu.method='either';E.pu.autopay=true;$('#pMethod').value='either';$('#pAuto').checked=true}}if(t.value==='split'&&(E.pu.depositPct===''||E.pu.depositPct==null))E.pu.depositPct=50;drawParams()}if(t.id==='pMethod'){E.pu.method=t.value;if(t.value==='invoice'){E.pu.autopay=false;$('#pAuto').checked=false}}if(t.id==='pAuto'){E.pu.autopay=t.checked;if(t.checked&&E.pu.method==='invoice'){E.pu.method='either';$('#pMethod').value='either'}}return replan()}
     if(t.id==='depUnit'){const pu=E.pu,total=toCents($('#feeIn').value)||0;if(t.value==='$'&&pu.depUnit!=='$'){pu.depositAmt=pu.depositPct!==''&&pu.depositPct!=null&&total?String(Math.round(total*Number(pu.depositPct)/100)/100):''}if(t.value==='%'&&pu.depUnit==='$'){pu.depositPct=pu.depositAmt!==''&&total?Math.round(Number(pu.depositAmt)*100/total*10000)/100:''}pu.depUnit=t.value;pu.depNote='';drawParams();return replan()}
@@ -380,7 +390,7 @@ $('#newBtn').onclick=()=>chooser().catch(x=>say(x.message,'bad'));
   $('#app').classList.remove('hidden');await show('list');
   const qs=new URLSearchParams(location.search),open=qs.get('open'),deal=qs.get('deal'),project=qs.get('project');
   if(open&&/^[0-9a-f-]{36}$/i.test(open))openContract(open).catch(x=>say(x.message,'bad'));
-  else if(deal||project){try{const r=await api('/v1/contracts/draft?'+(deal?'deal='+encodeURIComponent(deal):'project='+encodeURIComponent(project)));editor({contract:null,content:r.content,problems:r.problems||[],dealId:r.dealId,projectId:r.projectId})}catch(x){say(x.message,'bad')}}
+  else if(deal||project){try{const r=await api('/v1/contracts/draft?'+(deal?'deal='+encodeURIComponent(deal):'project='+encodeURIComponent(project)));editor({contract:null,content:r.content,problems:r.problems||[],dealId:r.dealId,projectId:r.projectId,addressFrom:r.addressFrom})}catch(x){say(x.message,'bad')}}
 })();
 </script>
 <script src="/console-nav.js" defer></script>

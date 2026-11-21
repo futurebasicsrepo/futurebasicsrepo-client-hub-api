@@ -299,6 +299,26 @@ await journey('J188', 'Contracts for a physical product (a hat): its own wording
   const pr = await fetch(`${BASE}/v1/contracts/${id}/pdf`, { headers: { Authorization: 'Bearer ' + colby } }); ok(pr.status === 200 && /pdf/.test(pr.headers.get('content-type') || ''), 'the PDF can be made');
 });
 
+await journey('J317', 'The client\'s address fills itself in: from the account they set up in the hub, on a new contract and on a draft left without one; it can be changed for one contract without touching the account, and with nothing on the account the last contract\'s address is used', async () => {
+  const r = await mk(), rc = sql(`select client_id from users where lower(email)='${r.email || ''}'`) || r.client?.id;
+  sql(`update clients set onboarding = jsonb_build_object('address', jsonb_build_object('line1','12 Comet Lane','line2','Suite 4','city','Brooklyn','region','NY','postal','11201','country','United States')) where id='${rc}'`);
+  const pid = sql(`insert into projects(client_id,name,status,kind) values('${rc}','Matchbooks ${stamp}','active','product') returning id`).split('\n')[0];
+  const want = '12 Comet Lane, Suite 4, Brooklyn NY 11201, United States';
+  const d = (await C(`/draft?project=${pid}`)).json;
+  ok(d.content?.client?.address === want && d.addressFrom === "the client's account" && !(d.problems || []).some(x => /client's address/.test(x)), 'a contract started from the project has the account\'s address, and is not held up for one', [d.content?.client?.address, d.addressFrom]);
+  ok((await C(`/account-address?project=${pid}`)).json.address === want, 'the editor can ask for it by project too');
+  const edited = { ...d.content, client: { ...d.content.client, address: '99 Other St, Queens NY 11101' } };
+  const made = (await C('', { body: { content: edited, projectId: pid } })).json;
+  ok(made.content?.client?.address === '99 Other St, Queens NY 11101' && !made.accountAddress, 'changed in the contract, the contract keeps its own address', made.content?.client?.address);
+  ok(sql(`select onboarding->'address'->>'line1' from clients where id='${rc}'`) === '12 Comet Lane', 'and the account is left as it was');
+  const blank = (await C('', { body: { content: { ...d.content, client: { ...d.content.client, address: '' } }, projectId: pid } })).json;
+  ok(blank.accountAddress?.address === want && blank.accountAddress.from === "the client's account", 'a draft saved without an address is offered the account\'s when it is opened', blank.accountAddress);
+  sql(`update clients set onboarding = '{}'::jsonb where id='${rc}'`);
+  const last = (await C(`/account-address?project=${pid}`)).json;
+  ok(last.address === '99 Other St, Queens NY 11101' && last.from === 'their last contract', 'with no address on the account, the last contract\'s address is used', last);
+  ok((await call(`/v1/contracts/account-address?project=${pid}`)).status === 401, 'and it needs a staff sign-in');
+});
+
 await journey('J316', 'A contract paid but never signed: its invoice, made in Money on its own and paid, is linked to the contract, which is then closed out; the deal is won, and it can be reopened', async () => {
   await C('/settings', { method: 'PUT', body: { providerName: 'Future Basics', providerAddress: '10 Studio Way, Norristown PA', signerName: 'Kyle Riggle', signerTitle: 'Founder', governingLaw: 'Pennsylvania' } });
   const company = `Retro Hat Co ${stamp}`, rSign = `devon-${stamp}@retro.test`;
