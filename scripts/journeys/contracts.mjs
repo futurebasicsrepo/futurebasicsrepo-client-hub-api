@@ -319,6 +319,35 @@ await journey('J317', 'The client\'s address fills itself in: from the account t
   ok((await call(`/v1/contracts/account-address?project=${pid}`)).status === 401, 'and it needs a staff sign-in');
 });
 
+await journey('J318', 'A contract from an order quote is priced per unit: every product line, the setup and freight lines (a comp at $0, a discount below zero) and sales tax at the rate in Settings on the products only; its invoices tax only the products', async () => {
+  const r = await mk(), rc = sql(`select client_id from users where lower(email)='${r.email || ''}'`) || r.client?.id;
+  const pid = sql(`insert into projects(client_id,name,status,kind) values('${rc}','Cafe merchandise ${stamp}','active','product') returning id`).split('\n')[0];
+  const lines = JSON.stringify([{ title: 'Match Book', quantity: 6000, sizes: {}, unitCents: 65, totalCents: 390000 }]), extras = JSON.stringify([{ label: 'Setup · Match Book', cents: 18000 }, { label: 'Freight · Match Book', cents: 88000 }]);
+  const qid = sql(`insert into order_quotes(client_id,project_id,number,title,status,lines,extras,subtotal_cents,total_cents,notes,accepted_at) values('${rc}','${pid}','Q-J318-${stamp}','Merch order, November','accepted','${lines}'::jsonb,'${extras}'::jsonb,390000,496000,'Lead time four weeks from approval',now()) returning id`).split('\n')[0];
+  const st = await C('/settings', { method: 'PUT', body: { taxRatePct: 6 } });
+  ok(st.json.settings?.taxRatePct === 6 && st.json.settings?.providerName, 'Settings keeps a sales tax rate for goods, and saving one field keeps the others', st.json.settings);
+  const d = (await C(`/draft?quote=${qid}`)).json, f = d.content?.fee || {};
+  ok(d.content?.kind === 'product' && f.charge === 'unit' && f.units?.length === 3, 'the quote becomes a product contract priced per unit, one line per product and per other line', f.units);
+  ok(f.units?.[0]?.item === 'Match Book' && f.units[0].qty === 6000 && f.units[0].unitCents === 65 && f.units.some(u => u.item === 'Freight · Match Book' && u.qty === 1 && u.unitCents === 88000 && u.taxable === false) && f.units[0].taxable !== false, 'each at its quantity and price; setup and freight are one-off lines that are not taxed');
+  ok(f.subtotalCents === 496000 && f.taxableCents === 390000 && f.taxRatePct === 6 && f.taxCents === 23400 && f.totalCents === 519400, 'the subtotal is the quote\'s total; 6% sales tax on the products only ($3,900) is added on top', [f.subtotalCents, f.taxCents, f.totalCents]);
+  ok(d.content.scope.includes('6,000 × Match Book') && d.content.scope.includes('Lead time four weeks from approval') && d.content.plan?.installments?.reduce((a, x) => a + x.amountCents, 0) === 519400, 'the scope lists what is ordered and the quote\'s notes; the payment plan adds up to the total with tax', d.content.scope);
+  ok((await C(`/draft?project=${pid}`)).json.content?.fee?.totalCents === 519400, 'started from the project, the contract takes the project\'s accepted quote');
+  sql(`update order_quotes set invoice_adjust='{"comped":[1],"discount":{"label":"Launch discount","cents":5000}}'::jsonb where id='${qid}'`);
+  const a = (await C(`/draft?quote=${qid}`)).json.content.fee;
+  ok(a.units.some(u => u.item === 'Freight · Match Book (comped)' && u.unitCents === 0) && a.units.some(u => u.item === 'Launch discount' && u.unitCents === -5000) && a.subtotalCents === 403000 && a.taxCents === 23100, 'a comped line comes across at $0 and a discount as a line below zero, as on the invoice; the discount lowers what is taxed', a.units);
+  const content = { ...d.content, client: { ...d.content.client, company: `Cafe ${stamp}`, address: '1 Bean St, Philadelphia PA', signerName: 'Cara Cafe', signerTitle: 'Owner', signerEmail: `cara-${stamp}@cafe.test` } };
+  const made = (await C('', { body: { content, projectId: pid } })).json, id = made.contract?.id;
+  const fee = made.rendered?.sections?.find(x => x.kind === 'fee');
+  ok(id && fee?.title === 'Price' && fee.taxLabel === 'Sales tax (6% on products, $3,900.00)' && fee.taxText === '$234.00' && fee.totalText === '$5,194.00' && !(made.problems || []).some(x => /fee|price|plan/i.test(x)), 'saved, it reads as a price table with the sales tax line and nothing left to fix in the price', [fee?.taxText, made.problems]);
+  const pdf = await call(`/v1/contracts/${id}/pdf`, { token: colby }); ok(pdf.status === 200, 'its PDF draws', pdf.status);
+  sql(`update contracts set status='executed', executed_at=now() where id='${id}'`);
+  const inv = await K(`/${id}/invoices`, { body: {} }); ok(inv.status === 200 && inv.json.made?.length === 2, 'the signers draft its invoices: a deposit and the balance', inv.json);
+  const rows = sql(`select tax_rate, tax_cents, total_cents from money_invoices where contract_id='${id}' order by contract_seq`).split('\n').map(x => x.split('|').map(Number));
+  ok(rows.reduce((t, x) => t + x[2], 0) === 519400 && rows.reduce((t, x) => t + x[1], 0) === 23400 && rows.every(x => x[0] === 6), 'each invoice charges the sales tax as tax, and together they come to the contract\'s total and its tax to the cent', rows);
+  const il = JSON.parse(sql(`select lines from money_invoices where contract_id='${id}' order by contract_seq limit 1`));
+  ok(il.length === 2 && il[0].taxable !== false && il[1].taxable === false && /shipping, setup and services \(not taxed\)/.test(il[1].description) && il[1].rateCents === 53000, 'on each invoice the products are taxed and its share of setup and freight is not', il);
+});
+
 await journey('J316', 'A contract paid but never signed: its invoice, made in Money on its own and paid, is linked to the contract, which is then closed out; the deal is won, and it can be reopened', async () => {
   await C('/settings', { method: 'PUT', body: { providerName: 'Future Basics', providerAddress: '10 Studio Way, Norristown PA', signerName: 'Kyle Riggle', signerTitle: 'Founder', governingLaw: 'Pennsylvania' } });
   const company = `Retro Hat Co ${stamp}`, rSign = `devon-${stamp}@retro.test`;

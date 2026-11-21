@@ -38,11 +38,21 @@ export const addDays = (date, n) => new Date(Date.parse(date + 'T00:00:00Z') + n
 // An installment: { label, amountCents, dueOn: 'YYYY-MM-DD' | null, event: 'signing' | 'delivery' | null }. Exactly one of dueOn / event says when.
 // a product priced per unit (apparel, headwear, bags, accessories…): each line an item, how many and the price of one; the total is their sum
 export function cleanUnits(list) {
-  return (Array.isArray(list) ? list : []).slice(0, 40).map(u => ({ item: String(u?.item ?? '').replace(/\s+/g, ' ').trim().slice(0, 160), qty: Math.round(Number(u?.qty)), unitCents: Math.round(Number(u?.unitCents)) }))
-    .filter(u => u.item && Number.isFinite(u.qty) && u.qty > 0 && u.qty <= 1_000_000 && Number.isFinite(u.unitCents) && u.unitCents >= 0 && u.unitCents <= 10_000_000);
+  return (Array.isArray(list) ? list : []).slice(0, 40).map(u => ({ item: String(u?.item ?? '').replace(/\s+/g, ' ').trim().slice(0, 160), qty: Math.round(Number(u?.qty)), unitCents: Math.round(Number(u?.unitCents)), ...(u?.taxable === false ? { taxable: false } : {}) }))
+    .filter(u => u.item && Number.isFinite(u.qty) && u.qty > 0 && u.qty <= 1_000_000 && Number.isFinite(u.unitCents) && u.unitCents >= (u.qty === 1 ? -10_000_000 : 0) && u.unitCents <= 10_000_000);
 }
+// A one-off line (setup, freight) is an item of quantity 1; a discount is one with a negative price. Sales tax is a rate on the taxed lines only:
+// products are taxed, and a line marked taxable: false (shipping, setup, a service fee) is not.
+export const cleanTaxRate = v => { const n = Math.round(Number(v) * 1000) / 1000; return Number.isFinite(n) && n > 0 ? Math.min(30, n) : 0; };
+export const taxableOf = units => units.reduce((a, u) => a + (u.taxable === false ? 0 : u.qty * u.unitCents), 0);
+export const taxOf = (subtotalCents, ratePct) => (ratePct > 0 && subtotalCents > 0 ? Math.round(subtotalCents * ratePct / 100) : 0);
+const pctWords = r => `${Number(r).toLocaleString('en-US', { maximumFractionDigits: 3 })}%`;
 export const unitsTotal = units => units.reduce((a, u) => a + u.qty * u.unitCents, 0);
 const PER_UNIT_FEE = 'The price is set per unit for the quantities below: the total is each quantity times its unit price. The unit prices hold for these quantities; ordering more or fewer units changes the total at the same unit prices, agreed in writing. Unless the scope says otherwise, the price does not include freight, duties or taxes.';
+// the same clause when the lines carry their own one-off charges and sales tax: it says what the total holds
+const perUnitFee = fee => fee.taxCents > 0
+  ? `The price is set per unit for the quantities below: each product line is its quantity times its unit price, and one-off lines (such as setup and freight) are charged as listed. The unit prices hold for these quantities; ordering more or fewer units changes the total at the same unit prices, agreed in writing. Sales tax is charged at ${pctWords(fee.taxRatePct)} on the products only${(fee.units || []).some(u => u.taxable === false) ? ' (the lines marked “no tax”, such as shipping, setup and service fees, are not taxed)' : ''} and is part of the total. Import duties and anything not listed are not included unless the scope says otherwise.`
+  : PER_UNIT_FEE;
 export function buildPlan({ type = 'full', totalCents, depositCents = null, depositPct = null, months = 0, firstDueOn = null, deliveryOn = null, milestones = [], method = 'invoice', autopay = false, note = '' } = {}) {
   const total = Math.round(Number(totalCents));
   if (!Number.isFinite(total) || total <= 0) return { error: 'Set the fixed fee first' };
@@ -152,8 +162,10 @@ export function cleanProduct(input) {
     production: { mode: PRODUCTION_MODES[i.production?.mode] ? i.production.mode : d.production.mode, depositPct: Math.min(100, Math.max(1, Number.isFinite(dep) ? dep : d.production.depositPct)) } };
 }
 // The words of the production clause, which depend on who places the orders.
-export function productionWords(product, map) {
+export function productionWords(product, map, perUnit = false) {
   const mode = product?.production?.mode;
+  // priced per unit, the contract is itself the order for the run it prices; later runs are ordered the usual way
+  if (perUnit && mode === 'through_us') return productionWords(product, map).replace('Production runs are not part of the fixed fee. Future Basics places each production order with the factory itself', 'The goods priced above are a production run: Future Basics orders them from the factory itself and supplies them to the Client, and this agreement is the order for that run. Any further run works the same way: Future Basics places each production order with the factory itself');
   if (mode === 'direct') return 'Production runs are not part of the fixed fee. When the Client is ready to produce, the Client places each order directly with the factory on the factory\'s written quotation and pays the factory directly under the factory\'s terms. Future Basics is not the manufacturer and is not a party to the factory\'s contract. As part of this agreement we give the factory the approved tech pack and the approved sample requirements, follow each order through production, arrange the inspection described below, and act for the Client in good faith to settle any problem that comes up. We do not guarantee the factory\'s work, prices or dates.';
   if (mode === 'through_us') return `Production runs are not part of the fixed fee. Future Basics places each production order with the factory itself and supplies the goods to the Client. Each run is confirmed by a written order that we send and the Client approves in writing (email is fine). It states the quantity, the unit price the Client pays, the deposit, the lead time and the shipping terms, and once approved it forms part of this agreement. Unless the order says otherwise, the Client pays a ${map.production_deposit_pct}% deposit before we place the order with the factory and the balance before the goods ship. The goods become the Client's when it has paid for them in full. Goods made to the Client's design cannot be cancelled or changed once materials are ordered or cutting has begun: the Client pays for the materials bought and the work done up to the time we are told. A quoted price can change if materials, tariffs or exchange rates move before the order is approved.
 
@@ -246,13 +258,14 @@ export function renderContract(c, settings = {}) {
     else if (s.kind === 'fee') {
       // priced per unit: the lines, and the clause in per-unit words unless it was rewritten by hand
       const units = c.fee.charge === 'unit' && Array.isArray(c.fee.units) ? c.fee.units : [], std = defaultSections(c.kind).find(x => x.kind === 'fee');
-      out.push({ id: s.id, title: units.length && s.title === std?.title ? 'Price' : s.title, kind: 'fee', body: units.length && s.body === std?.body ? say(PER_UNIT_FEE) : body, totalCents: c.fee.totalCents, currency: c.fee.currency, totalText: dollars(c.fee.totalCents, c.fee.currency),
-        ...(units.length ? { units: units.map(u => ({ item: u.item, qty: u.qty, unitText: dollars(u.unitCents, c.fee.currency), amountText: dollars(u.qty * u.unitCents, c.fee.currency) })) } : {}) });
+      const tax = units.length && c.fee.taxCents > 0 ? { subtotalText: dollars(c.fee.subtotalCents ?? unitsTotal(units), c.fee.currency), taxLabel: `Sales tax (${pctWords(c.fee.taxRatePct)} on products${units.some(u => u.taxable === false) ? `, ${dollars(c.fee.taxableCents ?? taxableOf(units), c.fee.currency)}` : ''})`, taxText: dollars(c.fee.taxCents, c.fee.currency) } : {};
+      out.push({ id: s.id, title: units.length && s.title === std?.title ? 'Price' : s.title, kind: 'fee', body: units.length && s.body === std?.body ? say(perUnitFee(c.fee)) : body, totalCents: c.fee.totalCents, currency: c.fee.currency, totalText: dollars(c.fee.totalCents, c.fee.currency),
+        ...(units.length ? { units: units.map(u => ({ item: u.item + (u.taxable === false && c.fee.taxCents > 0 ? ' (no tax)' : ''), qty: u.qty, unitText: dollars(u.unitCents, c.fee.currency), amountText: dollars(u.qty * u.unitCents, c.fee.currency) })) } : {}), ...tax });
     }
     else if (s.kind === 'schedule') out.push({ id: s.id, title: s.title, kind: 'schedule', body: [say(s.body), methodParagraph(c.plan, map.provider_name), c.plan.note].filter(Boolean).join('\n\n'), summary: planWords(c.plan, c.fee.currency, c.kind),
       rows: c.plan.installments.map(p => ({ label: p.label, amountCents: p.amountCents, amountText: dollars(p.amountCents, c.fee.currency), when: p.dueOn ? longDate(p.dueOn) : eventLabel(p.event, c.kind) })), method: c.plan.method, autopay: !!c.plan.autopay });
     else if (s.kind === 'circumvention') { if (c.product?.circumventionMonths > 0) out.push({ id: s.id, title: s.title, kind: 'text', body }); }
-    else if (s.kind === 'production') { const w = productionWords(c.product, map); if (w) out.push({ id: s.id, title: s.title, kind: 'text', body: [say(s.body), w].filter(Boolean).join('\n\n') }); }
+    else if (s.kind === 'production') { const w = productionWords(c.product, map, c.fee?.charge === 'unit' && (c.fee.units || []).length > 0); if (w) out.push({ id: s.id, title: s.title, kind: 'text', body: [say(s.body), w].filter(Boolean).join('\n\n') }); }
     else if (s.kind === 'hosting') { if (c.hosting?.included && c.hosting.monthlyCents > 0) out.push({ id: s.id, title: s.title, kind: 'text', body: [say(s.body) || `After launch, Future Basics hosts and maintains the finished work for ${dollars(c.hosting.monthlyCents, c.fee.currency)} a month, billed monthly, starting the month after delivery. It covers hosting, security updates, backups and monitoring. Either party can end hosting with 30 days' written notice, and on request we hand over the files so the Client can host elsewhere.`, c.hosting.note].filter(Boolean).join('\n\n') }); }
   }
   return { number: c.number || '', title: c.title, kind: c.kind, parties: { provider: { name: map.provider_name, address: map.provider_address, signerName: map.provider_signer, signerTitle: map.provider_title }, client: { company: map.client_company, address: map.client_address, signerName: map.client_name, signerTitle: map.client_title, signerEmail: map.client_email } }, fee: c.fee, sections: out, missing: [...missing] };
@@ -272,7 +285,8 @@ export function cleanContent(input, { settings = {}, lenient = false } = {}) {
   // priced per unit (a product): the total is the lines' sum, whatever was sent as the total
   const units = isProduct(kind) && i.fee?.charge === 'unit' ? cleanUnits(i.fee?.units) : [];
   if (isProduct(kind) && i.fee?.charge === 'unit' && !units.length) errors.push('Add at least one item with its quantity and unit price');
-  const total = units.length ? unitsTotal(units) : Math.round(Number(i.fee?.totalCents));
+  const subtotal = units.length ? unitsTotal(units) : null, taxRatePct = units.length ? cleanTaxRate(i.fee?.taxRatePct) : 0, taxable = units.length ? taxableOf(units) : 0, taxCents = units.length ? taxOf(taxable, taxRatePct) : 0;
+  const total = units.length ? subtotal + taxCents : Math.round(Number(i.fee?.totalCents));
   if (!Number.isFinite(total) || total <= 0) errors.push(units.length ? 'The unit prices add up to nothing: set a price for each item' : 'Set the fixed fee'); else if (total > 5_000_000_00) errors.push('That fee looks too large to be right');
   const currency = String(i.fee?.currency || 'USD').toUpperCase().slice(0, 3);
   const scope = (Array.isArray(i.scope) ? i.scope : String(i.scope || '').split('\n')).map(s => line(s, 400)).filter(Boolean).slice(0, 60);
@@ -298,7 +312,7 @@ export function cleanContent(input, { settings = {}, lenient = false } = {}) {
   if (sections.some(s => !s.title)) errors.push('Every clause needs a title');
   for (const need of ['scope', 'fee', 'schedule']) if (!sections.some(s => s.kind === need)) errors.push(`The contract needs its ${need === 'schedule' ? 'payment schedule' : need === 'fee' ? 'fixed fee' : 'scope of work'} clause`);
   if (errors.length && !lenient) return { error: errors[0], errors };
-  return { errors, value: { title, kind, provider, client, project: { name: line(i.project?.name || title, 160) }, scope, notIncluded, timeline, fee: { totalCents: Number.isFinite(total) && total > 0 ? total : 0, currency, ...(units.length ? { charge: 'unit', units } : {}) }, plan: plan || { type: 'full', unset: true, method: 'invoice', autopay: false, note: '', installments: [{ label: 'Payment in full', amountCents: Math.max(100, Number.isFinite(total) ? total : 0), dueOn: null, event: 'signing' }] }, hosting, terms, sections, ...(product ? { product } : {}) } };
+  return { errors, value: { title, kind, provider, client, project: { name: line(i.project?.name || title, 160) }, scope, notIncluded, timeline, fee: { totalCents: Number.isFinite(total) && total > 0 ? total : 0, currency, ...(units.length ? { charge: 'unit', units, subtotalCents: subtotal, taxableCents: taxable, taxRatePct, taxCents } : {}) }, plan: plan || { type: 'full', unset: true, method: 'invoice', autopay: false, note: '', installments: [{ label: 'Payment in full', amountCents: Math.max(100, Number.isFinite(total) ? total : 0), dueOn: null, event: 'signing' }] }, hosting, terms, sections, ...(product ? { product } : {}) } };
 }
 
 // What still has to be filled in before a contract can go out (empty merge fields, unset legal terms).

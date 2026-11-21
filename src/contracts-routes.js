@@ -4,7 +4,9 @@
 //   Staff (any signed-in teammate unless noted)
 //   GET  /v1/contracts                      the list, newest first (?status=, ?q=)
 //   GET  /v1/contracts/sources              deals and projects a contract can be made from, with the contracts already made for each
-//   GET  /v1/contracts/draft?deal=|project= a contract filled in from one (nothing is saved)
+//   GET  /v1/contracts/draft?deal=|project=|quote= a contract filled in from one (nothing is saved). With an order quote (named, or the deal's or
+//                                           project's: accepted first, else the latest sent) it is priced per unit from the quote's lines, its other
+//                                           lines (setup, freight) and the sales tax rate in Settings
 //   GET  /v1/contracts/account-address?company=&email=&project=&client=   the client's address on file (hub account, last contract, last invoice, Shopify)
 //   GET  /v1/contracts/template?kind=        the standard wording for a kind (digital work or a physical product) and the product options
 //   POST /v1/contracts/render               { content } → the finished text and what is still missing (nothing is saved)
@@ -30,7 +32,8 @@
 // Sales: every contract is a deal (sales-deals.js syncContractDeal). Saving a draft opens one at Meeting worth the contract's total (or uses the deal it
 // was made from), sending moves it to Proposal, signing by both wins it, and declining, expiring or voiding loses it unless something else on it is live.
 import { addressLine } from './onboarding.js';
-import { cleanContent, renderContract, sendProblems, docHash, signToken, readToken, nextNumber, checkSignature, buildPlan, planWords, schedule, defaultSections, dollars, longDate, todayISO, addDays, KINDS, TERMS, isProduct, defaultProduct, PRODUCT_CATEGORIES, INCOTERMS, PRODUCTION_MODES } from './contracts.js';
+import { invoiceOf, sizesWords } from './order-quotes.js';
+import { cleanTaxRate, taxOf, taxableOf, unitsTotal, cleanUnits, cleanContent, renderContract, sendProblems, docHash, signToken, readToken, nextNumber, checkSignature, buildPlan, planWords, schedule, defaultSections, dollars, longDate, todayISO, addDays, KINDS, TERMS, isProduct, defaultProduct, PRODUCT_CATEGORIES, INCOTERMS, PRODUCTION_MODES } from './contracts.js';
 import { contractPdf } from './contract-pdf.js';
 import { markUrl } from './signatures.js';
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber } from './money.js';
@@ -63,9 +66,10 @@ export function registerContractRoutes(app, d) {
   const ipOf = req => String(req.ip || '').slice(0, 64), uaOf = req => String(req.headers['user-agent'] || '').slice(0, 300);
   const ev = (id, kind, { actor = '', detail = '', meta = {}, ip = '' } = {}) => pool.query('insert into contract_events(contract_id,kind,actor,detail,meta,ip) values($1,$2,$3,$4,$5::jsonb,$6)', [id, kind, actor, detail, JSON.stringify(meta), ip]).catch(e => log.warn?.({ err: e.message }, 'contract event not kept'));
 
-  const DEFAULTS = { providerName: 'Future Basics', providerAddress: '', signerName: '', signerTitle: '', governingLaw: '' };
+  // taxRatePct: the sales tax a contract priced per unit (goods) starts with; each contract can change it
+  const DEFAULTS = { providerName: 'Future Basics', providerAddress: '', signerName: '', signerTitle: '', governingLaw: '', taxRatePct: 6 };
   const settings = async () => ({ ...DEFAULTS, ...((await getSetting('contractSettings').catch(() => null)) || {}) });
-  const cleanSettings = i => ({ providerName: clip(i?.providerName, 120) || DEFAULTS.providerName, providerAddress: String(i?.providerAddress ?? '').trim().slice(0, 300), signerName: clip(i?.signerName, 120), signerTitle: clip(i?.signerTitle, 120), governingLaw: clip(i?.governingLaw, 120) });
+  const cleanSettings = i => ({ providerName: clip(i?.providerName, 120) || DEFAULTS.providerName, providerAddress: String(i?.providerAddress ?? '').trim().slice(0, 300), signerName: clip(i?.signerName, 120), signerTitle: clip(i?.signerTitle, 120), governingLaw: clip(i?.governingLaw, 120), taxRatePct: i?.taxRatePct === undefined || i?.taxRatePct === '' ? DEFAULTS.taxRatePct : cleanTaxRate(i.taxRatePct) });
 
   const one = async id => (await pool.query('select c.*, d.title deal_title, p.name project_name from contracts c left join sales_deals d on d.id=c.deal_id left join projects p on p.id=c.project_id where c.id=$1', [id])).rows[0];
   // Automatic payments (autopay.js). Without the Money routes (no QuickBooks) there is nothing to charge through, and the contract simply says so.
@@ -107,20 +111,44 @@ export function registerContractRoutes(app, d) {
   }
   const ADDRESS_FROM = { account: 'the client\'s account', contract: 'their last contract', invoice: 'their last invoice', shopify: 'their Shopify customer record' };
 
-  async function draftFrom({ dealId = null, projectId = null }, st) {
+  // The order quote a contract is drawn up from: the one named, else the deal's or the project's (accepted first, then the latest sent).
+  async function quoteFor({ quoteId = null, dealId = null, projectId = null }) {
+    if (quoteId) return (await pool.query('select * from order_quotes where id=$1', [quoteId])).rows[0] || null;
+    if (!dealId && !projectId) return null;
+    return (await pool.query(`select * from order_quotes where ((deal_id is not null and deal_id=$1) or (project_id is not null and project_id=$2)) and status in ('accepted','sent') order by (status='accepted') desc, updated_at desc limit 1`, [dealId, projectId])).rows[0] || null;
+  }
+  // A quote priced per unit: every product line at its quantity and unit price (sizes named), every other line (setup, freight) as charged
+  // on the invoice (a comped line at $0, a discount as a negative line), and the sales tax rate from Settings. Tax is on the products only
+  // (a discount lowers what is taxed); setup, freight and other fees are not taxed. The total includes the tax.
+  function quotePricing(q, st) {
+    const inv = invoiceOf(q);
+    const units = cleanUnits([
+      ...(q.lines || []).map(l => ({ item: `${l.title}${sizesWords(l.sizes) ? ` (${sizesWords(l.sizes)})` : ''}`, qty: l.quantity, unitCents: l.unitCents })),
+      ...inv.extras.map(x => ({ item: x.comped ? `${x.label} (comped)` : x.label, qty: 1, unitCents: x.comped ? 0 : x.cents, taxable: false })),
+      ...(inv.discount ? [{ item: inv.discount.label, qty: 1, unitCents: -inv.discount.cents }] : [])]);
+    const taxRatePct = cleanTaxRate(st.taxRatePct), subtotal = unitsTotal(units), taxable = taxableOf(units), taxCents = taxOf(taxable, taxRatePct);
+    const scope = [...(q.lines || []).map(l => `${Number(l.quantity).toLocaleString('en-US')} × ${l.title}${sizesWords(l.sizes) ? `, sizes ${sizesWords(l.sizes)}` : ''}${l.note ? ` (${l.note})` : ''}`),
+      ...inv.extras.filter(x => !x.comped).map(x => x.label), ...String(q.notes || '').split('\n').map(x => x.trim()).filter(Boolean)];
+    return { fee: { totalCents: subtotal + taxCents, currency: q.currency || 'USD', charge: 'unit', units, subtotalCents: subtotal, taxableCents: taxable, taxRatePct, taxCents }, scope };
+  }
+
+  async function draftFrom({ dealId = null, projectId = null, quoteId = null }, st) {
     let deal = null, project = null, client = null;
+    const quote = await quoteFor({ quoteId, dealId, projectId });
+    if (quote) { dealId = dealId || quote.deal_id || null; projectId = projectId || quote.project_id || null; }
     if (dealId) deal = (await pool.query(`select d.*, ct.name contact_name, ct.email contact_email, ct.title contact_title, coalesce(co.name, co2.name, '') company from sales_deals d left join sales_contacts ct on ct.id=d.contact_id left join sales_companies co on co.id=d.company_id left join sales_companies co2 on co2.id=ct.company_id where d.id=$1`, [dealId])).rows[0];
     if (projectId || deal?.project_id) project = (await pool.query('select * from projects where id=$1', [projectId || deal.project_id])).rows[0];
-    if (project) client = (await pool.query('select id, name, contact_name, contact_email from clients where id=$1', [project.client_id])).rows[0];
+    if (project || quote) client = (await pool.query('select id, name, contact_name, contact_email from clients where id=$1', [project?.client_id || quote.client_id])).rows[0];
     if (!deal && project) deal = (await pool.query(`select d.*, ct.name contact_name, ct.email contact_email, ct.title contact_title, coalesce(co.name, co2.name, '') company from sales_deals d left join sales_contacts ct on ct.id=d.contact_id left join sales_companies co on co.id=d.company_id left join sales_companies co2 on co2.id=ct.company_id where d.project_id=$1 order by d.created_at desc limit 1`, [project.id])).rows[0] || null;
-    if (!deal && !project) return null;
-    const company = deal?.company || client?.name || '', projectName = project?.name || deal?.title || '', title = clip(deal?.title || projectName, 160);
-    const total = deal ? Number(deal.value_cents) : 0, kind = project ? (project.kind === 'software' ? 'app' : 'product') : kindFrom(`${title} ${projectName}`);
+    if (!deal && !project && !quote) return null;
+    const company = deal?.company || client?.name || '', projectName = project?.name || deal?.title || quote?.title || '', title = clip(quote?.title || deal?.title || projectName || (quote ? `${company} · ${quote.number}` : ''), 160);
+    const priced = quote ? quotePricing(quote, st) : null;
+    const total = priced ? priced.fee.totalCents : deal ? Number(deal.value_cents) : 0, kind = quote ? 'product' : project ? (project.kind === 'software' ? 'app' : 'product') : kindFrom(`${title} ${projectName}`);
     const plan = total > 0 ? buildPlan({ type: 'split', totalCents: total, depositPct: 50 }).plan : null;
     const onFile = await accountAddress({ clientId: client?.id || null, projectId: project?.id || null, signerEmail: deal?.contact_email || client?.contact_email || '', company });
     const content = { title, kind, provider: { name: st.providerName, address: st.providerAddress, signerName: st.signerName, signerTitle: st.signerTitle }, client: { company, address: onFile.address, signerName: deal?.contact_name || client?.contact_name || '', signerTitle: deal?.contact_title || '', signerEmail: deal?.contact_email || client?.contact_email || '' },
-      project: { name: projectName }, scope: [title ? `Deliver: ${title}` : ''].filter(Boolean), notIncluded: [], timeline: { effectiveOn: todayISO(), startOn: '', completionOn: '' }, fee: { totalCents: total, currency: 'USD' }, plan, hosting: { included: false, monthlyCents: 0, note: '' }, terms: { ...TERMS, governingLaw: st.governingLaw }, sections: defaultSections(kind), ...(isProduct(kind) ? { product: defaultProduct() } : {}) };
-    return { content, dealId: deal?.id || null, projectId: project?.id || null, clientId: project?.client_id || null, contactId: deal?.contact_id || null, addressFrom: ADDRESS_FROM[onFile.source] || '' };
+      project: { name: projectName }, scope: priced ? priced.scope : [title ? `Deliver: ${title}` : ''].filter(Boolean), notIncluded: [], timeline: { effectiveOn: todayISO(), startOn: '', completionOn: '' }, fee: priced ? priced.fee : { totalCents: total, currency: 'USD' }, plan, hosting: { included: false, monthlyCents: 0, note: '' }, terms: { ...TERMS, governingLaw: st.governingLaw }, sections: defaultSections(kind), ...(isProduct(kind) ? { product: defaultProduct() } : {}) };
+    return { content, dealId: deal?.id || null, projectId: project?.id || null, clientId: project?.client_id || quote?.client_id || null, contactId: deal?.contact_id || null, addressFrom: ADDRESS_FROM[onFile.source] || '', quote: quote ? { id: quote.id, number: quote.number, status: quote.status } : null };
   }
 
   // Which payment processor takes new card and bank details (QuickBooks Payments or Stripe), and whether each is ready. Only the signers can change it.
@@ -134,7 +162,7 @@ export function registerContractRoutes(app, d) {
     await setSetting('autopayProcessor', { processor, by: req.signer.email, at: new Date().toISOString() });
     return { payments: await paymentsView() };
   });
-  app.put('/v1/contracts/settings', { preHandler: pre }, async (req) => { const v = cleanSettings(req.body); await setSetting('contractSettings', v); return { settings: v }; });
+  app.put('/v1/contracts/settings', { preHandler: pre }, async (req) => { const v = cleanSettings({ ...(await settings()), ...(req.body || {}) }); await setSetting('contractSettings', v); return { settings: v }; });
 
   app.get('/v1/contracts/sources', { preHandler: pre }, async () => {
     const deals = (await pool.query(`select d.id, d.title, d.stage, d.value_cents, d.project_id, coalesce(co.name, co2.name, '') company, ct.name contact_name from sales_deals d left join sales_contacts ct on ct.id=d.contact_id left join sales_companies co on co.id=d.company_id left join sales_companies co2 on co2.id=ct.company_id where d.stage in ('meeting','proposal','won') order by d.updated_at desc limit 80`)).rows;
@@ -151,9 +179,9 @@ export function registerContractRoutes(app, d) {
   });
 
   app.get('/v1/contracts/draft', { preHandler: pre }, async (req, reply) => {
-    const dealId = UUID.test(String(req.query?.deal || '')) ? req.query.deal : null, projectId = UUID.test(String(req.query?.project || '')) ? req.query.project : null;
-    if (!dealId && !projectId) return bad(reply, 'Choose a deal or a project to start from');
-    const st = await settings(), r = await draftFrom({ dealId, projectId }, st); if (!r) return bad(reply, 'Not found', 404);
+    const dealId = UUID.test(String(req.query?.deal || '')) ? req.query.deal : null, projectId = UUID.test(String(req.query?.project || '')) ? req.query.project : null, quoteId = UUID.test(String(req.query?.quote || '')) ? req.query.quote : null;
+    if (!dealId && !projectId && !quoteId) return bad(reply, 'Choose a deal, a project or a quote to start from');
+    const st = await settings(), r = await draftFrom({ dealId, projectId, quoteId }, st); if (!r) return bad(reply, 'Not found', 404);
     const c = cleanContent(r.content, { settings: st, lenient: true });
     return { ...r, content: c.value, problems: [...c.errors, ...sendProblems(c.value, st)] };
   });
@@ -371,11 +399,28 @@ export function registerContractRoutes(app, d) {
       await db.query('begin'); await db.query('select pg_advisory_xact_lock(7731)');
       const used = (await db.query('select number from money_invoices')).rows.map(x => x.number), contact = r.contact_id ? (await db.query('select name, email from sales_contacts where id=$1', [r.contact_id])).rows[0] : null;
       const payNote = c.plan.method === 'invoice' ? '' : `Paid by ${c.plan.method === 'ach' ? 'ACH bank debit' : c.plan.method === 'card' ? 'card' : (r.client_signature?.method === 'card' ? 'card' : 'ACH bank debit')} on file${c.plan.autopay ? ' (automatic payments authorized)' : ''}.`;
+      // priced with sales tax: each payment is its share before tax plus the tax on it, so the invoice carries the tax as tax
+      const taxed = c.fee?.charge === 'unit' && Number(c.fee.taxCents) > 0 && Number(c.fee.taxRatePct) > 0;
+      const preTax = amount => { const base = Math.round(amount * 100 / (100 + Number(c.fee.taxRatePct))); for (const d of [0, 1, -1, 2, -2]) { const x = base + d; if (x > 0 && x + taxOf(x, c.fee.taxRatePct) === amount) return x; } return null; };
+      // each payment's share of the products (taxed) and of shipping, setup and services (not taxed), so the invoice taxes only the products;
+      // the not-taxed share takes the odd cent so the invoice comes to the payment exactly. With nothing outside the products and no exact
+      // pre-tax amount, the tax is a line of its own instead.
+      const rate = Number(c.fee.taxRatePct), untaxed = taxed ? Math.max(0, Number(c.fee.subtotalCents) - Number(c.fee.taxableCents ?? c.fee.subtotalCents)) : 0;
+      const label = (p, what = '') => `${c.title}: ${p.label}${what} (agreement ${r.number})`;
+      const paymentLines = p => {
+        const A = p.amountCents; if (!taxed) return { lines: [{ description: label(p), qty: 1, rateCents: A }] };
+        let n = Math.round(A * untaxed / Number(c.fee.totalCents)), pre = preTax(A - n);
+        if (pre == null && n > 0) { pre = Math.round((A - n) * 100 / (100 + rate)); n = A - pre - taxOf(pre, rate); }
+        if (pre != null && pre > 0 && n >= 0) return { tax: true, lines: [{ description: label(p, untaxed ? ', products' : ''), qty: 1, rateCents: pre }, ...(n > 0 ? [{ description: label(p, ', shipping, setup and services (not taxed)'), qty: 1, rateCents: n, taxable: false }] : [])] };
+        const split = Math.round(A * 100 / (100 + rate));
+        return { lines: [{ description: label(p), qty: 1, rateCents: split }, { description: `Sales tax (${rate}% on products)`, qty: 1, rateCents: A - split }] };
+      };
       let n = 0;
       for (const p of plan) {
-        n++; const number = nextInvoiceNumber([...used, ...made.map(m => m.number)]), due = p.falls || todayISO();
+        // the tax as tax on the invoice; when no pre-tax amount rounds to this payment exactly, the tax is its own line instead
+        n++; const pl = paymentLines(p); const number = nextInvoiceNumber([...used, ...made.map(m => m.number)]), due = p.falls || todayISO();
         const inv = cleanInvoice({ number, company: c.client.company, contactName: c.client.signerName, contactEmail: c.client.signerEmail, address: c.client.address, issuedOn: todayISO(), dueOn: due < todayISO() ? todayISO() : due, terms: `Per agreement ${r.number}`,
-          lines: [{ description: `${c.title}: ${p.label} (agreement ${r.number})`, qty: 1, rateCents: p.amountCents }], notes: [payNote, p.event === 'delivery' && !p.dueOn ? (isProduct(c.kind) ? 'Due when the final sample is approved.' : 'Due when the work is delivered.') : ''].filter(Boolean).join(' '), currency: c.fee.currency, workKind: isProduct(c.kind) ? 'product' : 'software', projectId: r.project_id });
+          lines: pl.lines, ...(pl.tax ? { taxRatePct: rate, chargeTax: true } : {}), notes: [payNote, p.event === 'delivery' && !p.dueOn ? (isProduct(c.kind) ? 'Due when the final sample is approved.' : 'Due when the work is delivered.') : ''].filter(Boolean).join(' '), currency: c.fee.currency, workKind: isProduct(c.kind) ? 'product' : 'software', projectId: r.project_id });
         if (inv.error) throw new Error(inv.error); const v = inv.value;
         const row = (await db.query(`insert into money_invoices(number,company,contact_name,contact_email,address,issued_on,terms,due_on,lines,tax_rate,charge_tax,credits,due_now_label,due_now_cents,subtotal_cents,tax_cents,total_cents,notes,currency,status,source,created_by,client_id,contact_id,deal_id,project_id,work_kind,contract_id,contract_seq)
           values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,'draft','app',$20,$21,$22,$23,$24,$25,$26,$27) returning id, number`, [v.number, v.company, v.contactName || contact?.name || '', v.contactEmail || contact?.email || '', v.address, v.issuedOn, v.terms, v.dueOn, JSON.stringify(v.lines), v.taxRatePct, v.chargeTax, JSON.stringify(v.credits), v.dueNowLabel, v.dueNowCents, v.subtotalCents, v.taxCents, v.totalCents, v.notes, v.currency, userId, r.client_id, r.contact_id, r.deal_id, r.project_id, isProduct(c.kind) ? 'product' : 'software', r.id, n])).rows[0];

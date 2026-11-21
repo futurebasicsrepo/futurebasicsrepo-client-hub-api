@@ -167,7 +167,7 @@ export const FLOWS = {
     ['sales','The lead becomes a contact and a deal; automations schedule follow-ups.'],
     ['work','A quote goes out from the client\'s room; sending it puts it in the pipeline at Proposal, worth its total, and accepting it wins the deal.'],
     ['resend','Sales email goes out with unsubscribe; replies and bounces come back to the timeline.'],
-    ['money','A contract is built from the plan, signed online, and turned into invoices. It moves its deal as it goes: a draft at Meeting, sent at Proposal, signed by both at Won, with the contract\'s total as the deal\'s value.'],
+    ['money','A contract is built from the plan, or from an accepted quote priced per unit with its setup and freight lines and sales tax on the products only, signed online, and turned into invoices. It moves its deal as it goes: a draft at Meeting, sent at Proposal, signed by both at Won, with the contract\'s total as the deal\'s value.'],
     ['links','The client signs and adds a card or bank account from a private link.'],
     ['qbo','Autopay charges on schedule through QuickBooks Payments or Stripe; QuickBooks gets the books.'],
     ['money','Once the client has paid (a Shopify checkout, a transfer), staff send a branded receipt from Money or the project: what was paid, when, how, and a balance of $0.'],

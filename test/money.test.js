@@ -86,3 +86,11 @@ test('an invoice keeps its kind of work and project (they decide the payment lin
   assert.equal(cleanInvoice({ ...base, projectId: '0a1b2c3d-0000-4000-8000-000000000000' }).value.projectId, '0a1b2c3d-0000-4000-8000-000000000000');
   assert.equal(cleanInvoice({ ...base, projectId: 'not-an-id' }).value.projectId, null);
 });
+
+test('sales tax is on the taxed lines only: freight, setup and service fees marked taxable: false are left out, and the flag survives cleaning', () => {
+  const lines = [{ description: 'Match Book', qty: 6000, rateCents: 65 }, { description: 'Freight', qty: 1, rateCents: 88000, taxable: false }];
+  assert.deepEqual(invoiceTotals({ lines, taxRatePct: 6, chargeTax: true }), { subtotalCents: 478000, taxCents: 23400, totalCents: 501400, creditsCents: 0, balanceCents: 501400, dueNowCents: 501400 });
+  assert.equal(invoiceTotals({ lines: [{ description: 'Freight', qty: 1, rateCents: 88000, taxable: false }], taxRatePct: 6, chargeTax: true }).taxCents, 0, 'nothing taxed, no tax');
+  const c = cleanInvoice({ number: '2001', company: 'Cafe', issuedOn: '2026-11-21', terms: 'Due on receipt', lines, taxRatePct: 6, chargeTax: true });
+  assert.ok(!c.error, c.error); assert.equal(c.value.lines[1].taxable, false); assert.equal('taxable' in c.value.lines[0], false); assert.equal(c.value.taxCents, 23400);
+});
