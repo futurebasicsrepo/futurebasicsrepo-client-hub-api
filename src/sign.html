@@ -24,7 +24,10 @@
     @media(max-width:560px){.parties{grid-template-columns:1fr}}
     .fee{background:var(--ink);color:#fff;border-radius:22px;padding:20px 22px;margin:0 0 14px;display:grid;gap:4px}.fee .meta{color:#9d9da4}.fee b{font-weight:500;font-size:clamp(30px,8vw,44px);letter-spacing:-.03em;line-height:1}.fee span{color:#cfcfd4}
     .pay{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin:0 0 20px}.pay h2{margin:0 0 4px;font-size:17px;font-weight:500}.pay p{margin:0 0 10px;color:var(--dim);font-size:14px}
-    table{width:100%;border-collapse:collapse;font-size:14.5px}th{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);text-align:left;padding:6px 0;border-bottom:1px solid var(--line)}td{padding:8px 0;border-bottom:1px solid var(--line)}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+    table{width:100%;border-collapse:collapse;font-size:14.5px}th{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);text-align:left;padding:6px 0;border-bottom:1px solid var(--line)}td{padding:8px 0;border-bottom:1px solid var(--line)}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}th+th,td+td{padding-left:14px}
+    /* the price table: the item wraps, the numbers never do; on a phone it tightens so four columns fit */
+    table.units td:first-child{overflow-wrap:anywhere}table.units tr.sum td{border-bottom:0;padding-top:6px;padding-bottom:4px;color:#3a3a40}table.units tr.top td{border-top:1px solid var(--ink);padding-top:10px}
+    @media (max-width:520px){table.units{font-size:13.5px}table.units th{font-size:9px;letter-spacing:.08em}table.units th+th,table.units td+td{padding-left:10px}}
     .doc{background:var(--paper);border:1px solid var(--line);border-radius:22px;padding:clamp(18px,4vw,34px);margin:0 0 22px}
     .doc section{margin:0 0 22px}.doc section:last-child{margin:0}.doc h3{font-size:17px;font-weight:600;margin:0 0 6px;display:flex;gap:10px;align-items:baseline}.doc h3 small{font:500 10px 'IBM Plex Mono',monospace;color:var(--dim);letter-spacing:.1em}
     .doc p{margin:0 0 10px;color:#26262a;max-width:68ch}.doc ul{margin:0 0 10px;padding-left:20px;color:#26262a}.doc li{margin:0 0 4px}.nope{color:var(--dim);font-size:14px}
@@ -55,7 +58,7 @@ img.ink{display:block;height:56px;width:auto;max-width:100%;margin:2px 0 8px}
 <header><span class="wm">Future Basics<i></i></span><span class="noprint" style="display:flex;gap:12px;align-items:center"><a href="/" id="hubTop" class="noprint">Your hub</a><a href="#" id="pdfTop" class="noprint hidden" target="_blank" rel="noopener">PDF</a></span></header>
 <div id="state" class="center"><p class="meta">One moment</p><h1>Opening your agreement…</h1></div>
 <main id="app" class="hidden"></main>
-<div class="bar hidden" id="bar"><div><small>Fixed fee</small><b id="barFee"></b></div><a class="btn" href="#sign" id="barBtn">Review and sign</a></div>
+<div class="bar hidden" id="bar"><div><small id="barLabel">Fixed fee</small><b id="barFee"></b></div><a class="btn" href="#sign" id="barBtn">Review and sign</a></div>
 <script>
 (()=>{
   const TOKEN=decodeURIComponent(location.pathname.replace(/^\/sign\//,'').replace(/\/$/,''));
@@ -71,7 +74,7 @@ img.ink{display:block;height:56px;width:auto;max-width:100%;margin:2px 0 8px}
     if(s.kind!=='schedule'&&s.body)h+=paras(s.body);
     if(s.kind==='scope'){h+=`<ul>${s.items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`;if(s.notIncluded&&s.notIncluded.length)h+=`<p class="nope"><b>Not included:</b> ${s.notIncluded.map(esc).join('; ')}</p>`}
     if(s.kind==='timeline')h+=`<table><tbody>${s.rows.map(r=>`<tr><td>${esc(r[0])}</td><td class="n">${esc(r[1])}</td></tr>`).join('')}</tbody></table>`;
-    if(s.kind==='fee')h+=(s.units&&s.units.length?`<table><thead><tr><th>Item</th><th class="n">Qty</th><th class="n">Unit price</th><th class="n">Amount</th></tr></thead><tbody>${s.units.map(u=>`<tr><td>${esc(u.item)}</td><td class="n">${esc(String(u.qty))}</td><td class="n">${esc(u.unitText)}</td><td class="n">${esc(u.amountText)}</td></tr>`).join('')}${s.taxText?`<tr><td>Subtotal</td><td></td><td></td><td class="n">${esc(s.subtotalText)}</td></tr><tr><td>${esc(s.taxLabel)}</td><td></td><td></td><td class="n">${esc(s.taxText)}</td></tr>`:''}</tbody></table>`:'')+`<p><b>${s.units&&s.units.length?'Total: ':''}${esc(s.totalText)}</b></p>`;
+    if(s.kind==='fee')h+=(s.units&&s.units.length?`<table class="units"><thead><tr><th>Item</th><th class="n">Qty</th><th class="n">Unit price</th><th class="n">Amount</th></tr></thead><tbody>${s.units.map(u=>`<tr><td>${esc(u.item)}</td><td class="n">${esc(Number(u.qty).toLocaleString('en-US'))}</td><td class="n">${esc(u.unitText)}</td><td class="n">${esc(u.amountText)}</td></tr>`).join('')}${s.taxText?`<tr class="sum top"><td colspan="3">Subtotal</td><td class="n">${esc(s.subtotalText)}</td></tr><tr class="sum"><td colspan="3">${esc(s.taxLabel)}</td><td class="n">${esc(s.taxText)}</td></tr>`:''}<tr class="sum${s.taxText?'':' top'}"><td colspan="3"><b>Total</b></td><td class="n"><b>${esc(s.totalText)}</b></td></tr></tbody></table>`:`<p><b>${esc(s.totalText)}</b></p>`);
     if(s.kind==='schedule'){h+=`<p><b>${esc(s.summary)}</b></p><table><thead><tr><th>Payment</th><th>Due</th><th class="n">Amount</th></tr></thead><tbody>${s.rows.map(r=>`<tr><td>${esc(r.label)}</td><td>${esc(r.when)}</td><td class="n">${esc(r.amountText)}</td></tr>`).join('')}</tbody></table>`+paras(s.body)}
     return h+'</section>';
   }
@@ -87,14 +90,14 @@ img.ink{display:block;height:56px;width:auto;max-width:100%;margin:2px 0 8px}
     else if(c.expiresAt)top=`<div class="banner"><b>Please review and sign by ${esc(day(c.expiresAt))}</b>Read the agreement below, then sign at the bottom. It takes a couple of minutes.</div>`;
     $('#app').innerHTML=`<p class="meta">Agreement · ${esc(c.number)}</p><h1>${esc(c.title)}</h1><p class="sub">Prepared for ${esc(P.client.company)} by ${esc(P.provider.name)}</p>${top}<div id="payBox"></div>
       <div class="parties"><div><span class="meta">From</span><b>${esc(P.provider.name)}</b><small>${esc(P.provider.address)}</small></div><div><span class="meta">For</span><b>${esc(P.client.company)}</b><small>${esc(P.client.address)}</small></div></div>
-      <div class="fee"><span class="meta">Fixed fee</span><b>${esc(fee.totalText)}</b><span>${esc(sch.summary)}</span></div>
+      <div class="fee"><span class="meta">${fee.units&&fee.units.length?'Total':'Fixed fee'}</span><b>${esc(fee.totalText)}</b><span>${esc(sch.summary)}</span></div>
       <div class="pay"><h2>What you pay, and when</h2><p>${esc(sch.method==='invoice'?'You receive an invoice for each payment.':sch.autopay?(sch.summary?sch.summary+'. ':'')+'Paid automatically by '+(sch.method==='ach'?'ACH bank debit':sch.method==='card'?'card':'ACH or card (your choice)')+' on file: each payment is charged on its due date below, and we email a receipt each time. You add the account or card right after you sign.':'Paid by '+(sch.method==='ach'?'ACH bank debit':sch.method==='card'?'card':'ACH or card')+', requested on each due date.')}</p>
         <table><thead><tr><th>Payment</th><th>Due</th><th class="n">Amount</th></tr></thead><tbody>${sch.rows.map(x=>`<tr><td>${esc(x.label)}</td><td>${esc(x.when)}</td><td class="n">${esc(x.amountText)}</td></tr>`).join('')}</tbody></table></div>
       <div class="doc" id="doc">${r.sections.map(section).join('')}</div><div id="signBox"></div>`;
     $('#state').classList.add('hidden');$('#app').classList.remove('hidden');
     const pdf=$('#pdfTop');pdf.href=`/v1/public/contracts/${encodeURIComponent(TOKEN)}/pdf`;pdf.classList.remove('hidden');
     if(c.pay)payForm(c);
-    if(c.canSign){signForm(c);$('#barFee').textContent=fee.totalText;$('#bar').classList.remove('hidden')}
+    if(c.canSign){signForm(c);$('#barFee').textContent=fee.totalText;$('#barLabel').textContent=fee.units&&fee.units.length?'Total':'Fixed fee';$('#bar').classList.remove('hidden')}
     else{$('#bar').classList.add('hidden');if(c.status==='executed'||c.status==='signed_by_client')$('#signBox').innerHTML=`<div class="sign done"><div class="tick">✓</div><h2>${c.status==='executed'?'Fully signed':'Waiting for '+esc(P.provider.name)}</h2><p>${c.status==='executed'?'Both parties have signed this agreement.':'You will get an email when it is final.'}</p><a class="btn light" href="${pdf.href}" target="_blank" rel="noopener">Download the PDF</a></div>`}
   }
   // Payment details for automatic payments. The number goes from this page straight to the payment provider, which sends back a one-time token: only the token reaches us.
