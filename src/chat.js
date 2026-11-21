@@ -3,13 +3,14 @@
 // lines, live refresh. Pages give it data and a few functions (send, download, refresh); it does the rest, so the three can never drift apart.
 //
 //   const chat = FBChat.mount(element, { id: 'mc', viewer: 'admin', canCompose: true, placeholder: 'Message Studio Maya',
-//     send: async ({ body, file, replyToId }) => { ... }, refresh: async () => ({ messages, events }), download: (fileId, name) => ..., openProduct: id => ... });
+//     send: async ({ body, file, replyToId }) => { ... }, refresh: async () => ({ messages, events }), download: (fileId, name) => ..., openProduct: id => ...,
+//     openLink: (link, action) => ... });   // an update line's link: { kind: 'file'|'product'|'project', id, name?, url? }; action 'open'|'download'|'show'
 //   chat.update({ messages, events }, { toBottom: true });
 //
 // A message: { id, author_role, author_name, body, created_at, reply_to_id, files: [{ id, original_name, size_bytes }], tag?, noReply?, internal? }
 // Options for a thread without files or replies (a product's comments): attach: false, replies: false. For staff, modes: [{ value, label, placeholder? }] adds a
 // choice above the box (share with the client / internal note); send() then receives { mode }, and an internal message is drawn dashed and amber.
-// An event:  { id, title, createdAt, unread, productId }
+// An event:  { id, title, createdAt, unread, productId, link? }
 (function (root) {
   'use strict';
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -18,6 +19,8 @@
     up: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>'
   };
   const same = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
+  // The links under an update line: a file the client sent (download it, or find it in the room's files), a product, a project.
+  const btn = (act, l, label) => `<button type="button" class="mc-eopen" data-act="${act}" data-link="${esc(JSON.stringify(l))}">${label}</button>`;
   const day = d => same(d, new Date()) ? 'Today' : same(d, new Date(Date.now() - 864e5)) ? 'Yesterday' : new Date(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   const time = d => new Date(d).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   const bytes = n => { n = Number(n || 0); return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; };
@@ -65,7 +68,7 @@
       const near = box.scrollHeight - box.scrollTop - box.clientHeight < 80; let html = '';
       for (const it of layout(d.messages, d.events)) {
         if (it.stamp) html += `<div class="mc-stamp"><b>${esc(day(it.at))}</b> ${esc(time(it.at))}</div>`;
-        if (it.k === 'e') { const e = it.e; html += `<div class="mc-event ${e.unread ? 'new' : ''}"><span class="mc-etext">${esc(clean(e.title))}</span>${e.productId && o.openProduct ? `<button type="button" class="mc-eopen" data-product="${esc(e.productId)}">Open product →</button>` : ''}</div>`; continue; }
+        if (it.k === 'e') { const e = it.e; html += `<div class="mc-event ${e.unread ? 'new' : ''}"><span class="mc-etext">${esc(clean(e.title))}</span>${eventLinks(e)}</div>`; continue; }
         const m = it.m, out = m.author_role === viewer, p = it.parent;
         html += `<div class="mc-msg ${out ? 'out' : 'in'} ${m.internal ? 'internal' : ''} ${it.joinsPrev ? '' : 'first'} ${it.joinsNext ? '' : 'last'}" data-id="${esc(m.id)}">${!out && !it.joinsPrev && m.author_name ? `<span class="mc-from">${esc(m.author_name)}</span>` : ''}<div class="mc-bub">${m.tag ? `<div class="mc-tag">${esc(m.tag)}</div>` : ''}${p ? `<div class="mc-quote"><b>${esc(p.author_role === viewer ? 'You' : p.author_name || 'They')}</b> ${esc(String(p.body || '').slice(0, 90))}${String(p.body || '').length > 90 ? '…' : ''}</div>` : ''}<span class="mc-text">${esc(m.body)}</span>${(m.files || []).map(f => `<button type="button" class="mc-file" data-file="${esc(f.id)}" data-name="${esc(f.original_name)}">${icon.clip}<span>${esc(f.original_name)}</span><small>${esc(bytes(f.size_bytes))}</small></button>`).join('')}</div>${canCompose && replies && !m.noReply ? `<div class="mc-acts"><button type="button" data-reply="${esc(m.id)}">Reply</button></div>` : ''}</div>`;
       }
@@ -88,10 +91,24 @@
     const grow = () => { text.style.height = 'auto'; text.style.height = Math.min(text.scrollHeight, 130) + 'px'; canSend(); };
     async function reload(toBottom) { if (!o.refresh) return; try { const d = await o.refresh(); if (d && el.isConnected) { S.data = { messages: d.messages || [], events: d.events || [] }; fill(Boolean(toBottom)); } } catch { /* the next poll tries again */ } }
 
+    function eventLinks(e) {
+      const l = e.link || (e.productId ? { kind: 'product', id: e.productId } : null);
+      if (!l) return '';
+      if (l.kind === 'product') return o.openProduct || o.openLink ? `<span class="mc-elinks">${btn('open', l, 'Open product →')}</span>` : '';
+      if (!o.openLink) return '';
+      if (l.kind === 'file') return `<span class="mc-elinks">${btn('download', l, 'Download')}${btn('show', l, 'Show in files →')}</span>`;
+      if (l.kind === 'project') return `<span class="mc-elinks">${btn('open', l, 'Open project →')}</span>`;
+      return '';
+    }
     el.addEventListener('click', e => {
       const bub = e.target.closest('.mc-bub'), file = e.target.closest('.mc-file'), rep = e.target.closest('[data-reply]'), ev = e.target.closest('.mc-event'), prod = e.target.closest('.mc-eopen'), x = e.target.closest('[data-x]');
       if (file) { e.stopPropagation(); if (o.download) Promise.resolve(o.download(file.dataset.file, file.dataset.name)).catch(err => alert(err.message)); return; }
-      if (prod) { e.stopPropagation(); o.openProduct && o.openProduct(prod.dataset.product); return; }
+      if (prod) {
+        e.stopPropagation(); let l = null; try { l = JSON.parse(prod.dataset.link); } catch { return; }
+        if (l.kind === 'product' && o.openProduct && !o.openLink) { o.openProduct(l.id); return; }
+        if (o.openLink) Promise.resolve(o.openLink(l, prod.dataset.act)).catch(err => alert(err.message));
+        return;
+      }
       if (rep) { setReply(rep.dataset.reply); return; }
       if (x) { if (x.dataset.x === 'reply') setReply(null); else pick(null); return; }
       if (bub) { bub.parentElement.classList.toggle('sel'); return; }
