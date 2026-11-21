@@ -214,3 +214,17 @@ test('priced per unit with one-off lines, a discount and sales tax on the produc
   const noTax = cleanContent({ ...c0, fee: { charge: 'unit', units: lines.slice(0, 1) } }, { settings: {}, lenient: true }).value.fee;
   assert.deepEqual([noTax.taxCents, noTax.totalCents], [0, 390_000], 'no rate, no tax');
 });
+
+test('the contract PDF never leaves a page holding only a table heading: a price table that starts at the foot of a page moves whole to the next', async () => {
+  const { brandDoc, table } = await import('../src/brand-pdf.js'), { contractPdf } = await import('../src/contract-pdf.js');
+  // the table on its own, started just above the body's bottom inside a document that keeps a taller bottom margin (as the contract does)
+  const b = brandDoc({ title: 'T', kind: 'Agreement', ref: 'T' }); b.doc.page.margins.bottom = 70; b.doc.on('pageAdded', () => { b.doc.page.margins.bottom = 70; });
+  table(b, [{ h: 'Item', w: 3 }, { h: 'Qty', w: 1 }, { h: 'Unit price', w: 1 }, { h: 'Amount', w: 1 }], [['Match Book', '6000', '$0.65', '$3,900.00'], ['Setup', '1', '$180.00', '$180.00']], { y: b.bodyBottom - 6 });
+  assert.equal(b.doc.bufferedPageRange().count, 2, 'one page break for the whole table, not one per heading cell');
+  // and the per-unit contract that showed it
+  const units = [{ item: 'Match Book', qty: 6000, unitCents: 65 }, { item: 'Setup · Match Book', qty: 1, unitCents: 18000, taxable: false }, { item: 'Freight · Match Book', qty: 1, unitCents: 88000, taxable: false }];
+  const c = cleanContent({ ...base(), kind: 'product', title: 'Comet over Delphi · Q-2026-0003', sections: defaultSections('product'), scope: ['6,000 × Match Book', 'Setup · Match Book', 'Freight · Match Book'], fee: { charge: 'unit', units, taxRatePct: 6 }, plan: buildPlan({ totalCents: 519_400, type: 'split', depositPct: 50 }).plan }, { settings: {}, lenient: true });
+  const pdf = await contractPdf(renderContract({ ...c.value, number: 'FB-C-T' }, { providerName: 'Future Basics' }), { status: 'draft' });
+  const pages = (pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length;
+  assert.ok(pages <= 7, `the agreement fits in ${pages} pages, with no page for a heading cell alone`);
+});

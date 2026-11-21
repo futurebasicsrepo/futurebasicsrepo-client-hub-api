@@ -249,7 +249,9 @@ export function fill(text, map) {
 // The finished document: every clause with its words filled in and the structured parts drawn. This, and nothing else, is what is hashed, shown, signed and printed.
 export function renderContract(c, settings = {}) {
   const map = mergeMap(c, settings), missing = new Set(), out = [];
-  const say = s => { const r = fill(s, map); r.missing.forEach(k => missing.add(k)); return r.text; };
+  // priced per unit there is no fixed fee: the standard samples wording says "the price" instead
+  const perUnit = c.fee?.charge === 'unit' && (c.fee.units || []).length > 0;
+  const say = s => { const r = fill(perUnit ? String(s ?? '').replace('The fixed fee includes up to', 'The price includes up to') : s, map); r.missing.forEach(k => missing.add(k)); return r.text; };
   for (const s of c.sections || []) {
     const body = say(s.body);
     if (s.kind === 'text') out.push({ id: s.id, title: s.title, kind: 'text', body });

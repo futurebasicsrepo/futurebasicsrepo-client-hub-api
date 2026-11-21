@@ -23,7 +23,7 @@ export function contractPdf(rendered, state = {}) {
   doc.fillColor(DIM).font('MONO').fontSize(10).text(safe(rendered.number), L, y, { characterSpacing: .6 }); y = doc.y + 14;
   doc.moveTo(L, y).lineTo(R, y).lineWidth(.6).strokeColor(LINE).stroke(); y += 14;
   const cw = (CW - 30) / 3;
-  fact(b, 'Between', `${rendered.parties.provider.name}`, L, y, cw); fact(b, 'And', rendered.parties.client.company, L + cw + 15, y, cw); fact(b, 'Fixed fee', money(rendered.fee.totalCents, cur), L + (cw + 15) * 2, y, cw, { big: true });
+  fact(b, 'Between', `${rendered.parties.provider.name}`, L, y, cw); fact(b, 'And', rendered.parties.client.company, L + cw + 15, y, cw); fact(b, rendered.sections.some(s => s.kind === 'fee' && s.units?.length) ? 'Total' : 'Fixed fee', money(rendered.fee.totalCents, cur), L + (cw + 15) * 2, y, cw, { big: true });
   doc.y = y + 44; doc.x = L;
 
   const heading = (n, t) => { need(60); doc.moveDown(.9); doc.fillColor(DIM).font('MONO').fontSize(8).text(String(n).padStart(2, '0'), L, doc.y, { characterSpacing: 1, lineBreak: false }); doc.fillColor(INK); b.font('SG-B', t).fontSize(13).text(safe(t), L + 26, doc.y - 1.5, { width: CW - 26 }); doc.moveDown(.25); doc.x = L; };

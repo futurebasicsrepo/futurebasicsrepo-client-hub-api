@@ -102,12 +102,16 @@ export function table(b, cols, rows, { y, fontSize = 10, pad = 7, head = true } 
     });
     cy += 24;
   };
+  const rowH = r => Math.max(...r.map((cell, i) => { const c = parts(cell), col = cols[i]; b.font(c.bold || col.bold ? 'SG-B' : col.mono ? 'MONO' : 'SG', c.t); doc.fontSize(fontSize);
+      let h = (c.box || c.line) ? (c.line ? 22 : 10) : doc.heightOfString(safe(c.t), { width: widths[i] - 12 - (c.swatch ? 16 : 0) }); if (c.sub) { doc.font('SG').fontSize(fontSize - 2.5); h += doc.heightOfString(safe(c.sub), { width: widths[i] - 12 }) + 1.5; } return h; })) + pad * 2;
+  // the lowest a row may reach: the body's bottom, or higher when the document keeps a bigger bottom margin (text below it makes PDFKit
+  // start a page of its own for every cell). The header and the first row move to the next page together, never the header alone.
+  const limit = () => Math.min(b.bodyBottom, doc.page.height - doc.page.margins.bottom);
+  if (cy + (head ? 24 : 0) + (rows.length ? rowH(rows[0]) : 0) > limit()) { doc.addPage(); cy = b.bodyTop; }
   drawHead();
   rows.forEach((r, ri) => {
-    const hs = r.map((cell, i) => { const c = parts(cell), col = cols[i]; b.font(c.bold || col.bold ? 'SG-B' : col.mono ? 'MONO' : 'SG', c.t); doc.fontSize(fontSize);
-      let h = (c.box || c.line) ? (c.line ? 22 : 10) : doc.heightOfString(safe(c.t), { width: widths[i] - 12 - (c.swatch ? 16 : 0) }); if (c.sub) { doc.font('SG').fontSize(fontSize - 2.5); h += doc.heightOfString(safe(c.sub), { width: widths[i] - 12 }) + 1.5; } return h; });
-    const h = Math.max(...hs) + pad * 2;
-    if (cy + h > b.bodyBottom) { doc.addPage(); cy = b.bodyTop; drawHead(); }
+    const h = rowH(r);
+    if (cy + h > limit()) { doc.addPage(); cy = b.bodyTop; drawHead(); }
     let x = L;
     cols.forEach((c, i) => { if (c.fill) doc.rect(x, cy, widths[i], h).fill(c.fill); else if (ri % 2) doc.rect(x, cy, widths[i], h).fill(FOG); x += widths[i]; });
     x = L;
