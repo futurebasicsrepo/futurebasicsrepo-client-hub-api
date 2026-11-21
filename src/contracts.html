@@ -192,6 +192,8 @@ function editor(r){
   // a draft with no address takes the one on file for the client (it is saved with the contract, and can be changed for this contract only)
   if(r.accountAddress&&!String(c.client?.address||'').trim()){c.client=c.client||{};c.client.address=r.accountAddress.address;E.addrFrom=r.accountAddress.from;E.problems=E.problems.filter(x=>!/client's address/.test(x))}
   drawEditor();$('#edlg').showModal();
+  // the delivery state sets the sales tax: once the states and the PA rate are in, a contract priced per unit with no delivery yet goes to the client's address
+  loadTax().then(()=>{if(E?.c!==c)return;if(c.fee.charge==='unit'&&!c.fee.delivery)dlvFrom(c.client?.address||'');else if(c.fee.charge==='unit')unitsSync(true)}).catch(()=>{});
 }
 const val=(path)=>path.split('.').reduce((o,k)=>o?.[k],E.c);
 const addrNote=()=>E.addrFrom?`Address filled in from ${esc(E.addrFrom)}. Change it here for this contract only: the account keeps its own.`:'';
@@ -249,18 +251,35 @@ function unitsUI(c){const u=c.fee.charge==='unit',L=c.fee.units&&c.fee.units.len
    ${u?`<table class="units" style="width:100%;border-collapse:collapse;margin-bottom:8px"><thead><tr><th style="text-align:left">Item</th><th style="text-align:right;width:110px">Quantity</th><th style="text-align:right;width:140px">Unit price (USD)</th><th style="text-align:right;width:120px">Amount</th><th style="width:70px" title="Sales tax applies to products only">Taxed</th><th style="width:40px"></th></tr></thead><tbody>${L.map((x,i)=>`<tr data-u="${i}"><td><input class="t" data-uk="item" value="${esc(x.item||'')}" placeholder="Retro World hat, embroidered"></td><td><input class="t" data-uk="qty" inputmode="numeric" style="text-align:right" value="${x.qty??''}" placeholder="400"></td><td><input class="t" data-uk="unit" inputmode="decimal" style="text-align:right" value="${x.unitCents===''||x.unitCents==null?'':(x.unitCents/100).toFixed(2)}" placeholder="18.50"></td><td style="text-align:right" class="mono">${unitOk(x)?usd(Number(x.qty)*Number(x.unitCents)):'—'}</td><td style="text-align:center"><input type="checkbox" data-uk="taxable" ${x.taxable===false?'':'checked'} aria-label="Sales tax on this line"></td><td>${L.length>1?`<button class="btn sm q" type="button" data-urm="${i}" aria-label="Remove this line">×</button>`:''}</td></tr>`).join('')}</tbody></table>
    <button class="btn sm" type="button" id="uAdd">Add an item</button>
    <p class="sub">A one-off charge such as setup or freight is an item with quantity 1; a discount is one with a minus price (quantity 1). Sales tax is on products only: untick Taxed for shipping, setup and service fees.</p>
-   <div class="g3" style="margin-top:8px"><label class="f"><span>Sales tax (%)</span><input class="t" id="taxIn" inputmode="decimal" value="${c.fee.taxRatePct||c.fee.taxRatePct===0?c.fee.taxRatePct:''}" placeholder="0"></label>
-   <div class="f"><span>Subtotal</span><b class="mono" id="subOut">${usd(unitsTotalC(c.fee.units))}</b></div><div class="f"><span>Sales tax (on taxed lines)</span><b class="mono" id="taxOut">${usd(taxC(taxedC(c.fee.units),c.fee.taxRatePct))}</b></div></div>`:''}`}
+   ${taxUI(c)}`:''}`}
 const unitOk=u=>Number(u.qty)>0&&u.unitCents!==''&&u.unitCents!=null&&Number.isFinite(Number(u.unitCents))&&(Number(u.unitCents)>=0||Math.round(Number(u.qty))===1);
 function unitsTotalC(units){return (units||[]).reduce((a,u)=>a+(unitOk(u)?Math.round(Number(u.qty))*Math.round(Number(u.unitCents)):0),0)}
 // sales tax on the items' sum, as the service works it out (src/contracts.js taxOf)
+// Sales tax follows where the goods are delivered (src/contracts.js taxRule): Pennsylvania at the rate in Settings plus any local rate,
+// other states and abroad none (Future Basics collects only in PA), none with a resale or exemption certificate. TAX comes from Settings.
+let TAX=null;const loadTax=()=>TAX?Promise.resolve(TAX):api('/v1/contracts/settings').then(x=>(TAX={pa:Number(x.settings.taxRatePct)||0,...x.tax}));
+function taxRuleC(d){d=d||{};if(!TAX)return {known:false,ratePct:0,text:'Loading…'};if(d.exempt)return {known:true,ratePct:0,text:'None: resale or exemption certificate'};if(d.state==='INTL')return {known:true,ratePct:0,text:'None: delivered outside the US'};
+  if(!d.state)return {known:false,ratePct:0,text:'Choose the state the goods are delivered to'};const name=TAX.states[d.state]||d.state;if(!TAX.registered.includes(d.state))return {known:true,ratePct:0,text:`None: delivered to ${name}, where we do not collect sales tax`};
+  const loc=d.state==='PA'?TAX.local[d.local]||TAX.local.none:TAX.local.none,rate=Math.round((TAX.pa+(loc.pct||0))*1000)/1000;return {known:true,ratePct:rate,text:`${rate}% · ${name}${loc.pct?', '+loc.label:''}`}}
+function taxUI(c){const d=c.fee.delivery||{},r=taxRuleC(d),opts=TAX?Object.entries(TAX.states).map(([k,n])=>`<option value="${k}"${d.state===k?' selected':''}>${esc(n)}</option>`).join(''):'';
+  return `<div class="g3" style="margin-top:8px"><label class="f"><span>Delivered to</span><input class="t" id="dlvAddr" value="${esc(d.address||'')}" placeholder="Where the goods ship to"></label>
+   <label class="f"><span>State</span><select class="t" id="dlvState"><option value="">Choose…</option>${opts}<option value="INTL"${d.state==='INTL'?' selected':''}>Outside the US</option></select></label>
+   ${d.state==='PA'&&TAX?`<label class="f"><span>Local tax (Pennsylvania)</span><select class="t" id="dlvLocal">${Object.entries(TAX.local).map(([k,v])=>`<option value="${k}"${(d.local||'none')===k?' selected':''}>${esc(v.label)}${v.pct?' (+'+v.pct+'%)':''}</option>`).join('')}</select></label>`:''}</div>
+   <label style="display:flex;gap:8px;align-items:center;margin:4px 0 8px"><input type="checkbox" id="dlvExempt"${d.exempt?' checked':''}> The client gave us a resale or exemption certificate (no sales tax)</label>
+   <div class="g3"><div class="f"><span>Sales tax rate</span><b id="taxRuleOut">${esc(r.text)}</b></div><div class="f"><span>Subtotal</span><b class="mono" id="subOut">${usd(unitsTotalC(c.fee.units))}</b></div><div class="f"><span>Sales tax (on taxed lines)</span><b class="mono" id="taxOut">${usd(taxC(taxedC(c.fee.units),r.ratePct))}</b></div></div>`}
+// a delivery address read for its state and local tax by the service (contracts.js stateOf, localOf)
+async function dlvFrom(address){const d=E.c.fee.delivery=E.c.fee.delivery||{};d.address=address;try{const r=await api('/v1/contracts/delivery?address='+encodeURIComponent(address||''));d.state=r.state;d.local=r.local}catch{}unitsSync(true)}
 const taxedC=units=>unitsTotalC((units||[]).filter(u=>u.taxable!==false));
 const taxC=(sub,rate)=>Number(rate)>0&&sub>0?Math.round(sub*Number(rate)/100):0;
-function unitsSync(redraw){const c=E.c,sub=unitsTotalC(c.fee.units),base=taxedC(c.fee.units),tax=taxC(base,c.fee.taxRatePct);c.fee.subtotalCents=sub;c.fee.taxableCents=base;c.fee.taxCents=tax;c.fee.totalCents=sub+tax;
-  const so=$('#subOut'),to=$('#taxOut');if(so)so.textContent=usd(sub);if(to)to.textContent=usd(tax);const f=$('#feeIn');if(f)f.value=c.fee.totalCents?(c.fee.totalCents/100).toFixed(2):'';if(redraw)drawEditor();replan()}
+function unitsSync(redraw){const c=E.c,rule=taxRuleC(c.fee.delivery);c.fee.taxRatePct=rule.ratePct;const sub=unitsTotalC(c.fee.units),base=taxedC(c.fee.units),tax=taxC(base,c.fee.taxRatePct);c.fee.subtotalCents=sub;c.fee.taxableCents=base;c.fee.taxCents=tax;c.fee.totalCents=sub+tax;
+  const so=$('#subOut'),to=$('#taxOut'),ro=$('#taxRuleOut');if(so)so.textContent=usd(sub);if(to)to.textContent=usd(tax);if(ro)ro.textContent=rule.text;const f=$('#feeIn');if(f)f.value=c.fee.totalCents?(c.fee.totalCents/100).toFixed(2):'';if(redraw)drawEditor();replan()}
 document.addEventListener('change',e=>{const t=e.target;if(!E?.c)return;
-  if(t.id==='taxIn'){const v=Number(String(t.value).replace('%',''));E.c.fee.taxRatePct=Number.isFinite(v)&&v>0?Math.min(30,v):0;unitsSync(false);return}
-  if(t.id==='feeCharge'&&t.value==='unit'&&E.c.fee.taxRatePct==null){api('/v1/contracts/settings').then(x=>{if(E.c.fee.taxRatePct==null){E.c.fee.taxRatePct=Number(x.settings.taxRatePct)||0;unitsSync(true)}}).catch(()=>{})}
+  if(t.id==='dlvAddr'){if(e.type==='change')dlvFrom(t.value);else (E.c.fee.delivery=E.c.fee.delivery||{}).address=t.value;return}
+  if(t.id==='dlvState'){const d=E.c.fee.delivery=E.c.fee.delivery||{};d.state=t.value;if(t.value!=='PA')d.local='none';unitsSync(true);return}
+  if(t.id==='dlvLocal'){(E.c.fee.delivery=E.c.fee.delivery||{}).local=t.value;unitsSync(false);return}
+  if(t.id==='dlvExempt'){(E.c.fee.delivery=E.c.fee.delivery||{}).exempt=t.checked;unitsSync(false);return}
+  // priced per unit for the first time: the goods go to the client's address unless changed
+  if(t.id==='feeCharge'&&t.value==='unit'&&!E.c.fee.delivery){loadTax().then(()=>dlvFrom(E.c.client?.address||'')).catch(()=>{})}
   if(t.id==='feeCharge'){E.c.fee.charge=t.value==='unit'?'unit':'fixed';if(t.value==='unit'&&!(E.c.fee.units&&E.c.fee.units.length))E.c.fee.units=[{item:(E.c.scope||[])[0]||'',qty:'',unitCents:''}];if(t.value==='unit')unitsSync(true);else{drawEditor();replan()}return}
   const r=t.closest('tr[data-u]');if(!r||!t.dataset.uk)return;const u=E.c.fee.units[Number(r.dataset.u)];if(!u)return;
   if(t.dataset.uk==='taxable'){if(t.checked)delete u.taxable;else u.taxable=false;return unitsSync(false)}if(t.dataset.uk==='item')u.item=t.value;if(t.dataset.uk==='qty')u.qty=Math.max(0,Math.round(Number(String(t.value).replace(/[,\s]/g,''))||0));if(t.dataset.uk==='unit'){const v=toCents(t.value);u.unitCents=Number.isFinite(v)?v:''}unitsSync(true)});
@@ -379,7 +398,7 @@ async function loadSettings(){const all=await api('/v1/contracts/settings'),s=al
    <div class="g2" style="margin-top:12px"><label class="f"><span>Company name in contracts</span><input class="t" id="sProv" value="${esc(s.providerName)}"></label><label class="f"><span>Address</span><input class="t" id="sAddr" value="${esc(s.providerAddress)}"></label>
    <label class="f"><span>Who signs for us</span><input class="t" id="sSigner" value="${esc(s.signerName)}"></label><label class="f"><span>Their title</span><input class="t" id="sTitle" value="${esc(s.signerTitle)}"></label>
    <label class="f"><span>Governing law (state)</span><input class="t" id="sLaw" value="${esc(s.governingLaw)}" placeholder="Pennsylvania"></label>
-   <label class="f"><span>Sales tax on goods priced per unit (%)</span><input class="t" id="sTax" inputmode="decimal" value="${s.taxRatePct??''}" placeholder="6"><small class="sub">A contract made from a quote starts with this rate; each contract can change it.</small></label></div>
+   <label class="f"><span>Pennsylvania sales tax (%)</span><input class="t" id="sTax" inputmode="decimal" value="${s.taxRatePct??''}" placeholder="6"><small class="sub">Goods priced per unit and delivered in PA are taxed at this rate, plus 2% in Philadelphia or 1% in Allegheny County. We collect sales tax only in Pennsylvania: goods delivered to other states or abroad are not taxed.</small></label></div>
    <div class="acts" style="margin-top:12px"><button class="btn go" id="sSave">Save</button><span class="msg" id="sMsg" role="status"></span></div></div>
    <div class="panel" style="margin-top:14px"><h2>How clients pay automatically</h2><p class="note">Where a client's card or bank account is kept and charged. Every payment that is taken is booked in QuickBooks either way, so your accountant keeps reconciling there. Details already saved stay with the one that holds them.</p>
     <div class="opt" style="margin:10px 0;display:grid;gap:8px"><label><input type="radio" name="proc" value="quickbooks" ${pay.processor==='quickbooks'?'checked':''}> <b>QuickBooks Payments</b> <span class="note">cards and bank debits, on our own form. ${pay.quickbooks.ready?'Ready.':'Not ready: connect QuickBooks with payments switched on (Money, Settings).'}</span></label>

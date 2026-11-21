@@ -322,6 +322,7 @@ await journey('J317', 'The client\'s address fills itself in: from the account t
 await journey('J318', 'A contract from an order quote is priced per unit: every product line, the setup and freight lines (a comp at $0, a discount below zero) and sales tax at the rate in Settings on the products only; its invoices tax only the products', async () => {
   const r = await mk(), rc = sql(`select client_id from users where lower(email)='${r.email || ''}'`) || r.client?.id;
   const pid = sql(`insert into projects(client_id,name,status,kind) values('${rc}','Cafe merchandise ${stamp}','active','product') returning id`).split('\n')[0];
+  sql(`update clients set onboarding = jsonb_build_object('address', jsonb_build_object('line1','1 Bean St','city','Norristown','region','PA','postal','19401','country','United States')) where id='${rc}'`);
   const lines = JSON.stringify([{ title: 'Match Book', quantity: 6000, sizes: {}, unitCents: 65, totalCents: 390000 }]), extras = JSON.stringify([{ label: 'Setup · Match Book', cents: 18000 }, { label: 'Freight · Match Book', cents: 88000 }]);
   const qid = sql(`insert into order_quotes(client_id,project_id,number,title,status,lines,extras,subtotal_cents,total_cents,notes,accepted_at) values('${rc}','${pid}','Q-J318-${stamp}','Merch order, November','accepted','${lines}'::jsonb,'${extras}'::jsonb,390000,496000,'Lead time four weeks from approval',now()) returning id`).split('\n')[0];
   const st = await C('/settings', { method: 'PUT', body: { taxRatePct: 6 } });
@@ -329,17 +330,25 @@ await journey('J318', 'A contract from an order quote is priced per unit: every 
   const d = (await C(`/draft?quote=${qid}`)).json, f = d.content?.fee || {};
   ok(d.content?.kind === 'product' && f.charge === 'unit' && f.units?.length === 3, 'the quote becomes a product contract priced per unit, one line per product and per other line', f.units);
   ok(f.units?.[0]?.item === 'Match Book' && f.units[0].qty === 6000 && f.units[0].unitCents === 65 && f.units.some(u => u.item === 'Freight · Match Book' && u.qty === 1 && u.unitCents === 88000 && u.taxable === false) && f.units[0].taxable !== false, 'each at its quantity and price; setup and freight are one-off lines that are not taxed');
-  ok(f.subtotalCents === 496000 && f.taxableCents === 390000 && f.taxRatePct === 6 && f.taxCents === 23400 && f.totalCents === 519400, 'the subtotal is the quote\'s total; 6% sales tax on the products only ($3,900) is added on top', [f.subtotalCents, f.taxCents, f.totalCents]);
+  ok(f.subtotalCents === 496000 && f.taxableCents === 390000 && f.taxRatePct === 6 && f.taxCents === 23400 && f.totalCents === 519400 && f.delivery?.state === 'PA' && /Norristown/.test(f.delivery.address), 'delivered to the client\'s address in Norristown, PA: 6% sales tax on the products only ($3,900) is added on top', [f.subtotalCents, f.taxCents, f.totalCents, f.delivery]);
   ok(d.content.scope.includes('6,000 × Match Book') && d.content.scope.includes('Lead time four weeks from approval') && d.content.plan?.installments?.reduce((a, x) => a + x.amountCents, 0) === 519400, 'the scope lists what is ordered and the quote\'s notes; the payment plan adds up to the total with tax', d.content.scope);
   ok((await C(`/draft?project=${pid}`)).json.content?.fee?.totalCents === 519400, 'started from the project, the contract takes the project\'s accepted quote');
   sql(`update order_quotes set invoice_adjust='{"comped":[1],"discount":{"label":"Launch discount","cents":5000}}'::jsonb where id='${qid}'`);
   const a = (await C(`/draft?quote=${qid}`)).json.content.fee;
   ok(a.units.some(u => u.item === 'Freight · Match Book (comped)' && u.unitCents === 0) && a.units.some(u => u.item === 'Launch discount' && u.unitCents === -5000) && a.subtotalCents === 403000 && a.taxCents === 23100, 'a comped line comes across at $0 and a discount as a line below zero, as on the invoice; the discount lowers what is taxed', a.units);
-  const content = { ...d.content, client: { ...d.content.client, company: `Cafe ${stamp}`, address: '1 Bean St, Philadelphia PA', signerName: 'Cara Cafe', signerTitle: 'Owner', signerEmail: `cara-${stamp}@cafe.test` } };
+  const content = { ...d.content, client: { ...d.content.client, company: `Cafe ${stamp}`, address: '1 Bean St, Norristown PA', signerName: 'Cara Cafe', signerTitle: 'Owner', signerEmail: `cara-${stamp}@cafe.test` } };
   const made = (await C('', { body: { content, projectId: pid } })).json, id = made.contract?.id;
   const fee = made.rendered?.sections?.find(x => x.kind === 'fee');
-  ok(id && fee?.title === 'Price' && fee.taxLabel === 'Sales tax (6% on products, $3,900.00)' && fee.taxText === '$234.00' && fee.totalText === '$5,194.00' && !(made.problems || []).some(x => /fee|price|plan/i.test(x)), 'saved, it reads as a price table with the sales tax line and nothing left to fix in the price', [fee?.taxText, made.problems]);
+  ok(id && fee?.title === 'Price' && fee.taxLabel === 'Sales tax, 6% (Pennsylvania), on $3,900.00 of products' && fee.taxText === '$234.00' && fee.totalText === '$5,194.00' && !(made.problems || []).some(x => /fee|price|plan/i.test(x)), 'saved, it reads as a price table with the sales tax line and nothing left to fix in the price', [fee?.taxText, made.problems]);
   const pdf = await call(`/v1/contracts/${id}/pdf`, { token: colby }); ok(pdf.status === 200, 'its PDF draws', pdf.status);
+  // the tax follows where the goods are delivered: Philadelphia 8%, another state none, a certificate none, no state not ready to send
+  const at = async delivery => (await C('/render', { body: { content: { ...content, fee: { ...content.fee, delivery } } } })).json;
+  const phl = await at({ address: '1500 Market St, Philadelphia, PA 19102', state: 'PA', local: 'philadelphia' }), ny = await at({ address: '12 Comet Lane, Brooklyn NY 11201', state: 'NY' });
+  ok(phl.content.fee.taxCents === 31200 && phl.content.fee.totalCents === 527200, 'delivered in Philadelphia, 8% (6% + 2% local)', phl.content.fee.taxCents);
+  ok(ny.content.fee.taxCents === 0 && ny.content.fee.totalCents === 496000 && ny.rendered.sections.find(x => x.kind === 'fee').taxLabel === 'Sales tax (none: delivered to New York)', 'delivered to New York, no sales tax: we collect only in Pennsylvania', ny.content.fee);
+  ok((await at({ state: 'PA', exempt: true })).content.fee.taxCents === 0, 'a resale or exemption certificate, no sales tax');
+  ok((await at({ address: '', state: '' })).problems.some(x => /where the goods are delivered/.test(x)), 'with no delivery state it is not ready to send');
+  const dl = (await C(`/delivery?address=${encodeURIComponent('1 Grant St, Pittsburgh PA')}`)).json; ok(dl.state === 'PA' && dl.local === 'allegheny', 'an address is read for its state and local tax', dl);
   sql(`update contracts set status='executed', executed_at=now() where id='${id}'`);
   const inv = await K(`/${id}/invoices`, { body: {} }); ok(inv.status === 200 && inv.json.made?.length === 2, 'the signers draft its invoices: a deposit and the balance', inv.json);
   const rows = sql(`select tax_rate, tax_cents, total_cents from money_invoices where contract_id='${id}' order by contract_seq`).split('\n').map(x => x.split('|').map(Number));
@@ -351,6 +360,7 @@ await journey('J318', 'A contract from an order quote is priced per unit: every 
 await journey('J319', 'Quotes turn into contracts from where they are: the room\'s quote card and the deal in Sales list them with Turn into a contract, then the contract made; a product quote drafts the same way; and Money stops asking to invoice a deal its quote\'s checkout or a closed-out contract already billed', async () => {
   const r = await mk(), rc = sql(`select client_id from users where lower(email)='${r.email || ''}'`) || r.client?.id;
   const pid = sql(`insert into projects(client_id,name,status,kind) values('${rc}','Shirts ${stamp}','active','product') returning id`).split('\n')[0];
+  sql(`update clients set onboarding = jsonb_build_object('address', jsonb_build_object('line1','2 Knit Ave','city','Norristown','region','PA','postal','19401')) where id='${rc}'`);
   const deal = sql(`insert into sales_deals(title,stage,value_cents) values('Shirt order ${stamp}','won',212500) returning id`).split('\n')[0];
   const lines = JSON.stringify([{ title: 'Collared Knit Shirt', quantity: 100, sizes: { M: 60, L: 40 }, unitCents: 2005, totalCents: 200500 }]), extras = JSON.stringify([{ label: 'Freight · Collared Knit Shirt', cents: 12000 }]);
   const qid = sql(`insert into order_quotes(client_id,project_id,deal_id,number,title,status,lines,extras,subtotal_cents,total_cents,accepted_at) values('${rc}','${pid}','${deal}','Q-J319-${stamp}','Shirt order','accepted','${lines}'::jsonb,'${extras}'::jsonb,200500,212500,now()) returning id`).split('\n')[0];

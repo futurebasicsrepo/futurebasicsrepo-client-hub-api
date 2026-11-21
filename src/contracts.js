@@ -46,13 +46,52 @@ export function cleanUnits(list) {
 export const cleanTaxRate = v => { const n = Math.round(Number(v) * 1000) / 1000; return Number.isFinite(n) && n > 0 ? Math.min(30, n) : 0; };
 export const taxableOf = units => units.reduce((a, u) => a + (u.taxable === false ? 0 : u.qty * u.unitCents), 0);
 export const taxOf = (subtotalCents, ratePct) => (ratePct > 0 && subtotalCents > 0 ? Math.round(subtotalCents * ratePct / 100) : 0);
+// ---- sales tax by where the goods are delivered ----------------------------------------------------------------------------------------------
+// Tax on goods follows the delivery address. Future Basics is registered to collect sales tax in Pennsylvania only: goods delivered in PA are
+// taxed at the state rate (Contracts → Settings, 6%) plus the local rate where there is one (Philadelphia +2%, Allegheny County +1%); goods
+// delivered to any other state or outside the US are not taxed (any use tax there is the buyer's); a client with a resale or exemption
+// certificate is not taxed. Not legal or tax advice: the rates and the registered states are the company's to confirm.
+export const US_STATES = { AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', DC: 'District of Columbia', FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming', PR: 'Puerto Rico' };
+export const OUTSIDE_US = 'INTL';
+export const REGISTERED_STATES = ['PA'];
+export const PA_LOCAL = { none: { label: 'No local tax', pct: 0 }, philadelphia: { label: 'Philadelphia', pct: 2 }, allegheny: { label: 'Allegheny County', pct: 1 } };
+// the state in an address: "…, Brooklyn NY 11201", "…, Norristown, PA", or the state's name; a foreign country reads as outside the US
+export function stateOf(address) {
+  const a = String(address || ''); if (!a.trim()) return '';
+  const code = /\b([A-Z]{2})\b,?\s*\d{5}(?:-\d{4})?\b/.exec(a)?.[1] || /,\s*([A-Z]{2})\s*(?:,\s*(?:USA?|United States(?: of America)?))?\s*$/i.exec(a.trim())?.[1]?.toUpperCase() || /\s([A-Z]{2})\s*(?:,\s*(?:USA?|United States(?: of America)?))?\s*$/.exec(a.trim())?.[1];
+  if (code && US_STATES[code]) return code;
+  const lower = a.toLowerCase();
+  for (const [k, name] of Object.entries(US_STATES)) if (new RegExp(`\\b${name.toLowerCase()}\\b`).test(lower) && !(k === 'WA' && /washington,? d\.?c/.test(lower))) return k;
+  if (/\b(canada|mexico|united kingdom|england|scotland|wales|ireland|france|germany|italy|spain|portugal|netherlands|belgium|sweden|norway|denmark|finland|switzerland|austria|australia|new zealand|japan|china|hong kong|taiwan|korea|singapore|india|brazil|uae|united arab emirates|israel)\b/i.test(a)) return OUTSIDE_US;
+  return '';
+}
+export const localOf = address => (/\bphiladelphia\b/i.test(address) ? 'philadelphia' : /\b(pittsburgh|allegheny)\b/i.test(address) ? 'allegheny' : 'none');
+export function cleanDelivery(d) {
+  const state = String(d?.state || '').toUpperCase(), address = String(d?.address ?? '').trim().slice(0, 300);
+  return { address, state: US_STATES[state] || state === OUTSIDE_US ? state : '', local: state === 'PA' && PA_LOCAL[d?.local] ? d.local : 'none', exempt: d?.exempt === true };
+}
+// → { ratePct, known, words, label } for a delivery; known is false until a state (or an exemption) is given
+export function taxRule(delivery, paRatePct = 6) {
+  const d = cleanDelivery(delivery), pa = Number.isFinite(Number(paRatePct)) ? Number(paRatePct) : 6;
+  if (d.exempt) return { ratePct: 0, known: true, label: 'Sales tax (none: resale or exemption certificate)', words: 'No sales tax is charged: the Client has given Future Basics a resale or exemption certificate for these goods, and any tax due on them is the Client\'s.' };
+  if (d.state === OUTSIDE_US) return { ratePct: 0, known: true, label: 'Sales tax (none: delivered outside the US)', words: 'No sales tax is charged: the goods are delivered outside the United States. Import duties and taxes there are the Client\'s.' };
+  if (!d.state) return { ratePct: null, known: false, label: '', words: '' };
+  const name = US_STATES[d.state];
+  if (!REGISTERED_STATES.includes(d.state)) return { ratePct: 0, known: true, label: `Sales tax (none: delivered to ${name})`, words: `No sales tax is charged: the goods are delivered to ${name}, where Future Basics does not collect sales tax. Any use tax due there is the Client's.` };
+  const local = d.state === 'PA' ? PA_LOCAL[d.local] : PA_LOCAL.none, rate = Math.round((pa + (local?.pct || 0)) * 1000) / 1000, where = local?.pct ? `${name}, ${local.label}` : name;
+  return { ratePct: rate, known: true, label: `Sales tax, ${pctWords(rate)} (${where})`, words: `Sales tax is charged at ${pctWords(rate)} (${where}) on the products only`, where };
+}
+
 const pctWords = r => `${Number(r).toLocaleString('en-US', { maximumFractionDigits: 3 })}%`;
 export const unitsTotal = units => units.reduce((a, u) => a + u.qty * u.unitCents, 0);
 const PER_UNIT_FEE = 'The price is set per unit for the quantities below: the total is each quantity times its unit price. The unit prices hold for these quantities; ordering more or fewer units changes the total at the same unit prices, agreed in writing. Unless the scope says otherwise, the price does not include freight, duties or taxes.';
 // the same clause when the lines carry their own one-off charges and sales tax: it says what the total holds
-const perUnitFee = fee => fee.taxCents > 0
-  ? `The price is set per unit for the quantities below: each product line is its quantity times its unit price, and one-off lines (such as setup and freight) are charged as listed. The unit prices hold for these quantities; ordering more or fewer units changes the total at the same unit prices, agreed in writing. Sales tax is charged at ${pctWords(fee.taxRatePct)} on the products only${(fee.units || []).some(u => u.taxable === false) ? ' (the lines marked “no tax”, such as shipping, setup and service fees, are not taxed)' : ''} and is part of the total. Import duties and anything not listed are not included unless the scope says otherwise.`
-  : PER_UNIT_FEE;
+const perUnitFee = (fee, settings = {}) => {
+  const rule = fee.delivery ? taxRule(fee.delivery, settings.taxRatePct) : null, start = 'The price is set per unit for the quantities below: each product line is its quantity times its unit price, and one-off lines (such as setup and freight) are charged as listed. The unit prices hold for these quantities; ordering more or fewer units changes the total at the same unit prices, agreed in writing.';
+  if (fee.taxCents > 0) return `${start} ${rule?.known && rule.ratePct > 0 ? rule.words : `Sales tax is charged at ${pctWords(fee.taxRatePct)} on the products only`}${(fee.units || []).some(u => u.taxable === false) ? ' (the lines marked “no tax”, such as shipping, setup and service fees, are not taxed)' : ''}, by where the goods are delivered, and is part of the total. Import duties and anything not listed are not included unless the scope says otherwise.`;
+  if (rule?.known) return `${start} ${rule.words} Import duties and anything not listed are not included unless the scope says otherwise.`;
+  return PER_UNIT_FEE;
+};
 export function buildPlan({ type = 'full', totalCents, depositCents = null, depositPct = null, months = 0, firstDueOn = null, deliveryOn = null, milestones = [], method = 'invoice', autopay = false, note = '' } = {}) {
   const total = Math.round(Number(totalCents));
   if (!Number.isFinite(total) || total <= 0) return { error: 'Set the fixed fee first' };
@@ -249,7 +288,9 @@ export function fill(text, map) {
 // The finished document: every clause with its words filled in and the structured parts drawn. This, and nothing else, is what is hashed, shown, signed and printed.
 export function renderContract(c, settings = {}) {
   const map = mergeMap(c, settings), missing = new Set(), out = [];
-  const say = s => { const r = fill(s, map); r.missing.forEach(k => missing.add(k)); return r.text; };
+  // priced per unit there is no fixed fee: the standard samples wording says "the price" instead
+  const perUnit = c.fee?.charge === 'unit' && (c.fee.units || []).length > 0;
+  const say = s => { const r = fill(perUnit ? String(s ?? '').replace('The fixed fee includes up to', 'The price includes up to') : s, map); r.missing.forEach(k => missing.add(k)); return r.text; };
   for (const s of c.sections || []) {
     const body = say(s.body);
     if (s.kind === 'text') out.push({ id: s.id, title: s.title, kind: 'text', body });
@@ -258,8 +299,9 @@ export function renderContract(c, settings = {}) {
     else if (s.kind === 'fee') {
       // priced per unit: the lines, and the clause in per-unit words unless it was rewritten by hand
       const units = c.fee.charge === 'unit' && Array.isArray(c.fee.units) ? c.fee.units : [], std = defaultSections(c.kind).find(x => x.kind === 'fee');
-      const tax = units.length && c.fee.taxCents > 0 ? { subtotalText: dollars(c.fee.subtotalCents ?? unitsTotal(units), c.fee.currency), taxLabel: `Sales tax (${pctWords(c.fee.taxRatePct)} on products${units.some(u => u.taxable === false) ? `, ${dollars(c.fee.taxableCents ?? taxableOf(units), c.fee.currency)}` : ''})`, taxText: dollars(c.fee.taxCents, c.fee.currency) } : {};
-      out.push({ id: s.id, title: units.length && s.title === std?.title ? 'Price' : s.title, kind: 'fee', body: units.length && s.body === std?.body ? say(perUnitFee(c.fee)) : body, totalCents: c.fee.totalCents, currency: c.fee.currency, totalText: dollars(c.fee.totalCents, c.fee.currency),
+      const rule = units.length && c.fee.delivery ? taxRule(c.fee.delivery, settings.taxRatePct) : null, on = units.some(u => u.taxable === false) ? `, on ${dollars(c.fee.taxableCents ?? taxableOf(units), c.fee.currency)} of products` : ', on products';
+      const tax = units.length && (c.fee.taxCents > 0 || rule?.known) ? { subtotalText: dollars(c.fee.subtotalCents ?? unitsTotal(units), c.fee.currency), taxLabel: c.fee.taxCents > 0 ? (rule?.known && rule.ratePct > 0 ? rule.label + on : `Sales tax, ${pctWords(c.fee.taxRatePct)}${on}`) : rule.label, taxText: dollars(c.fee.taxCents || 0, c.fee.currency) } : {};
+      out.push({ id: s.id, title: units.length && s.title === std?.title ? 'Price' : s.title, kind: 'fee', body: units.length && s.body === std?.body ? say(perUnitFee(c.fee, settings)) : body, totalCents: c.fee.totalCents, currency: c.fee.currency, totalText: dollars(c.fee.totalCents, c.fee.currency),
         ...(units.length ? { units: units.map(u => ({ item: u.item + (u.taxable === false && c.fee.taxCents > 0 ? ' (no tax)' : ''), qty: u.qty, unitText: dollars(u.unitCents, c.fee.currency), amountText: dollars(u.qty * u.unitCents, c.fee.currency) })) } : {}), ...tax });
     }
     else if (s.kind === 'schedule') out.push({ id: s.id, title: s.title, kind: 'schedule', body: [say(s.body), methodParagraph(c.plan, map.provider_name), c.plan.note].filter(Boolean).join('\n\n'), summary: planWords(c.plan, c.fee.currency, c.kind),
@@ -285,7 +327,9 @@ export function cleanContent(input, { settings = {}, lenient = false } = {}) {
   // priced per unit (a product): the total is the lines' sum, whatever was sent as the total
   const units = isProduct(kind) && i.fee?.charge === 'unit' ? cleanUnits(i.fee?.units) : [];
   if (isProduct(kind) && i.fee?.charge === 'unit' && !units.length) errors.push('Add at least one item with its quantity and unit price');
-  const subtotal = units.length ? unitsTotal(units) : null, taxRatePct = units.length ? cleanTaxRate(i.fee?.taxRatePct) : 0, taxable = units.length ? taxableOf(units) : 0, taxCents = units.length ? taxOf(taxable, taxRatePct) : 0;
+  // the rate follows where the goods are delivered (taxRule); a contract saved before deliveries were recorded keeps the rate it was given
+  const delivery = units.length && i.fee?.delivery ? cleanDelivery(i.fee.delivery) : null, rule = delivery ? taxRule(delivery, settings.taxRatePct) : null;
+  const subtotal = units.length ? unitsTotal(units) : null, taxRatePct = units.length ? (rule?.known ? rule.ratePct : delivery ? 0 : cleanTaxRate(i.fee?.taxRatePct)) : 0, taxable = units.length ? taxableOf(units) : 0, taxCents = units.length ? taxOf(taxable, taxRatePct) : 0;
   const total = units.length ? subtotal + taxCents : Math.round(Number(i.fee?.totalCents));
   if (!Number.isFinite(total) || total <= 0) errors.push(units.length ? 'The unit prices add up to nothing: set a price for each item' : 'Set the fixed fee'); else if (total > 5_000_000_00) errors.push('That fee looks too large to be right');
   const currency = String(i.fee?.currency || 'USD').toUpperCase().slice(0, 3);
@@ -312,7 +356,7 @@ export function cleanContent(input, { settings = {}, lenient = false } = {}) {
   if (sections.some(s => !s.title)) errors.push('Every clause needs a title');
   for (const need of ['scope', 'fee', 'schedule']) if (!sections.some(s => s.kind === need)) errors.push(`The contract needs its ${need === 'schedule' ? 'payment schedule' : need === 'fee' ? 'fixed fee' : 'scope of work'} clause`);
   if (errors.length && !lenient) return { error: errors[0], errors };
-  return { errors, value: { title, kind, provider, client, project: { name: line(i.project?.name || title, 160) }, scope, notIncluded, timeline, fee: { totalCents: Number.isFinite(total) && total > 0 ? total : 0, currency, ...(units.length ? { charge: 'unit', units, subtotalCents: subtotal, taxableCents: taxable, taxRatePct, taxCents } : {}) }, plan: plan || { type: 'full', unset: true, method: 'invoice', autopay: false, note: '', installments: [{ label: 'Payment in full', amountCents: Math.max(100, Number.isFinite(total) ? total : 0), dueOn: null, event: 'signing' }] }, hosting, terms, sections, ...(product ? { product } : {}) } };
+  return { errors, value: { title, kind, provider, client, project: { name: line(i.project?.name || title, 160) }, scope, notIncluded, timeline, fee: { totalCents: Number.isFinite(total) && total > 0 ? total : 0, currency, ...(units.length ? { charge: 'unit', units, subtotalCents: subtotal, taxableCents: taxable, taxRatePct, taxCents, ...(delivery ? { delivery } : {}) } : {}) }, plan: plan || { type: 'full', unset: true, method: 'invoice', autopay: false, note: '', installments: [{ label: 'Payment in full', amountCents: Math.max(100, Number.isFinite(total) ? total : 0), dueOn: null, event: 'signing' }] }, hosting, terms, sections, ...(product ? { product } : {}) } };
 }
 
 // What still has to be filled in before a contract can go out (empty merge fields, unset legal terms).
@@ -324,6 +368,7 @@ export function sendProblems(c, settings = {}) {
   if (r.missing.includes('governing_law')) p.push('Say which state\'s law governs the contract (Contracts, Settings)');
   if (r.missing.includes('provider_address')) p.push('Add Future Basics\' address (Contracts, Settings)');
   if (r.missing.includes('client_address')) p.push('Add the client\'s address');
+  if (c.fee?.charge === 'unit' && (c.fee.units || []).some(u => u.taxable !== false && u.qty * u.unitCents > 0) && !taxRule(c.fee.delivery, settings.taxRatePct).known) p.push('Say where the goods are delivered (the state, or outside the US): the sales tax depends on it');
   for (const k of r.missing) if (!['governing_law', 'provider_address', 'client_address'].includes(k)) p.push(`The wording uses {{${k}}}, which has no value`);
   return p;
 }

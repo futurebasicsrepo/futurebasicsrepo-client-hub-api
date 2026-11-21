@@ -205,7 +205,7 @@ test('priced per unit with one-off lines, a discount and sales tax on the produc
   assert.deepEqual({ sub: c.value.fee.subtotalCents, taxed: c.value.fee.taxableCents, tax: c.value.fee.taxCents, total: c.value.fee.totalCents, rate: c.value.fee.taxRatePct }, { sub: 490_000, taxed: 384_000, tax: 23_040, total: 513_040, rate: 6 }, '6000 × $0.65 + $180 + $880 − $60; 6% on the products less the discount only');
   const r = renderContract({ ...c.value, number: 'FB-C-T' }, { providerName: 'Future Basics' });
   const fee = r.sections.find(s => s.kind === 'fee');
-  assert.equal(fee.title, 'Price'); assert.equal(fee.totalText, '$5,130.40'); assert.equal(fee.subtotalText, '$4,900.00'); assert.equal(fee.taxLabel, 'Sales tax (6% on products, $3,840.00)'); assert.equal(fee.taxText, '$230.40');
+  assert.equal(fee.title, 'Price'); assert.equal(fee.totalText, '$5,130.40'); assert.equal(fee.subtotalText, '$4,900.00'); assert.equal(fee.taxLabel, 'Sales tax, 6%, on $3,840.00 of products', 'a contract saved before deliveries were recorded keeps its rate'); assert.equal(fee.taxText, '$230.40');
   assert.ok(fee.units.some(u => u.item === 'Freight · Match Book (no tax)') && fee.units.some(u => u.item === 'Match Book'), 'an untaxed line says so in the table');
   assert.equal(fee.units.find(u => u.item === 'Discount').amountText, '-$60.00');
   assert.match(fee.body, /Sales tax is charged at 6% on the products only \(the lines marked “no tax”, such as shipping, setup and service fees, are not taxed\)/);
@@ -213,4 +213,37 @@ test('priced per unit with one-off lines, a discount and sales tax on the produc
   assert.ok(cleanContent({ ...c0, fee: { charge: 'unit', units: [{ item: 'Match Book', qty: 10, unitCents: -5 }] } }, { settings: {}, lenient: true }).errors.some(e => /item/.test(e)), 'only a one-off line can go below zero');
   const noTax = cleanContent({ ...c0, fee: { charge: 'unit', units: lines.slice(0, 1) } }, { settings: {}, lenient: true }).value.fee;
   assert.deepEqual([noTax.taxCents, noTax.totalCents], [0, 390_000], 'no rate, no tax');
+});
+
+test('the contract PDF never leaves a page holding only a table heading: a price table that starts at the foot of a page moves whole to the next', async () => {
+  const { brandDoc, table } = await import('../src/brand-pdf.js'), { contractPdf } = await import('../src/contract-pdf.js');
+  // the table on its own, started just above the body's bottom inside a document that keeps a taller bottom margin (as the contract does)
+  const b = brandDoc({ title: 'T', kind: 'Agreement', ref: 'T' }); b.doc.page.margins.bottom = 70; b.doc.on('pageAdded', () => { b.doc.page.margins.bottom = 70; });
+  table(b, [{ h: 'Item', w: 3 }, { h: 'Qty', w: 1 }, { h: 'Unit price', w: 1 }, { h: 'Amount', w: 1 }], [['Match Book', '6000', '$0.65', '$3,900.00'], ['Setup', '1', '$180.00', '$180.00']], { y: b.bodyBottom - 6 });
+  assert.equal(b.doc.bufferedPageRange().count, 2, 'one page break for the whole table, not one per heading cell');
+  // and the per-unit contract that showed it
+  const units = [{ item: 'Match Book', qty: 6000, unitCents: 65 }, { item: 'Setup · Match Book', qty: 1, unitCents: 18000, taxable: false }, { item: 'Freight · Match Book', qty: 1, unitCents: 88000, taxable: false }];
+  const c = cleanContent({ ...base(), kind: 'product', title: 'Comet over Delphi · Q-2026-0003', sections: defaultSections('product'), scope: ['6,000 × Match Book', 'Setup · Match Book', 'Freight · Match Book'], fee: { charge: 'unit', units, taxRatePct: 6 }, plan: buildPlan({ totalCents: 519_400, type: 'split', depositPct: 50 }).plan }, { settings: {}, lenient: true });
+  const pdf = await contractPdf(renderContract({ ...c.value, number: 'FB-C-T' }, { providerName: 'Future Basics' }), { status: 'draft' });
+  const pages = (pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length;
+  assert.ok(pages <= 7, `the agreement fits in ${pages} pages, with no page for a heading cell alone`);
+});
+
+test('sales tax follows where the goods are delivered: PA at 6% (8% Philadelphia, 7% Allegheny), other states and abroad none, none with a certificate, and nothing goes out without a delivery state', async () => {
+  const { stateOf, localOf, taxRule } = await import('../src/contracts.js');
+  assert.deepEqual(['12 Comet Lane, Brooklyn NY 11201, United States', '10 Studio Way, Norristown PA 19401', '1500 Market St, Philadelphia, PA 19102', '1 Grant St, Pittsburgh PA', '1 Main St, Austin, Texas', 'Unit 4, London, United Kingdom', 'nowhere in particular'].map(stateOf), ['NY', 'PA', 'PA', 'PA', 'TX', 'INTL', '']);
+  assert.deepEqual([localOf('1500 Market St, Philadelphia, PA'), localOf('1 Grant St, Pittsburgh PA'), localOf('Norristown PA')], ['philadelphia', 'allegheny', 'none']);
+  const lines = [{ item: 'Match Book', qty: 6000, unitCents: 65 }, { item: 'Freight', qty: 1, unitCents: 88000, taxable: false }];
+  const fee = delivery => cleanContent({ ...base(), kind: 'product', sections: defaultSections('product'), fee: { charge: 'unit', units: lines, taxRatePct: 6, delivery } }, { settings: { taxRatePct: 6 }, lenient: true }).value;
+  const cases = [[{ state: 'PA' }, 6, 23_400], [{ state: 'PA', local: 'philadelphia' }, 8, 31_200], [{ state: 'PA', local: 'allegheny' }, 7, 27_300], [{ state: 'NY' }, 0, 0], [{ state: 'INTL' }, 0, 0], [{ state: 'PA', exempt: true }, 0, 0], [{ state: 'NY', local: 'philadelphia' }, 0, 0]];
+  for (const [d, rate, tax] of cases) { const v = fee(d); assert.deepEqual([v.fee.taxRatePct, v.fee.taxCents, v.fee.totalCents], [rate, tax, 478_000 + tax], JSON.stringify(d)); }
+  const ny = fee({ state: 'NY' }), nyFee = renderContract({ ...ny, number: 'T' }, { taxRatePct: 6 }).sections.find(s => s.kind === 'fee');
+  assert.equal(nyFee.taxLabel, 'Sales tax (none: delivered to New York)'); assert.equal(nyFee.taxText, '$0.00');
+  assert.match(nyFee.body, /No sales tax is charged: the goods are delivered to New York, where Future Basics does not collect sales tax\. Any use tax due there is the Client's\./);
+  const phl = renderContract({ ...fee({ state: 'PA', local: 'philadelphia' }), number: 'T' }, { taxRatePct: 6 }).sections.find(s => s.kind === 'fee');
+  assert.equal(phl.taxLabel, 'Sales tax, 8% (Pennsylvania, Philadelphia), on $3,900.00 of products');
+  assert.match(renderContract({ ...fee({ state: 'PA', exempt: true }), number: 'T' }, { taxRatePct: 6 }).sections.find(s => s.kind === 'fee').body, /resale or exemption certificate/);
+  assert.ok(sendProblems(fee({}), { taxRatePct: 6 }).some(p => /where the goods are delivered/.test(p)), 'no delivery state, not ready to send');
+  assert.ok(!sendProblems(fee({ state: 'NY' }), { taxRatePct: 6 }).some(p => /delivered/.test(p)));
+  assert.equal(taxRule({ state: 'PA' }, 6.5).ratePct, 6.5, 'the PA rate comes from Settings');
 });

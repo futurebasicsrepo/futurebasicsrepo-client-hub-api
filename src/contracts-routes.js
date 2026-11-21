@@ -7,6 +7,7 @@
 //   GET  /v1/contracts/draft?deal=|project=|quote=|productQuote= a contract filled in from one (nothing is saved). With an order quote (named, or the deal's or
 //                                           project's: accepted first, else the latest sent) it is priced per unit from the quote's lines, its other
 //                                           lines (setup, freight) and the sales tax rate in Settings
+//   GET  /v1/contracts/delivery?address=     the state and PA local tax an address reads as (sales tax follows where the goods are delivered)
 //   GET  /v1/contracts/account-address?company=&email=&project=&client=   the client's address on file (hub account, last contract, last invoice, Shopify)
 //   GET  /v1/contracts/template?kind=        the standard wording for a kind (digital work or a physical product) and the product options
 //   POST /v1/contracts/render               { content } → the finished text and what is still missing (nothing is saved)
@@ -33,7 +34,7 @@
 // was made from), sending moves it to Proposal, signing by both wins it, and declining, expiring or voiding loses it unless something else on it is live.
 import { addressLine } from './onboarding.js';
 import { invoiceOf, sizesWords } from './order-quotes.js';
-import { cleanTaxRate, taxOf, taxableOf, unitsTotal, cleanUnits, cleanContent, renderContract, sendProblems, docHash, signToken, readToken, nextNumber, checkSignature, buildPlan, planWords, schedule, defaultSections, dollars, longDate, todayISO, addDays, KINDS, TERMS, isProduct, defaultProduct, PRODUCT_CATEGORIES, INCOTERMS, PRODUCTION_MODES } from './contracts.js';
+import { cleanTaxRate, taxOf, taxableOf, unitsTotal, taxRule, stateOf, localOf, US_STATES, REGISTERED_STATES, PA_LOCAL, cleanUnits, cleanContent, renderContract, sendProblems, docHash, signToken, readToken, nextNumber, checkSignature, buildPlan, planWords, schedule, defaultSections, dollars, longDate, todayISO, addDays, KINDS, TERMS, isProduct, defaultProduct, PRODUCT_CATEGORIES, INCOTERMS, PRODUCTION_MODES } from './contracts.js';
 import { contractPdf } from './contract-pdf.js';
 import { markUrl } from './signatures.js';
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber } from './money.js';
@@ -130,18 +131,21 @@ export function registerContractRoutes(app, d) {
       extras: [...(Number(q.tooling_cents) > 0 ? [{ label: `Tooling and setup · ${q.title}`, cents: Number(q.tooling_cents) }] : []), ...(Number(q.freight_cents) > 0 ? [{ label: `Freight · ${q.title}`, cents: Number(q.freight_cents) }] : [])] };
   }
   // A quote priced per unit: every product line at its quantity and unit price (sizes named), every other line (setup, freight) as charged
-  // on the invoice (a comped line at $0, a discount as a negative line), and the sales tax rate from Settings. Tax is on the products only
+  // on the invoice (a comped line at $0, a discount as a negative line), and sales tax by where it is delivered (the client's address on file:
+  // Pennsylvania at the rate in Settings plus any local rate, other states and abroad none). Tax is on the products only
   // (a discount lowers what is taxed); setup, freight and other fees are not taxed. The total includes the tax.
-  function quotePricing(q, st) {
+  function quotePricing(q, st, address = '') {
     const inv = invoiceOf(q);
     const units = cleanUnits([
       ...(q.lines || []).map(l => ({ item: `${l.title}${sizesWords(l.sizes) ? ` (${sizesWords(l.sizes)})` : ''}`, qty: l.quantity, unitCents: l.unitCents })),
       ...inv.extras.map(x => ({ item: x.comped ? `${x.label} (comped)` : x.label, qty: 1, unitCents: x.comped ? 0 : x.cents, taxable: false })),
       ...(inv.discount ? [{ item: inv.discount.label, qty: 1, unitCents: -inv.discount.cents }] : [])]);
-    const taxRatePct = cleanTaxRate(st.taxRatePct), subtotal = unitsTotal(units), taxable = taxableOf(units), taxCents = taxOf(taxable, taxRatePct);
+    // delivered to the client's address unless the contract says otherwise: its state sets the sales tax (contracts.js taxRule)
+    const delivery = { address, state: stateOf(address), local: localOf(address), exempt: false }, rule = taxRule(delivery, st.taxRatePct);
+    const taxRatePct = rule.known ? rule.ratePct : 0, subtotal = unitsTotal(units), taxable = taxableOf(units), taxCents = taxOf(taxable, taxRatePct);
     const scope = [...(q.lines || []).map(l => `${Number(l.quantity).toLocaleString('en-US')} × ${l.title}${sizesWords(l.sizes) ? `, sizes ${sizesWords(l.sizes)}` : ''}${l.note ? ` (${l.note})` : ''}`),
       ...inv.extras.filter(x => !x.comped).map(x => x.label), ...String(q.notes || '').split('\n').map(x => x.trim()).filter(Boolean)];
-    return { fee: { totalCents: subtotal + taxCents, currency: q.currency || 'USD', charge: 'unit', units, subtotalCents: subtotal, taxableCents: taxable, taxRatePct, taxCents }, scope };
+    return { fee: { totalCents: subtotal + taxCents, currency: q.currency || 'USD', charge: 'unit', units, subtotalCents: subtotal, taxableCents: taxable, taxRatePct, taxCents, delivery }, scope };
   }
 
   async function draftFrom({ dealId = null, projectId = null, quoteId = null, productQuoteId = null }, st) {
@@ -154,10 +158,10 @@ export function registerContractRoutes(app, d) {
     if (!deal && project) deal = (await pool.query(`select d.*, ct.name contact_name, ct.email contact_email, ct.title contact_title, coalesce(co.name, co2.name, '') company from sales_deals d left join sales_contacts ct on ct.id=d.contact_id left join sales_companies co on co.id=d.company_id left join sales_companies co2 on co2.id=ct.company_id where d.project_id=$1 order by d.created_at desc limit 1`, [project.id])).rows[0] || null;
     if (!deal && !project && !quote) return null;
     const company = deal?.company || client?.name || '', projectName = project?.name || deal?.title || quote?.title || '', title = clip(quote?.title || deal?.title || projectName || (quote ? `${company} · ${quote.number}` : ''), 160);
-    const priced = quote ? quotePricing(quote, st) : null;
+    const onFile = await accountAddress({ clientId: client?.id || null, projectId: project?.id || null, signerEmail: deal?.contact_email || client?.contact_email || '', company });
+    const priced = quote ? quotePricing(quote, st, onFile.address) : null;
     const total = priced ? priced.fee.totalCents : deal ? Number(deal.value_cents) : 0, kind = quote ? 'product' : project ? (project.kind === 'software' ? 'app' : 'product') : kindFrom(`${title} ${projectName}`);
     const plan = total > 0 ? buildPlan({ type: 'split', totalCents: total, depositPct: 50 }).plan : null;
-    const onFile = await accountAddress({ clientId: client?.id || null, projectId: project?.id || null, signerEmail: deal?.contact_email || client?.contact_email || '', company });
     const content = { title, kind, provider: { name: st.providerName, address: st.providerAddress, signerName: st.signerName, signerTitle: st.signerTitle }, client: { company, address: onFile.address, signerName: deal?.contact_name || client?.contact_name || '', signerTitle: deal?.contact_title || '', signerEmail: deal?.contact_email || client?.contact_email || '' },
       project: { name: projectName }, scope: priced ? priced.scope : [title ? `Deliver: ${title}` : ''].filter(Boolean), notIncluded: [], timeline: { effectiveOn: todayISO(), startOn: '', completionOn: '' }, fee: priced ? priced.fee : { totalCents: total, currency: 'USD' }, plan, hosting: { included: false, monthlyCents: 0, note: '' }, terms: { ...TERMS, governingLaw: st.governingLaw }, sections: defaultSections(kind), ...(isProduct(kind) ? { product: defaultProduct() } : {}) };
     return { content, dealId: deal?.id || null, projectId: project?.id || null, clientId: project?.client_id || quote?.client_id || null, contactId: deal?.contact_id || null, addressFrom: ADDRESS_FROM[onFile.source] || '', quote: quote ? { id: quote.id, number: quote.number, status: quote.status } : null };
@@ -165,7 +169,9 @@ export function registerContractRoutes(app, d) {
 
   // Which payment processor takes new card and bank details (QuickBooks Payments or Stripe), and whether each is ready. Only the signers can change it.
   const paymentsView = async () => ({ processor: autopay ? await autopay.chosen() : 'quickbooks', stripe: { configured: stripe.configured(), live: stripe.live(), webhook: Boolean(stripe.webhookSecret()), webhookUrl: `${publicUrl}/v1/stripe/webhook` }, quickbooks: { ready: autopay ? (await autopay.readiness('quickbooks')).ready : false } });
-  app.get('/v1/contracts/settings', { preHandler: pre }, async () => ({ settings: await settings(), payments: await paymentsView() }));
+  app.get('/v1/contracts/settings', { preHandler: pre }, async () => ({ settings: await settings(), payments: await paymentsView(), tax: { states: US_STATES, registered: REGISTERED_STATES, local: PA_LOCAL } }));
+  // the state (and Pennsylvania local tax) of a delivery address, as the sales tax reads it
+  app.get('/v1/contracts/delivery', { preHandler: pre }, async (req) => { const a = clip(req.query?.address, 300); return { state: stateOf(a), local: localOf(a) }; });
   app.put('/v1/contracts/autopay/processor', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
     const processor = req.body?.processor === 'stripe' ? 'stripe' : req.body?.processor === 'quickbooks' ? 'quickbooks' : '';
     if (!processor) return bad(reply, 'Choose QuickBooks Payments or Stripe');
