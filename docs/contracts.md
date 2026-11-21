@@ -41,6 +41,10 @@ For customers whose project is a product (hats, shirts, shoes, electronics, bags
 
 **Priced per unit.** A product contract can charge per unit instead of a fixed fee, for an order of goods such as 400 hats. Under **Price and how it is paid**, set **Charge** to *Per unit* and list each item with its quantity and unit price. The total is their sum and the payment schedule follows it. The server recomputes the total from the lines (`fee.charge: 'unit'`, `fee.units` in `src/contracts.js`), whatever total is sent. On the contract the clause is titled **Price**, says the unit prices hold for those quantities, and shows the lines above the total, on the signing page and in the PDF. Websites and software stay fixed-fee.
 
+**From an order quote.** An agreement started from a quote (the **Start the agreement** link under a product's Commerce once its quote is accepted, `/contracts?quote=<id>`, or **+ New contract** on a deal or project that has an accepted or sent quote) is priced per unit from the quote: one line per product at its quantity and unit price (sizes named), one line per other line on the quote (setup, freight) at quantity 1, a comped line at $0 and a discount as a line below zero, as the quote's invoice would charge them. The scope lists what is ordered and the quote's notes; the production clause then reads as the order for that run.
+
+**Sales tax on products only.** A contract priced per unit charges sales tax on its products and nothing else: each line has a **Taxed** box, ticked for products and unticked for shipping, setup and service fees (a quote's other lines come across unticked; a discount stays taxed, since it lowers what the products cost). The rate starts from **Settings → Sales tax on goods priced per unit** (6% unless changed) and can be changed per contract. The contract shows the subtotal, the tax with the amount it is on, and the total with tax; the payment plan adds up to the total with tax. Invoices drafted from it split each payment into its share of the products (taxed) and of shipping, setup and services (not taxed), so Money charges the tax as tax and the invoices add up to the contract to the cent. Money invoices have the same **Taxed** box on each line.
+
 What is different from the digital agreement:
 
 | Clause | What it says |
@@ -112,7 +116,7 @@ Any signed-in teammate can draft, send, remind, revise, void and read contracts.
 | Staff page | `src/contracts.html` at `/contracts`, in the console menu under Win |
 | The client's page | `src/sign.html` at `/sign/<link>` |
 | Tables | `contracts`, `contract_events`, and `money_invoices.contract_id` |
-| Tests | `test/contracts.test.js`, journeys J164 (API), J165 (browser), J188 (a product contract end to end), J189 (the product options in a browser), J316 (an invoice paid without signing: link, close out, reopen) |
+| Tests | `test/contracts.test.js`, journeys J164 (API), J165 (browser), J188 (a product contract end to end), J189 (the product options in a browser), J316 (an invoice paid without signing: link, close out, reopen), J317 (the client's address from the account), J318 (a contract from an order quote: per-unit lines, untaxed setup and freight, tax on products, its invoices) |
 | Automatic payments | `src/autopay.js`, `src/qb-payments.js`, see `docs/autopay.md` |
 
 ## In the client hub

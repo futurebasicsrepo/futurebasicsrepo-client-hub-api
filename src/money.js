@@ -40,10 +40,11 @@ export function dueFromTerms(issuedOn, terms) {
 }
 
 // ---------- an invoice and how it adds up ----------
-// lines: [{ description, qty, rateCents }]. credits: [{ label, amountCents }] (a deposit already paid). dueNowCents overrides the balance when only part is due now.
+// lines: [{ description, qty, rateCents, taxable? }] (taxable: false keeps a line, such as freight or a service fee, out of sales tax). credits: [{ label, amountCents }] (a deposit already paid). dueNowCents overrides the balance when only part is due now.
 export function invoiceTotals({ lines = [], taxRatePct = 0, chargeTax = false, credits = [], dueNowCents = null } = {}) {
   const subtotalCents = lines.reduce((a, l) => a + Math.round(Number(l.qty) * Number(l.rateCents)), 0);
-  const taxCents = chargeTax ? Math.round(subtotalCents * Number(taxRatePct) / 100) : 0;
+  const taxableCents = lines.reduce((a, l) => a + (l.taxable === false ? 0 : Math.round(Number(l.qty) * Number(l.rateCents))), 0);
+  const taxCents = chargeTax && taxableCents > 0 ? Math.round(taxableCents * Number(taxRatePct) / 100) : 0;
   const totalCents = subtotalCents + taxCents, creditsCents = credits.reduce((a, c) => a + Number(c.amountCents || 0), 0);
   const balanceCents = Math.max(0, totalCents - creditsCents);
   return { subtotalCents, taxCents, totalCents, creditsCents, balanceCents, dueNowCents: dueNowCents == null ? balanceCents : Math.min(Number(dueNowCents), balanceCents) };
@@ -64,7 +65,7 @@ export function cleanInvoice(input = {}, { today = iso(new Date()) } = {}) {
     if (!description) return { error: 'Every line needs a description' };
     if (!Number.isFinite(qty) || qty <= 0 || qty > 1e7) return { error: `“${description.slice(0, 40)}”: the quantity must be more than 0` };
     if (!Number.isFinite(rateCents) || rateCents < 0 || rateCents > 1e11) return { error: `“${description.slice(0, 40)}”: the rate is not an amount` };
-    lines.push({ description, qty, rateCents });
+    lines.push({ description, qty, rateCents, ...(l.taxable === false ? { taxable: false } : {}) });
   }
   if (!lines.length) return { error: 'Add at least one line: what it is for and the amount' };
   if (lines.length > 200) return { error: 'An invoice can have 200 lines at most' };

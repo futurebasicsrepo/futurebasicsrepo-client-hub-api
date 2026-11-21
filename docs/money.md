@@ -15,6 +15,10 @@
 ## Data
 `money_invoices` and `money_payments` (see `src/db.js`). The rules are plain functions in `src/money.js` (`test/money.test.js`); the staff API is `src/money-routes.js`; the PDF is `src/money-pdf.js` (Space Grotesk and IBM Plex Mono through `src/brand-pdf.js`, the same as every other document). Platform health has a Money card (instructions saved, overdue, past invoices to settle).
 
+## Sales tax on some lines only
+
+Each line has a **Taxed** box. **Charge this tax** applies the rate to the ticked lines only, so products can be taxed while shipping, setup and service fees are not (`lines[].taxable: false`, `invoiceTotals` in `src/money.js`). Lines are taxed unless unticked; QuickBooks still gets the tax as one line of the amount charged.
+
 ## Payment links on the invoice
 The kind of work decides how a client pays, and the link prints in the PDF's "How to pay" card (and can be copied from the invoice).
 - **Product development → Shopify.** Money makes a Shopify draft order for the amount due now (the balance after deposits, or the "amount due now" you set) and uses its checkout link. When the checkout is paid, a check every 30 minutes (or `POST /v1/money/shopify-links/sync`) records the payment once, as a Shopify payment on the invoice, and settles it.

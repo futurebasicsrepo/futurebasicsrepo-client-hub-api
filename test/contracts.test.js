@@ -196,3 +196,21 @@ test('a product priced per unit: the total is the lines, the price clause says s
   assert.match(cleanContent({ ...c, fee: { charge: 'unit', units: [] } }).error, /at least one item/);
   const web = cleanContent(withPlan({ ...base(), fee: { charge: 'unit', totalCents: 500000, currency: 'USD', units: [{ item: 'Page', qty: 5, unitCents: 1 }] } }, { type: 'full' })).value; assert.equal(web.fee.totalCents, 500000); assert.equal(web.fee.units, undefined);
 });
+
+test('priced per unit with one-off lines, a discount and sales tax on the products only: setup and freight are not taxed, and the clause, table and production wording say so', () => {
+  const lines = [{ item: 'Match Book', qty: 6000, unitCents: 65 }, { item: 'Setup · Match Book', qty: 1, unitCents: 18000, taxable: false }, { item: 'Freight · Match Book', qty: 1, unitCents: 88000, taxable: false }, { item: 'Discount', qty: 1, unitCents: -6000 }];
+  const c0 = { ...base(), kind: 'product', sections: defaultSections('product'), fee: { charge: 'unit', units: lines, taxRatePct: 6 } };
+  const c = cleanContent({ ...c0, plan: buildPlan({ totalCents: 513_040, type: "full" }).plan }, { settings: {} });
+  assert.ok(!c.error, c.error);
+  assert.deepEqual({ sub: c.value.fee.subtotalCents, taxed: c.value.fee.taxableCents, tax: c.value.fee.taxCents, total: c.value.fee.totalCents, rate: c.value.fee.taxRatePct }, { sub: 490_000, taxed: 384_000, tax: 23_040, total: 513_040, rate: 6 }, '6000 × $0.65 + $180 + $880 − $60; 6% on the products less the discount only');
+  const r = renderContract({ ...c.value, number: 'FB-C-T' }, { providerName: 'Future Basics' });
+  const fee = r.sections.find(s => s.kind === 'fee');
+  assert.equal(fee.title, 'Price'); assert.equal(fee.totalText, '$5,130.40'); assert.equal(fee.subtotalText, '$4,900.00'); assert.equal(fee.taxLabel, 'Sales tax (6% on products, $3,840.00)'); assert.equal(fee.taxText, '$230.40');
+  assert.ok(fee.units.some(u => u.item === 'Freight · Match Book (no tax)') && fee.units.some(u => u.item === 'Match Book'), 'an untaxed line says so in the table');
+  assert.equal(fee.units.find(u => u.item === 'Discount').amountText, '-$60.00');
+  assert.match(fee.body, /Sales tax is charged at 6% on the products only \(the lines marked “no tax”, such as shipping, setup and service fees, are not taxed\)/);
+  assert.match(r.sections.find(s => s.id === 'production').body, /^The goods priced above are a production run/, 'the contract is the order for the run it prices');
+  assert.ok(cleanContent({ ...c0, fee: { charge: 'unit', units: [{ item: 'Match Book', qty: 10, unitCents: -5 }] } }, { settings: {}, lenient: true }).errors.some(e => /item/.test(e)), 'only a one-off line can go below zero');
+  const noTax = cleanContent({ ...c0, fee: { charge: 'unit', units: lines.slice(0, 1) } }, { settings: {}, lenient: true }).value.fee;
+  assert.deepEqual([noTax.taxCents, noTax.totalCents], [0, 390_000], 'no rate, no tax');
+});
