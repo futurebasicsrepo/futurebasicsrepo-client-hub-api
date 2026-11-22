@@ -27,7 +27,7 @@ const iso = d => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 export function registerMoneyRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {}, tokenSeal, stateSecret = 'money', workUrl = 'https://work.thefuturebasics.com', fetchImpl = fetch, log = console, shopifyInvoiceLink = null, shopifyDraftStatus = null, shopifyPayouts = null, shopifyReady = () => Boolean(shopifyPayouts) , sendHubEmail = null, hubEmailShell = (t, b) => b, emailEscape = v => String(v), publicUrl = env.CLIENT_HUB_URL || 'https://hub.thefuturebasics.com' } = d;
+  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {}, tokenSeal, stateSecret = 'money', workUrl = 'https://work.thefuturebasics.com', fetchImpl = fetch, log = console, shopifyInvoiceLink = null, shopifyDraftStatus = null, shopifyPayouts = null, shopifyReady = () => Boolean(shopifyPayouts) , sendHubEmail = null, hubEmailShell = (t, b) => b, emailEscape = v => String(v), hubButton = (href, label) => `<p><a href="${href}">${label}</a></p>`, publicUrl = env.CLIENT_HUB_URL || 'https://hub.thefuturebasics.com' } = d;
   const stripe = d.stripe || createStripe({ env, log }), hubUrl = String(publicUrl).replace(/\/$/, '');
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   async function moneyOnly(req, reply) {
@@ -109,6 +109,30 @@ export function registerMoneyRoutes(app, d) {
     const st = invoiceState({ ...r, due_on: iso(r.due_on) }, Number(r.paid_cents), today());
     const buf = await moneyInvoicePdf({ ...r, issued_on: iso(r.issued_on), due_on: iso(r.due_on), pay_url: ['paid', 'void'].includes(r.status) ? '' : r.pay_url }, { instructions: await instructions() }, st);
     return reply.type('application/pdf').header('content-disposition', disposition(pdfName(r.company, `Invoice ${r.number}`))).send(buf);
+  });
+
+  // ---------- sending an invoice to the client: the PDF, and a Pay now button to our pay page (Apple Pay first, then a card or the bank) ----------
+  // The pay link is ours (Stripe) unless the invoice was set to QuickBooks or Shopify and already has that link; with Stripe not set up, the link
+  // it has (if any) goes. The invoice is marked sent.
+  app.post('/v1/money/invoices/:id/send-to-client', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return; let r = await one(req.params.id); if (!r) return bad(reply, 'Not found', 404);
+    if (['paid', 'void'].includes(r.status)) return bad(reply, r.status === 'paid' ? 'This invoice is paid: send the receipt instead' : 'A void invoice is not sent', 409);
+    if (invoiceState({ ...r, due_on: iso(r.due_on) }, Number(r.paid_cents), today()).owedCents <= 0) return bad(reply, 'Nothing is owed on this invoice', 409);
+    const to = clip(req.body?.to || r.contact_email, 200).toLowerCase(), message = String(req.body?.message ?? '').trim().slice(0, 1500);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return bad(reply, 'Add the client\'s email to the invoice, or type where to send it');
+    if (!sendHubEmail) return bad(reply, 'Email is not set up on this server', 503);
+    const keep = ['quickbooks', 'shopify'].includes(r.pay_with) && r.pay_url;
+    let url = keep ? r.pay_url : (stripe.embedded() ? await stripePayLink(r.id) : r.pay_url || '');
+    if (!url || keep || !stripe.embedded()) await pool.query(`update money_invoices set status=case when status in ('draft','unrecorded') then 'sent' else status end, sent_at=coalesce(sent_at, now()), updated_at=now() where id=$1`, [r.id]);
+    r = await one(r.id); const st = invoiceState({ ...r, due_on: iso(r.due_on) }, Number(r.paid_cents), today()), ours = /\/pay\//.test(url || '');
+    const money = c => (Number(c) / 100).toLocaleString('en-US', { style: 'currency', currency: r.currency || 'USD' }), due = r.due_now_cents == null ? st.owedCents : Math.min(Number(r.due_now_cents), st.owedCents);
+    const first = String(r.contact_name || '').trim().split(/\s+/)[0] || 'there', name = pdfName(r.company, `Invoice ${r.number}`);
+    const pdf = await moneyInvoicePdf({ ...r, issued_on: iso(r.issued_on), due_on: iso(r.due_on) }, { instructions: await instructions() }, st);
+    const html = `<p>Hi ${emailEscape(first)},</p>${message ? `<p style="white-space:pre-wrap">${emailEscape(message)}</p>` : ''}<p>Here is invoice <b>${emailEscape(r.number)}</b> from Future Basics: <b>${emailEscape(money(due))}</b> ${r.due_on ? `due ${emailEscape(iso(r.due_on))}` : 'due now'}. The invoice is attached as a PDF.</p>`
+      + (url ? `${hubButton(url, `Pay ${money(due)} now`)}${ours ? '<p style="font-size:13px;color:#717177">Pay with Apple Pay, a card or your bank. The receipt comes by email as soon as it is paid.</p>' : ''}` : '') + '<p style="font-size:12px;color:#717177">Questions? Just reply to this email.</p>';
+    const sent = await sendHubEmail({ to, subject: `Invoice ${r.number} from Future Basics: ${money(due)} due`, html: hubEmailShell(`Invoice ${r.number}`, html), replyTo: req.money?.email, attachments: [{ filename: name, content: pdf }] });
+    if (!sent) return bad(reply, 'The invoice could not be emailed: email is not set up on this server', 503);
+    await onChange('sent', r.id); return { invoice: view(await one(r.id)), sentTo: to, payUrl: url || '' };
   });
 
   // ---------- the receipt: once something has been paid, what came in, on the same letterhead as the invoice ----------

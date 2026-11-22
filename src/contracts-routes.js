@@ -462,7 +462,7 @@ export function registerContractRoutes(app, d) {
     try {
       await db.query('begin'); await db.query('select pg_advisory_xact_lock(7731)');
       const used = (await db.query('select number from money_invoices')).rows.map(x => x.number), contact = r.contact_id ? (await db.query('select name, email from sales_contacts where id=$1', [r.contact_id])).rows[0] : null;
-      const payNote = c.plan.method === 'invoice' ? '' : `Paid by ${c.plan.method === 'ach' ? 'ACH bank debit' : c.plan.method === 'card' ? 'card' : (r.client_signature?.method === 'card' ? 'card' : 'ACH bank debit')} on file${c.plan.autopay ? ' (automatic payments authorized)' : ''}.`;
+      const payNote = c.plan.method === 'invoice' || !c.plan.autopay ? '' : `Paid by ${c.plan.method === 'ach' ? 'ACH bank debit' : c.plan.method === 'card' ? 'card' : (r.client_signature?.method === 'card' ? 'card' : 'ACH bank debit')} on file${c.plan.autopay ? ' (automatic payments authorized)' : ''}.`;
       // priced with sales tax: each payment is its share before tax plus the tax on it, so the invoice carries the tax as tax
       const taxed = c.fee?.charge === 'unit' && Number(c.fee.taxCents) > 0 && Number(c.fee.taxRatePct) > 0;
       const preTax = amount => { const base = Math.round(amount * 100 / (100 + Number(c.fee.taxRatePct))); for (const d of [0, 1, -1, 2, -2]) { const x = base + d; if (x > 0 && x + taxOf(x, c.fee.taxRatePct) === amount) return x; } return null; };

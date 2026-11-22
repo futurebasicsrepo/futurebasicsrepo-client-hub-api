@@ -567,6 +567,32 @@ try {
     ok((await P(O.token)).json.payNow?.amountCents === 300000, '   and their signing page shows it');
     // with automatic payments nothing changes: the details form asks, and the charge is taken from them
     ok((await P((await make('PN4', S11.replace('pay11', 'pay11b'), planCard)).token)).json.dueOnSigningCents === 0, '9. a contract with automatic payments keeps its own way of paying');
+    ok(sql(`select count(*) from money_invoices where contract_id='${A.id}' and notes like '%on file%'`) === '0', '   and an invoice from a contract without automatic payments does not say it is paid by a card on file');
+    // Money: any invoice still owed is sent to the client from the invoice, with the PDF and a Pay now button to our pay page
+    const M = (path, o = {}) => call('/v1/money' + path, { token: kyle, ...o }), S12 = SIGNER.replace('pay-', 'pay12-');
+    const dx = (await M('/invoices', { body: { number: `SC-${stamp}-1`, company: 'Send Co', contactName: 'Sam Sender', contactEmail: S12, issuedOn: today, terms: 'Due on receipt', dueOn: today, lines: [{ description: 'Deposit', qty: 1, rateCents: 500 }], workKind: 'product' } })).json.invoice;
+    ok(dx.status === 'draft' && !dx.payUrl, '10. a draft invoice in Money, product work, with no link yet');
+    const sc = await M(`/invoices/${dx.id}/send-to-client`, { body: { message: 'Thanks for signing: here is the deposit.' } });
+    ok(sc.status === 200 && sc.json.sentTo === S12 && sc.json.invoice.status === 'sent' && sc.json.invoice.payWith === 'stripe' && /\/pay\//.test(sc.json.payUrl), '    Send to the client sends it through our pay page (not the Shopify link product work would get), and it is marked sent', sc.json.invoice && { status: sc.json.invoice.status, payWith: sc.json.invoice.payWith, url: sc.json.payUrl });
+    const se = (await outbox(S12)).find(e => /^Invoice SC-.+ from Future Basics: \$5\.00 due$/.test(e.subject));
+    ok(se && /Pay \$5\.00 now/.test(se.html) && se.html.includes(sc.json.payUrl) && /Apple Pay, a card or your bank/.test(se.html) && /Thanks for signing: here is the deposit\./.test(se.html) && se.attachments.some(x => /^Send Co - Invoice SC-.+\.pdf$/.test(x.filename) && x.head === '%PDF-'), '    the client gets the invoice PDF, the note, and Pay $5.00 now', se && [se.subject, se.attachments.map(x => x.filename)]);
+    ok((await M(`/invoices/${dx.id}/send-to-client`, { body: { to: 'not-an-email' } })).status === 422, '    a bad address is refused in words');
+    const pv = await M(`/invoices/${dx.id}/void`, { body: {} }); ok(pv.status === 200 && (await M(`/invoices/${dx.id}/send-to-client`, { body: {} })).status === 409, '    a void invoice is not sent');
+    if (playwright) {
+      const d2 = (await M('/invoices', { body: { number: `SC-${stamp}-2`, company: 'Send Co', contactName: 'Sam Sender', contactEmail: S12, issuedOn: today, dueOn: today, lines: [{ description: 'Deposit', qty: 1, rateCents: 500 }], workKind: 'product' } })).json.invoice;
+      const br = await playwright.chromium.launch(); const errs = [];
+      try {
+        const ctx = await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+        const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(String(e))); pg.on('dialog', d => d.accept());
+        await pg.goto(`${BASE}/money?invoice=${d2.id}`, { waitUntil: 'networkidle' }); await pg.waitForSelector('#detail [data-act="sendopen"]', { timeout: 15000 });
+        ok(/Apple Pay, a card or their bank/.test(await pg.innerText('#detail')), '11. on a phone, the draft has Send to the client, saying it goes with a Pay now button');
+        await pg.click('#detail [data-act="sendopen"]'); ok(await pg.inputValue('#sendTo') === S12, '    it opens with the client\'s email filled in');
+        await pg.click('#detail [data-act="sendgo"]'); await pg.waitForFunction(() => /sent /i.test(document.querySelector('#detail')?.innerText || '') && /payment link · pay page/i.test(document.querySelector('#detail')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+        ok(sql(`select status||'|'||pay_with from money_invoices where id='${d2.id}'`) === 'sent|stripe' && /payment link · pay page/i.test(await pg.innerText('#detail')), '    Send the invoice: it is sent, and its pay page link shows on it', await pg.innerText('#detail').then(t => t.slice(0, 200)));
+        await pg.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j324-money-send.png` }).catch(() => {});
+        ok(errs.length === 0, '    no page errors', errs);
+      } finally { await br.close(); }
+    }
   });
 
 } finally { mock.close(); stripeMock.close(); }
