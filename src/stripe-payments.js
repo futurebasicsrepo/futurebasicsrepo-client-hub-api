@@ -103,6 +103,22 @@ export function createStripe({ env = process.env, fetchImpl = (...a) => fetch(..
   async function readIntent(id) { return setupRead(await call(`/setup_intents/${encodeURIComponent(id)}`, { expand: ['payment_method'] })); }
   async function removeInstrument(_ctx, { id }) { try { await call(`/payment_methods/${encodeURIComponent(id)}/detach`, { method: 'POST', form: {} }); return true; } catch (e) { if (e.status === 404) return true; throw e; } }
 
+  // ---- an invoice paid once, on our pay page (pay.html): a PaymentIntent the page confirms with Stripe.js ----
+  // Cards (Apple Pay and Google Pay come with them) and US bank accounts. A card answers at once; a bank payment is "processing" until it settles.
+  async function startPayment({ amountCents, currency = 'USD', customerId, metadata = {}, description = '', idempotencyKey }) {
+    const pi = await call('/payment_intents', { method: 'POST', idempotencyKey, form: { amount: usd(amountCents), currency: String(currency).toLowerCase(), customer: customerId, payment_method_types: ['card', 'us_bank_account'], description: String(description).slice(0, 300), metadata,
+      payment_method_options: { us_bank_account: { verification_method: 'automatic', financial_connections: { permissions: ['payment_method'] } } } } });
+    return { id: String(pi.id), clientSecret: String(pi.client_secret), status: String(pi.status || ''), amountCents: Number(pi.amount || 0) };
+  }
+  // What happened to it. → { id, status: succeeded | pending | open | declined, amountCents, metadata, instrument, reason }
+  async function readPayment(id) {
+    const pi = await call(`/payment_intents/${encodeURIComponent(id)}`, { expand: ['payment_method'] }), st = String(pi.status || '');
+    const status = st === 'succeeded' ? 'succeeded' : st === 'processing' ? 'pending' : st === 'canceled' ? 'declined' : pi.last_payment_error ? 'declined' : 'open';
+    return { id: String(pi.id), status, raw: st, amountCents: Number(st === 'succeeded' ? pi.amount_received || pi.amount : pi.amount) || 0, currency: String(pi.currency || 'usd').toUpperCase(), metadata: pi.metadata || {}, clientSecret: String(pi.client_secret || ''),
+      instrument: instrumentOf(pi.payment_method && typeof pi.payment_method === 'object' ? pi.payment_method : null), reason: String(pi.last_payment_error?.message || '').slice(0, 240) };
+  }
+  async function updatePaymentAmount(id, amountCents) { const pi = await call(`/payment_intents/${encodeURIComponent(id)}`, { method: 'POST', form: { amount: usd(amountCents) } }); return { id: String(pi.id), clientSecret: String(pi.client_secret), amountCents: Number(pi.amount || 0) }; }
+
   // ---- taking a payment ----
   // → { id, status: 'succeeded' | 'pending' | 'declined', reason }. A card answers at once; a bank debit is pending until it settles.
   const piState = pi => {
@@ -129,5 +145,5 @@ export function createStripe({ env = process.env, fetchImpl = (...a) => fetch(..
     return bt && typeof bt === 'object' ? { feeCents: Number(bt.fee || 0), netCents: Number(bt.net || 0), payoutId: '' } : null;
   }
 
-  return { name: 'stripe', configured, live, webhookSecret, publishableKey, embedded, startIntent, registerDomain, ensureCustomer, startSetup, readSetup, readIntent, instrumentOf, removeInstrument, charge, status, fees, saveInstrument: async () => { throw new Error('Stripe details are added on the Stripe page'); } };
+  return { name: 'stripe', configured, live, webhookSecret, publishableKey, embedded, startIntent, registerDomain, startPayment, readPayment, updatePaymentAmount, ensureCustomer, startSetup, readSetup, readIntent, instrumentOf, removeInstrument, charge, status, fees, saveInstrument: async () => { throw new Error('Stripe details are added on the Stripe page'); } };
 }
