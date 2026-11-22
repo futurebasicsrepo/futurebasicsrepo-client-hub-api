@@ -1129,7 +1129,17 @@ await journey('J94', 'All files: a client sends files outside a product and sees
 
   const a = await send('/v1/room-files', m.token, 'brief.pdf', 'the client brief');
   ok(a.status === 201 && a.json.file.by === 'client' && a.json.file.name === 'brief.pdf' && a.json.file.source === 'room', 'a client can send a file that belongs to no product', [a.status, a.json]);
-  ok((await send('/v1/room-files', m.token, 'virus.exe', 'x', 'application/octet-stream')).status === 415, 'a file type that is not allowed is refused');
+  const no = await send('/v1/room-files', m.token, 'virus.exe', 'x', 'application/octet-stream'); ok(no.status === 415 && /fonts \(OTF, TTF, WOFF, WOFF2\)/.test(no.json?.error || ''), 'a file type that is not allowed is refused, saying what is', no.json);
+  // a brand's fonts: every kind a brand hands over, kept as a font whatever the browser called it, and it comes back as the same bytes
+  const fontBytes = 'OTTO font bytes', fonts = [];
+  for (const n of ['Brand-Bold.otf', 'Brand-Regular.ttf', 'brand.woff', 'brand.woff2']) fonts.push(await send('/v1/room-files', m.token, n, fontBytes, 'application/octet-stream'));
+  ok(fonts.every(f => f.status === 201), 'a client can send their brand fonts (OTF, TTF, WOFF, WOFF2) to All files', fonts.map(f => [f.status, f.json?.error]));
+  ok(sql(`select string_agg(mime_type, ',' order by original_name) from room_files where client_id='${m.cid}' and original_name in ('Brand-Bold.otf','Brand-Regular.ttf','brand.woff','brand.woff2')`) === 'font/otf,font/ttf,font/woff,font/woff2', '   each is kept as a font, whatever the browser called it');
+  const fdl = await call(fonts[0].json.file.url, { token: m.token }); ok(fdl.status === 200 && fdl.text === fontBytes, '   and downloads as the same file');
+  const asset = await (async () => { const fd = new FormData(); fd.append('file', new Blob([fontBytes], { type: '' }), 'Brand-Bold.otf'); return call(`/v1/admin/products/${m.id}/assets?name=${encodeURIComponent('Brand font')}&kind=artwork`, { method: 'POST', token: admin, raw: fd }); })();
+  ok(asset.status === 201 && asset.json.version?.mime_type === 'font/otf' && asset.json.version.original_name === 'Brand-Bold.otf', 'staff can add a font to a product\'s assets', [asset.status, asset.json?.error, asset.json?.version?.mime_type]);
+  const sfont = await send(`/v1/admin/clients/${m.cid}/room-files`, admin, 'Brand-Italic.woff2', fontBytes, 'font/woff2'); ok(sfont.status === 201, '   and to a client\'s room files', [sfont.status, sfont.json?.error]);
+  sql(`delete from room_files where client_id='${m.cid}' and (original_name like 'Brand-%' or original_name like 'brand.%')`); // the lists below count only the brief
   ok((await send(`/v1/room-files?projectId=${otherProject}`, m.token, 'x.pdf')).status === 400 && (await send('/v1/room-files?projectId=nope', m.token, 'x.pdf')).status === 400, 'it cannot be filed under someone else\'s project, or one that does not exist');
   ok((await send('/v1/room-files', '', 'x.pdf')).status === 401, 'and it needs a sign-in');
   const sent = await mine(m.token); ok(names(sent).join() === 'brief.pdf' && sent.projects.some(pr => pr.id === projectId), 'their list shows it, and the projects they can file under', sent);

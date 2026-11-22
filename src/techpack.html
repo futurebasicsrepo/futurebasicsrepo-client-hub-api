@@ -1330,7 +1330,7 @@ const cpOnly=()=>MODE!=='admin'&&Boolean(S.pack?.clientPack?.only);
 const cpUrl=dl=>(MODE==='factory'?`/v1/tp/${encodeURIComponent(tokenMatch[1])}/client-pack`:MODE==='admin'?`/v1/admin/products/${S.product.id}/tech-pack/client-pack`:`/v1/products/${S.product.id}/tech-pack/client-pack`)+(dl?'?download=1':'');
 const cpKind=k=>/pdf/i.test(k.mime)||/\.pdf$/i.test(k.name)?'pdf':/image\/(png|jpe?g)/i.test(k.mime)||/\.(png|jpe?g)$/i.test(k.name)?'img':'';
 const cpSize=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
-const CP_ACCEPT='.pdf,.png,.jpg,.jpeg,.xlsx,.xls,.docx,.doc,.zip,.ai,.pptx,.csv';
+const CP_ACCEPT='.pdf,.png,.jpg,.jpeg,.xlsx,.xls,.docx,.doc,.zip,.ai,.pptx,.csv,.otf,.ttf,.woff,.woff2';
 function clientPackBlock(){if(S.draft)return '';const k=CP(),staff=MODE==='admin'&&!S.preview;
   if(!k&&!staff)return '';
   if(!k)return `<details class="block noprint" data-cpack style="padding:14px 32px"${S.techPack?.publishedAt||S.pack?.sketches?.some(x=>x.image)?'':' open'}><summary class="meta" style="cursor:pointer">The client made their own tech pack? Use their file</summary><p class="meta" style="margin-top:8px">If the client gave you a tech pack they made, use it here. It becomes the pack: publish it and the client approves it in their room, and the factory you assign reads it on its link, with Sign and Messages as usual. Our checks are not needed for it.</p>

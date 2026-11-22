@@ -227,7 +227,12 @@ const gzipAsync = promisify(gzipCb);
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const cleanName = value => basename(value).replace(/[^a-zA-Z0-9._-]/g, '-').slice(-160);
-const allowedExtensions = new Set(['.pdf','.ai','.eps','.png','.jpg','.jpeg','.svg','.zip','.doc','.docx','.xls','.xlsx','.csv','.ppt','.pptx','.txt']);
+// what can be uploaded to a product's assets, a project, a room's All files or a request: artwork, documents, and a brand's fonts
+const allowedExtensions = new Set(['.pdf','.ai','.eps','.png','.jpg','.jpeg','.svg','.zip','.doc','.docx','.xls','.xlsx','.csv','.ppt','.pptx','.txt','.otf','.ttf','.woff','.woff2']);
+const ALLOWED_WORDS = 'Allowed: PDF, AI, EPS, PNG, JPG, SVG, ZIP, fonts (OTF, TTF, WOFF, WOFF2), Word, Excel, PowerPoint, CSV, TXT';
+// a font is kept with its own type, whatever the browser called it (most send application/octet-stream), so it downloads as a font
+const FONT_MIME = { '.otf': 'font/otf', '.ttf': 'font/ttf', '.woff': 'font/woff', '.woff2': 'font/woff2' };
+const mimeOf = (name, given) => FONT_MIME[extname(String(name || '')).toLowerCase()] || given || 'application/octet-stream';
 const intakeWindows = new Map();
 function publicIntakeAllowed(ip,{bucket='intake',limit=5}={}){
   if(process.env.DEV_BYPASS_AUTH==='true')return true;
@@ -509,7 +514,7 @@ async function clientForEmail(email,q=pool){
 }
 
 async function storeAssetVersion(asset,userId,part,notes,role=null){
-  const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Allowed: PDF, AI, EPS, PNG, JPG, SVG, ZIP'),{statusCode:415});
+  const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error(ALLOWED_WORDS),{statusCode:415});
   const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
   const client=await pool.connect();
   try{
@@ -518,18 +523,18 @@ async function storeAssetVersion(asset,userId,part,notes,role=null){
     const version=(await client.query(`update assets set current_version=current_version+1,
       status=case when status='approved' then 'working' else status end,updated_at=now() where id=$1 returning current_version`,[asset.id])).rows[0].current_version;
     const row=(await client.query(`insert into asset_versions(asset_id,uploader_id,version,original_name,storage_name,mime_type,size_bytes,notes,uploader_role)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[asset.id,userId,version,originalName,storageName,part.mimetype,part.file.bytesRead,notes||null,role])).rows[0];
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[asset.id,userId,version,originalName,storageName,mimeOf(originalName,part.mimetype),part.file.bytesRead,notes||null,role])).rows[0];
     await client.query('commit');return row;
   }catch(error){await client.query('rollback').catch(()=>{});await unlink(path).catch(()=>{});throw error}finally{client.release()}
 }
 
 async function storeProjectFile(project,userId,uploaderRole,part,messageId=null){
-  const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Allowed: PDF, AI, EPS, PNG, JPG, SVG, ZIP, Word, Excel, PowerPoint, CSV, TXT'),{statusCode:415});
+  const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error(ALLOWED_WORDS),{statusCode:415});
   const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
   try{
     await pipeline(part.file,createWriteStream(path,{flags:'wx'}));
     return (await pool.query(`insert into project_files(project_id,client_id,message_id,uploader_id,uploader_role,original_name,storage_name,mime_type,size_bytes)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[project.id,project.client_id,messageId,userId,uploaderRole,originalName,storageName,part.mimetype,part.file.bytesRead])).rows[0];
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[project.id,project.client_id,messageId,userId,uploaderRole,originalName,storageName,mimeOf(originalName,part.mimetype),part.file.bytesRead])).rows[0];
   }catch(error){await unlink(path).catch(()=>{});throw error}
 }
 
@@ -2722,13 +2727,13 @@ app.get('/v1/admin/vendor/:sid/pdf',{preHandler:[authenticate,adminOnly]},async(
 
 // ---- All files: what is sent in a room outside a product (src/room-files.js says who sees what) ----
 async function storeRoomFile(clientId,userId,role,part,{projectId=null,productId=null,note=null,clientVisible=false,factoryVisible=false,purpose=null}={}){
-  const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Allowed: PDF, AI, EPS, PNG, JPG, SVG, ZIP, Word, Excel, PowerPoint, CSV, TXT'),{statusCode:415});
+  const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error(ALLOWED_WORDS),{statusCode:415});
   const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
   try{
     await pipeline(part.file,createWriteStream(path,{flags:'wx'}));
     if(part.file.truncated)throw Object.assign(new Error('That file is too large'),{statusCode:413});
     return (await pool.query(`insert into room_files(client_id,project_id,product_id,uploader_id,uploader_role,original_name,storage_name,mime_type,size_bytes,note,client_visible,factory_visible,purpose)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *`,[clientId,projectId,productId,userId,role,originalName,storageName,part.mimetype,part.file.bytesRead,note,clientVisible,factoryVisible,purpose])).rows[0];
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *`,[clientId,projectId,productId,userId,role,originalName,storageName,mimeOf(originalName,part.mimetype),part.file.bytesRead,note,clientVisible,factoryVisible,purpose])).rows[0];
   }catch(error){await unlink(path).catch(()=>{});throw error}
 }
 // A file belongs to a project and/or a product of this room. A product brings its project with it. null when either is not this client's.
@@ -2977,7 +2982,7 @@ app.post('/v1/requests/:id/files', { preHandler: authenticate }, async (req, rep
   const part = await req.file();
   if (!part) return reply.code(400).send({ error: 'One file is required' });
   const originalName = cleanName(part.filename);
-  if (!allowedExtensions.has(extname(originalName).toLowerCase())) return reply.code(415).send({ error: 'Allowed: PDF, AI, PNG, JPG, SVG, ZIP' });
+  if (!allowedExtensions.has(extname(originalName).toLowerCase())) return reply.code(415).send({ error: ALLOWED_WORDS });
   const storageName = `${randomBytes(18).toString('hex')}-${originalName}`;
   const path = join(uploadDir, storageName);
   try {
