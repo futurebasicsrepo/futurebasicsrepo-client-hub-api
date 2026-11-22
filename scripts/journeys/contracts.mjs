@@ -492,4 +492,46 @@ await journey('J189', 'Contracts in a browser: a physical product agreement is c
   } finally { await b.close(); }
 });
 
+await journey('J325', "A signed contract is invoiced from the client's room: Invoices & payments and the contract's project both list the room's agreements with the invoices each brings; one signed by both and not yet invoiced is marked and has Invoice now, which drafts its invoices and sends the payment due on signing to the client to pay on our pay page; then it shows that invoice, sent, with its pay link", async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  await C('/settings', { method: 'PUT', body: { providerName: 'Future Basics', providerAddress: '10 Studio Way, Norristown PA', signerName: 'Kyle Riggle', signerTitle: 'Founder', governingLaw: 'Pennsylvania' } });
+  const pid = room.project?.id, R = (q = '') => K(`/room/${clientId}${q}`);
+  const made = await C('', { body: { content: body({ title: `Room invoice ${stamp}`, client: { company: 'Room Co', address: '1 Main St, Norristown PA 19401', signerName: 'Room Signer', signerTitle: 'Owner', signerEmail: room.email }, fee: { totalCents: 50000 } }, buildPlan({ type: 'full', totalCents: 50000, method: 'invoice' }).plan) } });
+  const id = made.json.contract.id; if (pid) sql(`update contracts set project_id='${pid}' where id='${id}'`);
+  ok((await R()).json.agreements.every(a => a.id !== id), '1. a draft is left to Contracts: the room does not list it');
+  const tok = tokenOf((await C(`/${id}/send`, { body: {} })).json.link);
+  let a = (await R()).json.agreements.find(x => x.id === id);
+  ok(a && a.status === 'sent' && a.needsInvoicing === false && a.dueOnSigningCents === 50000 && /\$500\.00 on signing/.test(a.plan), '2. once sent the room lists it, with its plan and what is due on signing', a);
+  ok([401, 403].includes((await call(`/v1/contracts/room/${clientId}`, { token: room.token })).status), '   a client cannot ask for it');
+  await P(tok, '/sign', { body: signBody({ autopay: false, method: undefined }) }); await K(`/${id}/countersign`, { body: {} });
+  a = (await R()).json.agreements.find(x => x.id === id);
+  ok(a.status === 'executed' && a.needsInvoicing === false && a.invoices.length === 1 && a.invoices[0].state === 'open' && /\/pay\//.test(a.invoices[0].payUrl), '3. signed by both today, it is invoiced at once: its invoice is sent, with our pay link', a.invoices);
+  // one signed before this: no invoices; the room marks it and invoices it
+  sql(`delete from money_invoices where contract_id='${id}'`); sql(`update contracts set invoices_at=null where id='${id}'`);
+  a = (await R()).json.agreements.find(x => x.id === id); ok(a.needsInvoicing === true && a.invoices.length === 0 && a.payOnSigningReady === true, '4. one signed by both and never invoiced is marked as needing it', a);
+  if (pid) ok((await R(`?project=${pid}`)).json.agreements.some(x => x.id === id && x.needsInvoicing), '   and is listed under its project too');
+  const b = await playwright.chromium.launch(); const errs = [];
+  try {
+    const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+    const page = await ctx.newPage(); page.on('pageerror', e => errs.push(String(e))); page.on('dialog', d => d.accept());
+    await page.goto(`${BASE}/clients/${clientId}`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => typeof window.selectRoom === 'function', null, { timeout: 15000 });
+    await page.evaluate(() => window.selectRoom('invoices')); await page.waitForSelector(`#roomAgreements #ag-${id}`, { timeout: 15000 });
+    const card = (await page.innerText(`#ag-${id}`)).replace(/\s+/g, ' ');
+    ok(/Signed by both/i.test(card) && /Not invoiced yet/.test(card) && /\$500\.00 was due on signing/.test(card) && await page.locator(`#ag-${id} button:has-text("Invoice now")`).count() === 1, '5. on a phone, Invoices & payments leads with Agreements & invoices: the signed contract is marked not invoiced, with Invoice now', card.slice(0, 260));
+    const order = await page.evaluate(() => { const a = document.getElementById('roomAgreements'), q = document.getElementById('roomQuotes'); return a && q && (a.compareDocumentPosition(q) & Node.DOCUMENT_POSITION_FOLLOWING) ? 'agreements first' : 'quotes first'; });
+    ok(order === 'agreements first' && /to invoice/i.test(await page.innerText('#roomAgreements h2')) && await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), '   above the quotes, counted in its heading, and with no sideways scroll', order);
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j325-room.png` }).catch(() => {});
+    if (pid) {
+      await page.evaluate(p => window.selectRoom('project', p), pid); await page.waitForSelector(`#pjAgree-${pid} #ag-${id} button:has-text("Invoice now")`, { timeout: 15000 });
+      ok(true, '6. the contract\'s project shows the same card and Invoice now');
+      await page.click(`#pjAgree-${pid} #ag-${id} button:has-text("Invoice now")`);
+      await page.waitForFunction(i => !document.querySelector(`#ag-${i} button.primary`) && /Sent · unpaid/i.test(document.getElementById(`ag-${i}`)?.innerText || ''), id, { timeout: 15000 }).catch(() => {});
+    } else { await page.click(`#ag-${id} button:has-text("Invoice now")`); await page.waitForFunction(i => /Sent · unpaid/i.test(document.getElementById(`ag-${i}`)?.innerText || ''), id, { timeout: 15000 }).catch(() => {}); }
+    const after = (await page.innerText(`#ag-${id}`)).replace(/\s+/g, ' ');
+    ok(/Invoice \w+ · \$500\.00/.test(after) && /Sent · unpaid/i.test(after) && /Copy pay link/.test(after) && !/Invoice now/.test(after) && /emailed a link to pay \$500\.00/.test(await page.innerText('#toast').catch(() => '')), '7. Invoice now: the invoice is made and sent to be paid on our pay page, the card shows it with its pay link, and says the client was emailed', after.slice(0, 260));
+    ok(sql(`select status||'|'||pay_with from money_invoices where contract_id='${id}'`) === 'sent|stripe' && (await outbox(room.email)).some(e => /^Payment due:/.test(e.subject) && /Pay \$500\.00 now/.test(e.html)), '   the invoice is sent through our pay page, and the client has the Payment due email with Pay now');
+    ok(errs.length === 0, '   no page errors', errs);
+  } finally { await b.close(); }
+});
+
 const badCount = summary(); process.exit(badCount ? 1 : 0);

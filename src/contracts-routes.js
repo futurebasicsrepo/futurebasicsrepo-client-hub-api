@@ -38,7 +38,7 @@ import { cleanTaxRate, taxOf, taxableOf, unitsTotal, taxRule, stateOf, localOf, 
 import { contractPdf } from './contract-pdf.js';
 import { pdfName, disposition } from './pdf-name.js';
 import { markUrl } from './signatures.js';
-import { moneyAllowed, cleanInvoice, nextInvoiceNumber } from './money.js';
+import { moneyAllowed, cleanInvoice, nextInvoiceNumber, invoiceState } from './money.js';
 import { syncContractDeal } from './sales-deals.js';
 import { createAutopay, authorizationText } from './autopay.js';
 import { processor as paymentProcessor, tokensUrl } from './qb-payments.js';
@@ -236,6 +236,18 @@ export function registerContractRoutes(app, d) {
     return reply.type('application/pdf').header('content-disposition', disposition(pdfName(req.body?.content?.client?.company, `Agreement ${number} (draft)`))).header('cache-control', 'no-store').send(buf);
   });
 
+  // A client's room (and one of its projects): its agreements with the invoices each brings, and the room's other invoices from Money, so staff
+  // invoice a signed contract from where they are working (src/admin.html, Invoices & payments and the project page). Drafts are left to Contracts.
+  app.get('/v1/contracts/room/:clientId', { preHandler: pre }, async (req, reply) => {
+    const cid = req.params.clientId, pid = UUID.test(String(req.query?.project || '')) ? req.query.project : null; if (!UUID.test(cid)) return bad(reply, 'Not found', 404);
+    const rows = (await pool.query(`select * from contracts where (client_id=$1 or (client_id is null and lower(content->'client'->>'signerEmail') in (select lower(email) from users where client_id=$1))) and status in ('sent','signed_by_client','executed','closed') and ($2::uuid is null or project_id=$2) order by coalesce(executed_at, sent_at, created_at) desc limit 50`, [cid, pid])).rows;
+    const invs = (await pool.query(`select i.id, i.number, i.status, i.total_cents, i.credits, i.due_on, i.pay_url, i.contract_id, i.contract_seq, coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id), 0)::bigint paid
+      from money_invoices i where i.status<>'void' and (i.contract_id = any($1::uuid[]) or (i.client_id=$2 and i.contract_id is null and ($3::uuid is null or i.project_id=$3))) order by i.contract_seq nulls last, i.issued_on desc, i.number desc limit 200`, [rows.map(r => r.id), cid, pid])).rows;
+    const today = todayISO(), iv = i => { const st = invoiceState({ ...i, due_on: iso(i.due_on) }, Number(i.paid), today); return { id: i.id, number: i.number, state: st.state, totalCents: Number(i.total_cents), owedCents: st.owedCents, dueOn: iso(i.due_on), payUrl: i.pay_url || '' }; };
+    return { agreements: rows.map(r => { const c = r.content, plan = c.plan; return { id: r.id, number: r.number, title: r.title, status: r.status, totalCents: Number(r.total_cents), currency: r.currency, projectId: r.project_id, executedAt: r.executed_at, autopay: !!plan.autopay, plan: planWords(plan, r.currency, c.kind),
+      needsInvoicing: r.status === 'executed' && !r.invoices_at, dueOnSigningCents: plan.autopay ? 0 : plan.installments.filter(p => p.event === 'signing').reduce((n, p) => n + Number(p.amountCents), 0), payOnSigningReady: payable(r), invoices: invs.filter(i => i.contract_id === r.id).map(iv) }; }),
+      others: invs.filter(i => !i.contract_id).map(iv) };
+  });
   app.get('/v1/contracts', { preHandler: pre }, async (req) => {
     for (const x of (await pool.query(`update contracts set status='expired', updated_at=now() where status='sent' and expires_at < now() returning *`)).rows) { await ev(x.id, 'expired', { detail: 'Not signed before ' + iso(x.expires_at) }); await syncContractDeal(pool, x, { log }); }
     const q = clip(req.query?.q, 80).toLowerCase(), status = STATUS_FILTER.includes(req.query?.status) ? req.query.status : '';
