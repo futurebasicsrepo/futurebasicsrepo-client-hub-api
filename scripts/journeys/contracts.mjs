@@ -81,9 +81,11 @@ await journey('J164', 'Contracts: a fixed-fee agreement is drafted from a deal, 
   ok(sql(`select stage from sales_deals where id='${deal}'`) === 'won', 'the deal moves to Won');
   ok((await K(`/${id}/countersign`, { body: {} })).status === 409, 'it cannot be countersigned twice');
   const signedMail = (await outbox(SIGNER)).find(e => /Signed by both parties/.test(e.subject));
-  ok(signedMail && signedMail.attachments.some(a => /^TFB Agreement .+ \(signed\)\.pdf$/.test(a.filename) && a.head === '%PDF-' && a.bytes > 20000) && /attached as a PDF/.test(signedMail.text), 'the client is sent their signed copy, with the signed PDF attached', signedMail && signedMail.attachments);
+  ok(signedMail && signedMail.attachments.some(a => / - Agreement .+ \(signed\)\.pdf$/.test(a.filename) && a.head === '%PDF-' && a.bytes > 20000) && /attached as a PDF/.test(signedMail.text), 'the client is sent their signed copy, with the signed PDF attached', signedMail && signedMail.attachments);
   const spdf = await fetch(`${BASE}/v1/contracts/${id}/pdf`, { headers: { authorization: `Bearer ${kyle}` } }); const sbuf = Buffer.from(await spdf.arrayBuffer());
   ok(spdf.status === 200 && sbuf.subarray(0, 5).toString() === '%PDF-' && (sbuf.toString('latin1').match(/\/Type \/Page\b/g) || []).length >= 4, 'staff download the signed PDF, certificate page included');
+  const sname = decodeURIComponent((/filename\*=UTF-8''([^;]+)/.exec(spdf.headers.get('content-disposition') || '') || [])[1] || '');
+  ok(/^.+ - Agreement FB-C-\d{4}-\d{3,}.* \(signed\)\.pdf$/.test(sname) && sname.startsWith(exec.json.contract.client?.company || sql(`select content->'client'->>'company' from contracts where id='${id}'`)), 'it is named for the client and the agreement number, so a phone saves it under that name, not "Unknown"', sname);
   ok((await C(`/${id}/void`, { body: { reason: 'x' } })).status === 409 && (await C(`/${id}/revise`, { body: {} })).status === 409, 'a fully signed contract cannot be voided or revised');
 
   // invoices from the schedule

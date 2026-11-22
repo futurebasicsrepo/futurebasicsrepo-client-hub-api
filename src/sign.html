@@ -40,7 +40,7 @@
     .opt{display:flex;gap:10px;margin:0 0 14px;flex-wrap:wrap}.opt label{flex:1;min-width:130px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;cursor:pointer;display:flex;gap:10px;align-items:center;background:var(--fog)}.opt input{accent-color:var(--ink)}
     .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:15px 24px;border-radius:999px;border:1px solid var(--ink);background:var(--ink);color:#fff;font-weight:600;cursor:pointer;text-decoration:none;width:100%;font-size:16px}
     .btn:disabled{opacity:.4;cursor:not-allowed}.btn.light{background:#fff;color:var(--ink);width:auto;padding:11px 18px;font-size:14px}.btn.go{background:var(--cue);border-color:var(--ink);color:var(--ink)}
-    .payform .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.payform .two>*,.payform .f{min-width:0}.payform input:not([type=checkbox]),.payform select{width:100%;max-width:100%;box-sizing:border-box}.payform .pel{min-height:120px;margin:0 0 14px}.payform .secure{display:flex;align-items:center;gap:8px;justify-content:center;margin:12px 0 0;color:var(--dim);font-size:13px}.payform .secure:before{content:'';width:12px;height:12px;border-radius:3px;border:1.5px solid currentColor;box-shadow:inset 0 -5px 0 0 var(--fog)}
+    .payform .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.payform .two>*,.payform .f{min-width:0}.payform input:not([type=checkbox]),.payform select{width:100%;max-width:100%;box-sizing:border-box}.payform .pel{min-height:120px;margin:0 0 14px}.payform .secure{display:flex;align-items:center;gap:8px;justify-content:center;margin:12px 0 0;color:var(--dim);font-size:13px}.payform .secure svg{flex:none}
     .payform .testnote{background:#fff7d6;border:1px solid #e6d27a;border-radius:10px;padding:8px 12px;font-size:14px;margin:0 0 12px}.payform .opt{margin:6px 0 12px}.payform small.hint{display:block;color:var(--dim);font-size:13px;margin:-4px 0 12px}.onfile{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between}.onfile b{font-weight:500}
     .msg{min-height:22px;margin:10px 0 0;font-size:14px;color:var(--bad)}
     .linkbtn{background:none;border:0;color:var(--dim);text-decoration:underline;cursor:pointer;padding:6px 0;font-size:14px}
@@ -96,7 +96,7 @@ img.ink{display:block;height:56px;width:auto;max-width:100%;margin:2px 0 8px}
         <table><thead><tr><th>Payment</th><th>Due</th><th class="n">Amount</th></tr></thead><tbody>${sch.rows.map(x=>`<tr><td>${esc(x.label)}</td><td>${esc(x.when)}</td><td class="n">${esc(x.amountText)}</td></tr>`).join('')}</tbody></table></div>
       <div class="doc" id="doc">${r.sections.map(section).join('')}</div><div id="signBox"></div>`;
     $('#state').classList.add('hidden');$('#app').classList.remove('hidden');
-    const pdf=$('#pdfTop');pdf.href=`/v1/public/contracts/${encodeURIComponent(TOKEN)}/pdf`;pdf.classList.remove('hidden');
+    const pdf=$('#pdfTop');pdf.href=`/v1/public/contracts/${encodeURIComponent(TOKEN)}/pdf?dl=1`;pdf.setAttribute('download','');pdf.classList.remove('hidden');
     if(c.pay)payForm(c);
     if(c.canSign){signForm(c);$('#barFee').textContent=fee.totalText;$('#barLabel').textContent=fee.units&&fee.units.length?'Total':'Fixed fee';$('#bar').classList.remove('hidden')}
     else{$('#bar').classList.add('hidden');if(c.status==='executed'||c.status==='signed_by_client')$('#signBox').innerHTML=`<div class="sign done"><div class="tick">✓</div><h2>${c.status==='executed'?'Fully signed':'Waiting for '+esc(P.provider.name)}</h2><p>${c.status==='executed'?'Both parties have signed this agreement.':'You will get an email when it is final.'}</p><a class="btn light" href="${pdf.href}" target="_blank" rel="noopener">Download the PDF</a></div>`}
@@ -142,14 +142,14 @@ img.ink{display:block;height:56px;width:auto;max-width:100%;margin:2px 0 8px}
       <div id="pEl" class="pel"><p class="lead">Loading the secure form…</p></div>
       <label class="chk"><input type="checkbox" id="pAuth"><span>${esc(p.authorization)}</span></label>
       <button class="btn go" id="pGo" disabled>Save ${what}</button><p class="msg" id="pMsg" role="alert"></p>
-      <p class="secure">Secured by Stripe. We never see or keep your ${card?'card number':'bank login or account number'}.</p></form>`;
+      <p class="secure"><svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true"><rect x="1" y="6" width="10" height="7.5" rx="1.6" fill="currentColor"/><path d="M3.4 6V4.4a2.6 2.6 0 0 1 5.2 0V6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Secured by Stripe. We never see or keep your ${card?'card number':'bank login or account number'}.</p></form>`;
     const go=$('#pGo'),msg=$('#pMsg'),label=go.textContent;let stripe=null,elements=null,complete=false,busy=false;
     const sync=()=>{go.disabled=busy||!(elements&&complete&&$('#pAuth').checked)};
     $('#pAuth').addEventListener('change',sync);
     loadStripe().then(()=>{
       stripe=window.Stripe(p.publishableKey);
       elements=stripe.elements({mode:'setup',currency:'usd',paymentMethodTypes:[card?'card':'us_bank_account'],appearance:BRAND,fonts:[{cssSrc:`${location.origin}/fonts/fonts.css`}],loader:'never'});
-      const pe=elements.create('payment',{layout:{type:'tabs'},defaultValues:{billingDetails:{name:(c.signer&&c.signer.name)||'',email:(c.signer&&c.signer.email)||''}},wallets:{applePay:'auto',googlePay:'auto'},terms:{card:'never'}});
+      const pe=elements.create('payment',{layout:{type:'tabs'},defaultValues:{billingDetails:{name:(c.signer&&c.signer.name)||'',email:(c.signer&&c.signer.email)||''}},wallets:{applePay:'auto',googlePay:'auto',link:'never'},terms:{card:'never'}});
       $('#pEl').innerHTML='';pe.mount('#pEl');pe.on('change',e=>{complete=!!e.complete;sync()});
     }).catch(e=>{$('#pEl').innerHTML='';msg.textContent=e.message});
     $('#pf').addEventListener('submit',async e=>{e.preventDefault();if(go.disabled)return;busy=true;sync();go.textContent='Saving…';msg.textContent='';

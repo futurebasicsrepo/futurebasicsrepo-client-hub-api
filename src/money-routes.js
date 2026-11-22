@@ -15,6 +15,7 @@ import { payoutRow, payoutTotals, needsScope } from './shopify-payouts.js';
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber, invoiceState, aging, parseInvoiceCsv, METHODS } from './money.js';
 import { moneyInvoicePdf } from './money-pdf.js';
 import { receiptPdf, receiptEmail, receiptNumber } from './receipt-pdf.js';
+import { pdfName, disposition } from './pdf-name.js';
 import { qbConfig, signState, readState, authUrl, endpoints, exchangeCode, revoke, companyInfo, pushInvoice, invoiceLink, paymentsSince, methodOf, recordPayment as qbRecordPayment, SCOPE, PAYMENT_SCOPE } from './quickbooks.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -103,7 +104,7 @@ export function registerMoneyRoutes(app, d) {
     if (!needId(req, reply)) return; const r = await one(req.params.id); if (!r) return bad(reply, 'Not found', 404);
     const st = invoiceState({ ...r, due_on: iso(r.due_on) }, Number(r.paid_cents), today());
     const buf = await moneyInvoicePdf({ ...r, issued_on: iso(r.issued_on), due_on: iso(r.due_on), pay_url: ['paid', 'void'].includes(r.status) ? '' : r.pay_url }, { instructions: await instructions() }, st);
-    return reply.type('application/pdf').header('content-disposition', `inline; filename="TFB Invoice ${String(r.number).replace(/[^A-Za-z0-9_-]/g, '-')}.pdf"`).send(buf);
+    return reply.type('application/pdf').header('content-disposition', disposition(pdfName(r.company, `Invoice ${r.number}`))).send(buf);
   });
 
   // ---------- the receipt: once something has been paid, what came in, on the same letterhead as the invoice ----------
@@ -139,7 +140,7 @@ export function registerMoneyRoutes(app, d) {
     if (!needId(req, reply)) return; const r = await one(req.params.id); if (!r) return bad(reply, 'Not found', 404);
     const why = receiptReady(r); if (why) return bad(reply, why, 409);
     const input = await receiptInput(r);
-    return reply.type('application/pdf').header('content-disposition', `inline; filename="${receiptEmail(input).filename}"`).send(await receiptPdf(input));
+    return reply.type('application/pdf').header('content-disposition', disposition(receiptEmail(input).filename)).send(await receiptPdf(input));
   });
   app.post('/v1/money/invoices/:id/receipt', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const r = await one(req.params.id); if (!r) return bad(reply, 'Not found', 404);

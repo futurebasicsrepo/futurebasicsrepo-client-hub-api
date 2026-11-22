@@ -30,7 +30,7 @@ test('the receipt is a PDF on the letterhead, and its email names the amount and
   assert.equal(pdf.subarray(0, 4).toString(), '%PDF'); assert.ok(pdf.length > 8000);
   const e = receiptEmail(hat(), { message: 'Hats ship <Friday>', esc: s => String(s).replace(/</g, '&lt;') });
   assert.equal(e.subject, 'Receipt for invoice 1047: $5,000.00 paid in full');
-  assert.match(e.body, /Hi Sam/); assert.match(e.body, /\$5,000\.00/); assert.match(e.body, /Hats ship &lt;Friday>/); assert.equal(e.filename, 'TFB Receipt R-1047.pdf');
+  assert.match(e.body, /Hi Sam/); assert.match(e.body, /\$5,000\.00/); assert.match(e.body, /Hats ship &lt;Friday>/); assert.equal(e.filename, 'Example Labs Inc. - Receipt R-1047.pdf');
   assert.match(receiptEmail(hat({ totalCents: 800000, subtotalCents: 800000 })).subject, /\$5,000\.00 received/, 'a part payment says received, not paid in full');
 });
 
@@ -57,12 +57,12 @@ async function moneyApp({ paidCents = 500000, sent = true } = {}) {
 test('Money: a paid invoice downloads its receipt and emails it to the client with the PDF attached, and remembers it was sent', async () => {
   const { app, ID, mails, writes } = await moneyApp();
   const pdf = await app.inject({ method: 'GET', url: `/v1/money/invoices/${ID}/receipt.pdf` });
-  assert.equal(pdf.statusCode, 200); assert.match(pdf.headers['content-type'], /application\/pdf/); assert.match(pdf.headers['content-disposition'], /TFB Receipt R-1047\.pdf/);
+  assert.equal(pdf.statusCode, 200); assert.match(pdf.headers['content-type'], /application\/pdf/); assert.match(pdf.headers['content-disposition'], /^inline; filename="Example Labs Inc\. - Receipt R-1047\.pdf"; filename\*=UTF-8''Example%20Labs%20Inc\.%20-%20Receipt%20R-1047\.pdf$/);
   const sent = await app.inject({ method: 'POST', url: `/v1/money/invoices/${ID}/receipt`, payload: { message: 'Thank you!' } });
   assert.equal(sent.statusCode, 200, sent.body); assert.equal(sent.json().sentTo, 'sam@example.test', 'to the contact on the invoice unless told otherwise');
   assert.equal(mails.length, 1); assert.equal(mails[0].to, 'sam@example.test'); assert.equal(mails[0].replyTo, 'staff@example.test', 'replies go to whoever sent it');
   assert.match(mails[0].subject, /Receipt for invoice 1047/); assert.match(mails[0].html, /Thank you!/);
-  assert.equal(mails[0].attachments[0].filename, 'TFB Receipt R-1047.pdf'); assert.equal(Buffer.from(mails[0].attachments[0].content).subarray(0, 4).toString(), '%PDF');
+  assert.equal(mails[0].attachments[0].filename, 'Example Labs Inc. - Receipt R-1047.pdf'); assert.equal(Buffer.from(mails[0].attachments[0].content).subarray(0, 4).toString(), '%PDF');
   assert.equal(writes.length, 1); assert.ok(sent.json().invoice.receiptSentAt);
   const other = await app.inject({ method: 'POST', url: `/v1/money/invoices/${ID}/receipt`, payload: { to: 'AP@Example.test' } });
   assert.equal(other.json().sentTo, 'ap@example.test', 'or to another address'); assert.equal((await app.inject({ method: 'POST', url: `/v1/money/invoices/${ID}/receipt`, payload: { to: 'not an email' } })).statusCode, 422);
@@ -74,4 +74,13 @@ test('Money: nothing paid, no receipt; and a receipt that could not be emailed i
   assert.equal((await none.app.inject({ method: 'POST', url: `/v1/money/invoices/${none.ID}/receipt`, payload: {} })).statusCode, 409); assert.equal(none.mails.length, 0);
   const down = await moneyApp({ sent: false }), r = await down.app.inject({ method: 'POST', url: `/v1/money/invoices/${down.ID}/receipt`, payload: {} });
   assert.equal(r.statusCode, 503); assert.match(r.json().error, /not set up/); assert.equal(down.writes.length, 0);
+});
+
+test('a PDF is named for the client, what it is and its number, and the header keeps the exact name', async () => {
+  const { pdfName, disposition } = await import('../src/pdf-name.js');
+  assert.equal(pdfName('Comet over Delphi', 'Agreement FB-C-2026-004 (signed)'), 'Comet over Delphi - Agreement FB-C-2026-004 (signed).pdf');
+  assert.equal(pdfName('A/B: "Studio"', 'Receipt R-12'), 'A B Studio - Receipt R-12.pdf', 'characters a file name cannot hold are dropped');
+  assert.equal(pdfName('', 'Invoice 1001'), 'Invoice 1001.pdf');
+  assert.equal(disposition('Café Ñ - Invoice 7.pdf'), `inline; filename="Cafe N - Invoice 7.pdf"; filename*=UTF-8''Caf%C3%A9%20%C3%91%20-%20Invoice%207.pdf`);
+  assert.match(disposition('X.pdf', { inline: false }), /^attachment; /);
 });

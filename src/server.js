@@ -34,6 +34,7 @@ import { stubEdit } from './proto-build.js';
 import { qbConfig as qbConfigOf } from './quickbooks.js'
 import { moneyInvoicePdf } from './money-pdf.js'
 import { receiptPdf, receiptEmail } from './receipt-pdf.js'
+import { pdfName, disposition as pdfDisposition } from './pdf-name.js'
 import { coverageChecks, coverageConfig, redactSecrets } from './platform-coverage.js'
 import { createStaffGate } from './staff-gate.js';
 import { createStaffAccess } from './staff-access.js';
@@ -2394,7 +2395,7 @@ app.get('/v1/invoices/:id/download',{preHandler:authenticate},async(req,reply)=>
   const what=row.kind==='deposit'?`Sample deposit${row.product_title?` - ${row.product_title}${row.quote_version?` (quote v${row.quote_version})`:''}`:''}`:row.product_title?`Development and production - ${row.product_title}`:row.project_name?`Project invoice - ${row.project_name}`:'Project invoice';
   const settings={instructions:String(((await getSetting('moneyPayment').catch(()=>null))||{}).instructions||'')};
   const pdf=await moneyInvoicePdf({number:row.number,company:row.client_name,address:'',contact_name:'',contact_email:'',issued_on:issued,terms:days?`Net ${days}`:'Due on receipt',due_on:due,lines:[{description:what,qty:1,rateCents:Number(row.amount_cents)}],tax_rate:0,tax_cents:0,subtotal_cents:Number(row.amount_cents),total_cents:Number(row.amount_cents),credits:[],due_now_label:'Total due',due_now_cents:null,notes:row.project_name&&row.product_title?`Project: ${row.project_name}`:'',currency:row.currency||'USD',status:row.status,pay_url:row.external_url||''},settings,{state:row.status==='paid'?'paid':row.status});
-  return reply.type('application/pdf').header('content-disposition',`attachment; filename="${safeNumber}.pdf"`).send(pdf);
+  return reply.type('application/pdf').header('content-disposition',pdfDisposition(pdfName(row.client_name,`Invoice ${safeNumber}`),{inline:false})).send(pdf);
 });
 // The receipt for a paid invoice (src/receipt-pdf.js), on the same letterhead as the invoice: the same line, and the payment (when Shopify took it,
 // with its order number, or when staff recorded it). The client downloads it from the hub; staff download it, or email it with the PDF attached.
@@ -2414,7 +2415,7 @@ app.get('/v1/invoices/:id/receipt.pdf',{preHandler:authenticate},async(req,reply
   const r=await hubReceipt(req.params.id);
   if(!r||(req.auth.role!=='admin'&&r.row.client_id!==req.auth.clientId))return reply.code(404).send({error:'Invoice not found'});
   if(r.row.status!=='paid')return reply.code(409).send({error:'The receipt is ready once the invoice is paid'});
-  return reply.type('application/pdf').header('content-disposition',`attachment; filename="${receiptEmail(r.input).filename}"`).send(await receiptPdf(r.input));
+  return reply.type('application/pdf').header('content-disposition',pdfDisposition(receiptEmail(r.input).filename,{inline:false})).send(await receiptPdf(r.input));
 });
 app.post('/v1/admin/invoices/:id/receipt',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const r=await hubReceipt(req.params.id);if(!r)return reply.code(404).send({error:'Invoice not found'});

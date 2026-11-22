@@ -36,6 +36,7 @@ import { addressLine } from './onboarding.js';
 import { invoiceOf, sizesWords } from './order-quotes.js';
 import { cleanTaxRate, taxOf, taxableOf, unitsTotal, taxRule, stateOf, localOf, US_STATES, REGISTERED_STATES, PA_LOCAL, cleanUnits, cleanContent, renderContract, sendProblems, docHash, signToken, readToken, nextNumber, checkSignature, buildPlan, planWords, schedule, defaultSections, dollars, longDate, todayISO, addDays, KINDS, TERMS, isProduct, defaultProduct, PRODUCT_CATEGORIES, INCOTERMS, PRODUCTION_MODES } from './contracts.js';
 import { contractPdf } from './contract-pdf.js';
+import { pdfName, disposition } from './pdf-name.js';
 import { markUrl } from './signatures.js';
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber } from './money.js';
 import { syncContractDeal } from './sales-deals.js';
@@ -93,6 +94,8 @@ export function registerContractRoutes(app, d) {
   });
   const stateFor = async r => ({ status: r.status, sentAt: r.sent_at, hash: r.doc_hash || '', clientSignature: r.client_signature, providerSignature: r.provider_signature, declined: r.declined, events: (await pool.query(`select kind, at, ip, meta from contract_events where contract_id=$1 and kind='viewed' order by at limit 1`, [r.id])).rows });
   // the PDF draws the ink itself, so it is read in with the state
+  // "Comet over Delphi - Agreement FB-C-2026-004.pdf", with "(signed)" once both have signed
+  const agreementName = r => pdfName(r.content?.client?.company, `Agreement ${r.number}${['executed', 'closed'].includes(r.status) ? ' (signed)' : ''}`);
   const pdfState = async r => { const st = await stateFor(r), ps = st.providerSignature; return ps?.ink && signatures ? { ...st, providerSignature: { ...ps, inkPng: await signatures.pngOf(ps.ink).catch(() => null) } } : st; };
   const renderOf = async (r, st) => renderContract({ ...r.content, number: r.number }, st || await settings());
 
@@ -227,7 +230,7 @@ export function registerContractRoutes(app, d) {
   app.post('/v1/contracts/render.pdf', { preHandler: pre }, async (req, reply) => {
     const st = await settings(), c = cleanContent(req.body?.content, { settings: st, lenient: true }), number = clip(req.body?.number, 40) || 'Draft';
     const buf = await contractPdf(renderContract({ ...c.value, number }, st), { status: 'draft', hash: '', sentAt: null, clientSignature: null, providerSignature: null, declined: null, events: [] });
-    return reply.type('application/pdf').header('content-disposition', `inline; filename="${number}-preview.pdf"`).header('cache-control', 'no-store').send(buf);
+    return reply.type('application/pdf').header('content-disposition', disposition(pdfName(req.body?.content?.client?.company, `Agreement ${number} (draft)`))).header('cache-control', 'no-store').send(buf);
   });
 
   app.get('/v1/contracts', { preHandler: pre }, async (req) => {
@@ -298,7 +301,7 @@ export function registerContractRoutes(app, d) {
   app.get('/v1/contracts/:id/pdf', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const r = await fresh(await one(req.params.id)); if (!r) return bad(reply, 'Not found', 404);
     const buf = await contractPdf(await renderOf(r), await pdfState(r));
-    return reply.type('application/pdf').header('content-disposition', `inline; filename="${r.number}.pdf"`).header('cache-control', 'no-store').send(buf);
+    return reply.type('application/pdf').header('content-disposition', disposition(agreementName(r), { inline: req.query?.dl !== '1' })).header('cache-control', 'no-store').send(buf);
   });
 
   // ---- sending, reminding, replacing the link ------------------------------------------------------------------------------------------------
@@ -378,7 +381,7 @@ export function registerContractRoutes(app, d) {
     const fresh2 = await one(r.id), c = fresh2.content, link = linkOf(fresh2);
     // the signed agreement goes with the email as a PDF (both signatures, the fingerprint and the audit trail), so the client has the file itself
     const signedPdf = await contractPdf(await renderOf(fresh2), await pdfState(fresh2)).catch(e => { log.warn?.({ contracts: true, err: String(e.message).slice(0, 200) }, 'the signed PDF could not be made for the email'); return null; });
-    await sendHubEmail({ to: c.client.signerEmail, subject: `Signed by both parties: ${c.title} (${r.number})`, html: hubEmailShell(`Signed: ${c.title}`, `<p>Hi ${emailEscape(firstName(c.client.signerName))},</p><p>The agreement <b>${emailEscape(c.title)}</b> (${emailEscape(r.number)}) is now signed by both parties. ${signedPdf ? 'The signed copy is attached as a PDF. You can also open it any time:' : 'You can open it and download the signed copy any time:'}</p>${hubButton(link, 'Open the signed agreement')}<p style="font-size:12px;color:#717177">Keep this email: ${signedPdf ? 'the attachment and the link are' : 'the link is'} your copy.</p>`), ...(signedPdf ? { attachments: [{ filename: `TFB Agreement ${String(r.number).replace(/[^A-Za-z0-9_-]/g, '-')} (signed).pdf`, content: signedPdf }] } : {}) }).catch(() => {});
+    await sendHubEmail({ to: c.client.signerEmail, subject: `Signed by both parties: ${c.title} (${r.number})`, html: hubEmailShell(`Signed: ${c.title}`, `<p>Hi ${emailEscape(firstName(c.client.signerName))},</p><p>The agreement <b>${emailEscape(c.title)}</b> (${emailEscape(r.number)}) is now signed by both parties. ${signedPdf ? 'The signed copy is attached as a PDF. You can also open it any time:' : 'You can open it and download the signed copy any time:'}</p>${hubButton(link, 'Open the signed agreement')}<p style="font-size:12px;color:#717177">Keep this email: ${signedPdf ? 'the attachment and the link are' : 'the link is'} your copy.</p>`), ...(signedPdf ? { attachments: [{ filename: agreementName(fresh2), content: signedPdf }] } : {}) }).catch(() => {});
     await notifyStaff(`Signed by both parties: ${r.number} (${c.client.company})`, `<p><b>${emailEscape(c.title)}</b> is fully signed (${emailEscape(dollars(r.total_cents, r.currency))}).</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}<p>${c.plan.method !== 'invoice' && fresh2.invoices_at ? 'The invoices are drafted from the payment schedule and show in Money. Next: start the project.' : 'Next: draft the invoices from the payment schedule, and start the project.'}</p>`);
   }
 
@@ -611,7 +614,7 @@ export function registerContractRoutes(app, d) {
   app.get('/v1/public/contracts/:token/pdf', async (req, reply) => {
     const r = await byToken(req, reply); if (!r) return; if (['void', 'draft'].includes(r.status)) return bad(reply, 'This agreement is no longer open', 404);
     const buf = await contractPdf(await renderOf(r), await pdfState(r));
-    return reply.type('application/pdf').header('content-disposition', `inline; filename="${r.number}.pdf"`).header('cache-control', 'no-store').send(buf);
+    return reply.type('application/pdf').header('content-disposition', disposition(agreementName(r), { inline: req.query?.dl !== '1' })).header('cache-control', 'no-store').send(buf);
   });
   app.post('/v1/public/contracts/:token/sign', async (req, reply) => {
     const r = await byToken(req, reply); if (!r) return;

@@ -16,7 +16,7 @@ const C = (path, o = {}) => call('/v1/contracts' + path, { token: colby, ...o })
 const tokenOf = link => String(link).split('/sign/')[1], P = (token, path = '', o = {}) => call(`/v1/public/contracts/${token}${path}`, o);
 const outbox = async to => (await call(`/v1/dev/outbox?to=${encodeURIComponent(to)}`)).json.emails || [];
 // the receipt email carries the branded receipt PDF
-const receiptPdfOn = e => !!e && e.attachments.some(a => /^TFB Receipt R-.+\.pdf$/.test(a.filename) && a.head === '%PDF-') && /receipt, R-.+ is attached as a PDF/.test(e.text);
+const receiptPdfOn = e => !!e && e.attachments.some(a => / - Receipt R-.+\.pdf$/.test(a.filename) && a.head === '%PDF-') && /receipt, R-.+ is attached as a PDF/.test(e.text);
 const SIGNER = `pay-${stamp}@salon.test`, SIGNER2 = `pay2-${stamp}@salon.test`, SIGNER3 = `pay3-${stamp}@salon.test`, SIGNER4 = `pay4-${stamp}@salon.test`, SIGNER5 = `pay5-${stamp}@salon.test`, SIGNER6 = `pay6-${stamp}@salon.test`;
 const body = (n, email, plan, over = {}) => ({ title: `Autopay site ${n} ${stamp}`, kind: 'website', client: { company: `Pay Salon ${n} ${stamp}`, address: '1 Main St, Norristown PA 19401', signerName: 'Pat Payer', signerTitle: 'Owner', signerEmail: email }, project: { name: 'Salon website' }, scope: ['A five-page website', 'Booking link'], fee: { totalCents: 300000 }, timeline: { effectiveOn: '2026-11-01', startOn: '2026-11-03', completionOn: '2027-02-15' }, plan, ...over });
 const sign = (o = {}) => ({ name: 'Pat Payer', title: 'Owner', agree: true, esign: true, autopay: true, ...o });
@@ -365,7 +365,7 @@ try {
     qbm.linkPaid.push(paid(`PL${stamp}1`, `QBL-${stamp}-1`, Number(t1), today), paid(`PL${stamp}2`, `QBL-${stamp}-2`, 50000, old));
     const sy = await call('/v1/money/quickbooks/sync', { token: kyle, body: {} }); ok(sy.status === 200 && sy.json.added >= 2, 'the sync reads both payments', sy.json);
     const rec = (await outbox(S7)).filter(e => /^Receipt for invoice/.test(e.subject));
-    ok(rec.length === 1 && rec[0].subject.includes(n1) && /paid in full/.test(rec[0].subject) && rec[0].attachments.some(a => /^TFB Receipt R-.+\.pdf$/.test(a.filename) && a.head === '%PDF-'), 'the client gets one receipt, for the invoice just paid, with its PDF', rec.map(e => [e.subject, e.attachments]));
+    ok(rec.length === 1 && rec[0].subject.includes(n1) && /paid in full/.test(rec[0].subject) && rec[0].attachments.some(a => / - Receipt R-.+\.pdf$/.test(a.filename) && a.head === '%PDF-'), 'the client gets one receipt, for the invoice just paid, with its PDF', rec.map(e => [e.subject, e.attachments]));
     ok(sql(`select status||'|'||coalesce(receipt_sent_to,'') from money_invoices where id='${i1}'`) === `paid|${S7}` && sql(`select coalesce(receipt_sent_to,'-') from money_invoices where id='${i2}'`) === '-', 'Money shows that receipt as sent; the old payment sent none');
     await call('/v1/money/quickbooks/sync', { token: kyle, body: {} }); ok((await outbox(S7)).filter(e => /^Receipt for invoice/.test(e.subject)).length === 1, 'syncing again sends nothing more');
     qbm.linkPaid.length = 0;

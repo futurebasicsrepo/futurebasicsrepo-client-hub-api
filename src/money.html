@@ -171,7 +171,7 @@ async function detail(id){
     if(a==='void'){if(confirm('Void this invoice?'))await act(()=>api(`/v1/money/invoices/${id}/void`,{body:{}}),'Voided.',id);return}
     if(a==='paylink')return act(()=>api(`/v1/money/invoices/${id}/pay-link`,{body:{}}),'Payment link made. It is on the PDF now.',id);
     if(a==='relink'){if(confirm('Make a new payment link? The old one stops being the one on the PDF.'))await act(()=>api(`/v1/money/invoices/${id}/pay-link`,{body:{refresh:true}}),'New payment link made.',id);return}
-    if(a==='receipt'){try{const x=await fetch(`/v1/money/invoices/${id}/receipt.pdf`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!x.ok)throw new Error((await x.json().catch(()=>({}))).error||'The receipt could not be made');const u=URL.createObjectURL(await x.blob());window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000)}catch(x){$('#dMsg').className='msg bad';$('#dMsg').textContent=x.message}return}
+    if(a==='receipt'){try{const x=await fetch(`/v1/money/invoices/${id}/receipt.pdf`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!x.ok)throw new Error((await x.json().catch(()=>({}))).error||'The receipt could not be made');await savePdf(x,'Receipt.pdf')}catch(x){$('#dMsg').className='msg bad';$('#dMsg').textContent=x.message}return}
     if(a==='rcptopen'){const f=$('#rcptForm');f.classList.toggle('hidden');if(!f.classList.contains('hidden'))$('#rcptTo').focus();return}
     if(a==='rcptsend'){const to=$('#rcptTo').value.trim(),message=$('#rcptMsg').value;return act(async()=>{const r=await api(`/v1/money/invoices/${id}/receipt`,{body:{to,message}});say(`Receipt sent to ${r.sentTo}.`)},`Receipt sent to ${to}.`,id)}
     if(a==='copylink'){try{await navigator.clipboard.writeText(i.payUrl);say('Link copied.')}catch{prompt('Payment link',i.payUrl)}return}
@@ -182,7 +182,9 @@ async function detail(id){
       $('#payGo').onclick=()=>act(()=>part?api(`/v1/money/invoices/${id}/payments`,{body:{amountCents:Math.round(num($('#payAmt').value)*100),paidOn:$('#payOn').value,method:$('#payHow').value,reference:$('#payRef').value}}):api(`/v1/money/invoices/${id}/paid`,{body:{paidOn:$('#payOn').value,method:$('#payHow').value,reference:$('#payRef').value}}),part?'Payment recorded.':'Marked paid.',id)}};
 }
 async function act(fn,m,id){try{await fn();await load();await detail(id);say(m)}catch(x){$('#dMsg').className='msg bad';$('#dMsg').textContent=x.message}}
-async function pdf(id){const r=await fetch(`/v1/money/invoices/${id}/pdf`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error('The PDF could not be made');const u=URL.createObjectURL(await r.blob());window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000)}
+// Save a PDF under the name the server gives it ("Client - Receipt R-1043.pdf"), so a phone or a download folder keeps it, instead of an unnamed tab
+async function savePdf(res,fallback){const cd=res.headers.get('content-disposition')||'',m=cd.match(/filename\*=UTF-8''([^;]+)/)||cd.match(/filename="([^"]+)"/);const name=m?decodeURIComponent(m[1]):fallback;const u=URL.createObjectURL(await res.blob()),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000)}
+async function pdf(id){const r=await fetch(`/v1/money/invoices/${id}/pdf`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error('The PDF could not be made');await savePdf(r,'Invoice.pdf')}
 
 // ---------- import ----------
 function importer(){
