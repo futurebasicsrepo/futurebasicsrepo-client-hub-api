@@ -41,7 +41,9 @@ A part payment makes a receipt for what came in, with the balance still due.
 - **A project's invoices** (the Shopify draft orders made from a project, a quote or a sample deposit): in the work console's project money section a paid invoice has **Download receipt** and **Email receipt**. The payment date and order number come from the Shopify order the payment sync recorded; an invoice marked paid by hand shows the day it was marked. Routes: `GET /v1/invoices/:id/receipt.pdf` (staff, and the client for their own), `POST /v1/admin/invoices/:id/receipt { to?, message? }`.
 - **The client** downloads the receipt for any paid invoice from their hub.
 
-Nothing is emailed without someone pressing the button, and a receipt that could not be sent (no email service) says so and is not marked sent.
+- **A contract's payments send their own receipt.** An automatic payment (card or bank, through QuickBooks Payments or Stripe) emails the client the receipt with the PDF attached as soon as it is taken. It shows the payment even if QuickBooks has not booked it yet. A contract's invoice the client pays through its QuickBooks link is receipted on the next QuickBooks sync, once, and only for a payment from the last few days, so connecting QuickBooks again never mails receipts for old payments. Either way the invoice in Money shows the receipt as sent.
+
+Otherwise nothing is emailed without someone pressing the button, and a receipt that could not be sent (no email service) says so and is not marked sent.
 
 ## QuickBooks Online
 Money → Settings has a QuickBooks panel: **Connect** (sign in at Intuit; Danielle or Kyle only), **Test connection** (reads the company name, changes nothing), **Read payments now**, **Disconnect**.

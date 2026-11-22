@@ -80,7 +80,8 @@ await journey('J164', 'Contracts: a fixed-fee agreement is drafted from a deal, 
   ok(exec.status === 200 && exec.json.contract.status === 'executed' && exec.json.contract.providerSignature.name === 'Kyle Riggle' && exec.json.contract.executedAt, 'Future Basics signs and the agreement is final', JSON.stringify(exec.json.contract).slice(0, 200));
   ok(sql(`select stage from sales_deals where id='${deal}'`) === 'won', 'the deal moves to Won');
   ok((await K(`/${id}/countersign`, { body: {} })).status === 409, 'it cannot be countersigned twice');
-  ok((await outbox(SIGNER)).some(e => /Signed by both parties/.test(e.subject)), 'the client is sent their signed copy');
+  const signedMail = (await outbox(SIGNER)).find(e => /Signed by both parties/.test(e.subject));
+  ok(signedMail && signedMail.attachments.some(a => /^TFB Agreement .+ \(signed\)\.pdf$/.test(a.filename) && a.head === '%PDF-' && a.bytes > 20000) && /attached as a PDF/.test(signedMail.text), 'the client is sent their signed copy, with the signed PDF attached', signedMail && signedMail.attachments);
   const spdf = await fetch(`${BASE}/v1/contracts/${id}/pdf`, { headers: { authorization: `Bearer ${kyle}` } }); const sbuf = Buffer.from(await spdf.arrayBuffer());
   ok(spdf.status === 200 && sbuf.subarray(0, 5).toString() === '%PDF-' && (sbuf.toString('latin1').match(/\/Type \/Page\b/g) || []).length >= 4, 'staff download the signed PDF, certificate page included');
   ok((await C(`/${id}/void`, { body: { reason: 'x' } })).status === 409 && (await C(`/${id}/revise`, { body: {} })).status === 409, 'a fully signed contract cannot be voided or revised');
