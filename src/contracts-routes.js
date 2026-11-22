@@ -1,5 +1,5 @@
 // Contracts for digital work and physical product development. Staff build one from a deal and its project, send it for signature, and see who has opened and signed it; the client opens a private
-// link, reads the whole agreement and signs by typing their name. See contracts.js for the rules and docs/contracts.md for the flow.
+// link, reads the whole agreement and signs with a finger (or a mouse) and their typed name. See contracts.js for the rules and docs/contracts.md for the flow.
 //
 //   Staff (any signed-in teammate unless noted)
 //   GET  /v1/contracts                      the list, newest first (?status=, ?q=)
@@ -28,7 +28,7 @@
 //
 //   The client (no sign-in: the link is the key)
 //   GET  /v1/public/contracts/:token        the agreement as the client sees it      GET .../pdf
-//   POST /v1/public/contracts/:token/sign { name, title, agree, esign, autopay?, method? }      POST .../decline { reason }
+//   POST /v1/public/contracts/:token/sign { name, title, agree, esign, autopay?, method?, ink? (the signature drawn with a finger, a PNG data URL) }      POST .../decline { reason }
 //
 // Sales: every contract is a deal (sales-deals.js syncContractDeal). Saving a draft opens one at Meeting worth the contract's total (or uses the deal it
 // was made from), sending moves it to Proposal, signing by both wins it, and declining, expiring or voiding loses it unless something else on it is live.
@@ -96,7 +96,10 @@ export function registerContractRoutes(app, d) {
   // the PDF draws the ink itself, so it is read in with the state
   // "Comet over Delphi - Agreement FB-C-2026-004.pdf", with "(signed)" once both have signed
   const agreementName = r => pdfName(r.content?.client?.company, `Agreement ${r.number}${['executed', 'closed'].includes(r.status) ? ' (signed)' : ''}`);
-  const pdfState = async r => { const st = await stateFor(r), ps = st.providerSignature; return ps?.ink && signatures ? { ...st, providerSignature: { ...ps, inkPng: await signatures.pngOf(ps.ink).catch(() => null) } } : st; };
+  const pdfState = async r => {
+    const st = await stateFor(r), withInk = async g => (g?.ink && signatures ? { ...g, inkPng: await signatures.pngOf(g.ink).catch(() => null) } : g);
+    return { ...st, providerSignature: await withInk(st.providerSignature), clientSignature: await withInk(st.clientSignature) };
+  };
   const renderOf = async (r, st) => renderContract({ ...r.content, number: r.number }, st || await settings());
 
   // ---- drafting from the platform -----------------------------------------------------------------------------------------------------------
@@ -310,7 +313,7 @@ export function registerContractRoutes(app, d) {
     const c = r.content, plan = c.plan, link = linkOf(r), until = longDate(iso(r.expires_at));
     const body = `<p>Hi ${emailEscape(firstName(c.client.signerName))},</p><p>${reminder ? 'A reminder: ' : ''}${emailEscape(senderName || c.provider.name)} has sent you an agreement to review and sign: <b>${emailEscape(c.title)}</b> (${emailEscape(r.number)}).</p>`
       + `<p>Fixed fee <b>${emailEscape(dollars(c.fee.totalCents, c.fee.currency))}</b>, paid ${emailEscape(planWords(plan, c.fee.currency, c.kind))}.</p>${message ? `<p style="padding:10px 14px;border-left:3px solid #4bff9a;background:#f5f5f2">${emailEscape(message).replace(/\n/g, '<br>')}</p>` : ''}`
-      + `<p>You read the whole agreement on the page and sign by typing your name. It takes a couple of minutes and works on a phone.</p>${hubButton(link, 'Review and sign')}<p style="font-size:12px;color:#717177">The link is yours alone and works until ${emailEscape(until)}. Questions? Just reply to this email.</p>`;
+      + `<p>You read the whole agreement on the page and sign it with your finger. It takes a couple of minutes and works on a phone.</p>${hubButton(link, 'Review and sign')}<p style="font-size:12px;color:#717177">The link is yours alone and works until ${emailEscape(until)}. Questions? Just reply to this email.</p>`;
     return sendHubEmail({ to: c.client.signerEmail, subject: `${reminder ? 'Reminder: ' : ''}Please review and sign: ${c.title} (${r.number})`, html: hubEmailShell(`Please review and sign: ${c.title}`, body), replyTo: replyTo || undefined });
   }
 
@@ -622,6 +625,8 @@ export function registerContractRoutes(app, d) {
     const rendered = await renderOf(r); if (docHash(rendered) !== r.doc_hash) return bad(reply, 'This agreement has changed since it was sent. Ask the sender for a new link.', 409);
     const s = checkSignature(req.body, r.content); if (s.error) return bad(reply, s.error);
     const sig = { ...s.value, at: new Date().toISOString(), ip: ipOf(req), ua: uaOf(req), hash: r.doc_hash, agree: true, esign: true, email: r.content.client.signerEmail };
+    // signed with a finger (or a pen, or a mouse) as well as the typed name: the drawing becomes the ink on the page and the PDF
+    if (req.body?.ink != null && signatures?.inkFromDrawing) { const m = await signatures.inkFromDrawing(req.body.ink); if (m.error) return bad(reply, m.error); sig.ink = m.id; }
     const u = await pool.query(`update contracts set client_signature=$2::jsonb, status='signed_by_client', updated_at=now() where id=$1 and status='sent' returning provider_signature`, [r.id, JSON.stringify(sig)]);
     if (!u.rowCount) return bad(reply, 'This agreement has already been signed.', 409);
     await ev(r.id, 'signed_client', { actor: sig.name, detail: sig.title, ip: sig.ip, meta: { ua: sig.ua, method: sig.method || null, autopay: !!sig.autopay } });

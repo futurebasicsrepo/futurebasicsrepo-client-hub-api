@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSizes, sizesTotal, sizesWords, tierFor, matchRequest, cleanQuote, clientQuote, quoteNumber } from '../src/order-quotes.js';
+import { parseSizes, sizesTotal, sizesWords, tierFor, matchRequest, cleanQuote, clientQuote, quoteNumber, signatureView, cleanAcceptSignature } from '../src/order-quotes.js';
 
 const PRODUCTS = ['Cap — Green', 'Cap — Tan', 'Beanie — Green', 'Multitool', 'Long Sleeve "Yosemite"', 'T-Shirt "Taxi"', 'Water Bottle'].map((title, i) => ({ id: 'p' + i, title }));
 
@@ -121,4 +121,14 @@ test('comping and discounting at the invoice stage changes the same Shopify draf
   assert.equal(r.json().quote.invoice.totalCents, 110000);
   paid = true; assert.equal((await put({ comped: [0] })).statusCode, 409, 'a paid invoice is not changed');
   paid = false; quote = { ...quote, status: 'sent' }; assert.equal((await put({ comped: [0] })).statusCode, 409, 'before acceptance, the quote is edited instead');
+});
+
+test('accepting a quote is signing it: the name and the ink show, never the address or device it was signed from', () => {
+  const ink = '0b6c7c3e-1b2a-4c3d-9e8f-0123456789ab';
+  const v = clientQuote({ id: 'q', number: 'Q-2026-0002', status: 'accepted', lines: [], total_cents: 1000, accepted_signature: { name: 'Olive Owner', at: '2026-11-02T15:04:00Z', ip: '203.0.113.9', ua: 'iPhone', ink } });
+  assert.deepEqual(v.signature, { name: 'Olive Owner', at: '2026-11-02T15:04:00Z', ink: `/v1/public/signature-marks/${ink}` });
+  assert.equal(JSON.stringify(v).includes('203.0.113.9'), false);
+  assert.equal(signatureView({ name: 'Typed only' }).ink, null, 'a typed name alone has no ink'); assert.equal(signatureView({ name: 'x', ink: '../etc' }).ink, null); assert.equal(signatureView(null), null);
+  assert.deepEqual(cleanAcceptSignature({ name: '  Olive   Owner ', ink: 'data:image/png;base64,AAA' }, 'fallback'), { name: 'Olive Owner', image: 'data:image/png;base64,AAA' });
+  assert.equal(cleanAcceptSignature({}, 'Signed-in name').name, 'Signed-in name', 'with no name typed, the signed-in person\'s name is used');
 });

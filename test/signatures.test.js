@@ -26,3 +26,12 @@ test('a tech pack signature keeps the ink it was signed with', () => {
   const v = normalizeVerification({ version: 3, brandSign: { name: 'Demo Signer', at: '2026-11-06T12:00:00Z', by: 'demo@example.com', ink: '0d4f0a3e-8a7b-4f0e-9a51-2a1d6c3e9b10' }, clientSign: { name: 'A Client', ink: 'not-an-id' } }, 3);
   assert.equal(v.brandSign.ink, '0d4f0a3e-8a7b-4f0e-9a51-2a1d6c3e9b10'); assert.ok(!('ink' in v.clientSign));
 });
+
+test('a signature drawn with a finger on the page (blue strokes on a clear background) becomes ink; an empty pad does not', async () => {
+  const W = 600, H = 200, raw = Buffer.alloc(W * H * 4);
+  for (let x = 60; x < 520; x++) { const y = Math.round(100 + 40 * Math.sin(x / 30)); for (let dy = -2; dy <= 2; dy++) { const i = ((y + dy) * W + x) * 4; raw[i] = 31; raw[i + 1] = 47; raw[i + 2] = 134; raw[i + 3] = 255; } }
+  const drawn = await sharp(raw, { raw: { width: W, height: H, channels: 4 } }).png().toBuffer();
+  const ink = await inkify(drawn); assert.ok(ink && ink.width > ink.height, 'the line is found and cropped to');
+  const empty = await sharp({ create: { width: W, height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer();
+  assert.equal(await inkify(empty), null, 'nothing drawn is no signature');
+});

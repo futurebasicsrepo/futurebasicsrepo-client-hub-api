@@ -33,7 +33,7 @@
     .doc p{margin:0 0 10px;color:#26262a;max-width:68ch}.doc ul{margin:0 0 10px;padding-left:20px;color:#26262a}.doc li{margin:0 0 4px}.nope{color:var(--dim);font-size:14px}
     .sign{background:var(--paper);border:1px solid var(--ink);border-radius:24px;padding:clamp(18px,4vw,28px);scroll-margin-top:80px}
     .sign h2{margin:0 0 4px;font-size:24px;font-weight:500;letter-spacing:-.02em}.sign .lead{margin:0 0 16px;color:var(--dim)}
-    label.f{display:block;margin:0 0 14px}label.f>span{display:block;font:500 10px 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.14em;color:var(--dim);margin-bottom:6px}
+    label.f,div.f{display:block;margin:0 0 14px}label.f>span,div.f>span{display:block;font:500 10px 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.14em;color:var(--dim);margin-bottom:6px}
     input[type=text],textarea{width:100%;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--fog);outline:none}input[type=text]:focus,textarea:focus{border-color:var(--ink);background:#fff}
     .hand{font:italic 500 26px/1.2 Georgia,'Times New Roman',serif!important}
     .chk{display:flex;gap:12px;align-items:flex-start;margin:0 0 12px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--fog);cursor:pointer}.chk input{margin-top:4px;width:20px;height:20px;accent-color:var(--ink);flex:none}.chk span{font-size:14.5px}
@@ -60,6 +60,7 @@
 img.ink{display:block;height:56px;width:auto;max-width:100%;margin:2px 0 8px}
 </style>
 <script src="/feedback.js"></script>
+<script src="/sign-pad.js"></script>
 </head>
 <body>
 <header><span class="wm">Future Basics<i></i></span><span class="noprint" style="display:flex;gap:12px;align-items:center"><a href="/" id="hubTop" class="noprint">Your hub</a><a href="#" id="pdfTop" class="noprint hidden" target="_blank" rel="noopener">PDF</a></span></header>
@@ -88,7 +89,7 @@ img.ink{display:block;height:56px;width:auto;max-width:100%;margin:2px 0 8px}
   function render(c){
     const r=c.rendered,P=r.parties,fee=r.sections.find(s=>s.kind==='fee'),sch=r.sections.find(s=>s.kind==='schedule');
     document.title=`${c.title} — sign`;
-    const sigs=`${c.providerSignature?`<p>Signed for ${esc(P.provider.name)} by <b>${esc(c.providerSignature.name)}</b> on ${esc(when(c.providerSignature.at))}.</p>${c.providerSignature.ink?`<img class="ink" src="${esc(c.providerSignature.ink)}" alt="Signature of ${esc(c.providerSignature.name)}">`:''}`:''}${c.clientSignature?`<p>Signed for ${esc(P.client.company)} by <b>${esc(c.clientSignature.name)}</b> on ${esc(when(c.clientSignature.at))}.</p>`:''}`;
+    const sigs=`${c.providerSignature?`<p>Signed for ${esc(P.provider.name)} by <b>${esc(c.providerSignature.name)}</b> on ${esc(when(c.providerSignature.at))}.</p>${c.providerSignature.ink?`<img class="ink" src="${esc(c.providerSignature.ink)}" alt="Signature of ${esc(c.providerSignature.name)}">`:''}`:''}${c.clientSignature?`<p>Signed for ${esc(P.client.company)} by <b>${esc(c.clientSignature.name)}</b> on ${esc(when(c.clientSignature.at))}.</p>${c.clientSignature.ink?`<img class="ink" src="${esc(c.clientSignature.ink)}" alt="Signature of ${esc(c.clientSignature.name)}">`:''}`:''}`;
     let top='';
     if(c.status==='executed')top=`<div class="banner ok"><b>Signed by both parties</b>This is your copy. Download the PDF and keep it with your records.${sigs}</div>`;
     else if(c.status==='signed_by_client')top=`<div class="banner ok"><b>You have signed. Thank you.</b>It becomes final when ${esc(P.provider.name)} signs too. We will email you a copy.${sigs}</div>`;
@@ -228,8 +229,9 @@ img.ink{display:block;height:56px;width:auto;max-width:100%;margin:2px 0 8px}
   function toast(m){const t=document.createElement('div');t.textContent=m;t.style.cssText='position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#141416;color:#fff;padding:12px 18px;border-radius:10px;z-index:30;font-size:15px';document.body.appendChild(t);setTimeout(()=>t.remove(),4000)}
   function signForm(c){
     const sg=c.signer,pl=c.plan;
-    $('#signBox').innerHTML=`<form class="sign" id="sign" autocomplete="off"><h2>Sign this agreement</h2><p class="lead">Type your full name to sign. It is your signature, with the same effect as signing on paper.</p>
-      <label class="f"><span>Your full name</span><input type="text" id="sName" class="hand" placeholder="${esc(sg.name||'Full name')}" autocapitalize="words" required></label>
+    $('#signBox').innerHTML=`<form class="sign" id="sign" autocomplete="off"><h2>Sign this agreement</h2><p class="lead">Sign with your finger (or a mouse) and type your full name. It is your signature, with the same effect as signing on paper.</p>
+      <div class="f"><span>Your signature</span><div id="sPad"></div></div>
+      <label class="f"><span>Your full name</span><input type="text" id="sName" placeholder="${esc(sg.name||'Full name')}" autocapitalize="words" required></label>
       <label class="f"><span>Your title (optional)</span><input type="text" id="sTitle" placeholder="${esc(sg.title||'Owner')}"></label>
       ${pl.method==='either'?`<div class="meta" style="margin-bottom:6px">How would you like to pay?</div><div class="opt"><label><input type="radio" name="m" value="ach"> ACH bank debit</label><label><input type="radio" name="m" value="card"> Card</label></div>`:''}
       ${pl.autopay?`<label class="chk"><input type="checkbox" id="sAuto"><span>I authorize the automatic payments described in the payment schedule. We email a receipt for each one, and I can cancel with three business days' notice.</span></label>`:''}
@@ -238,10 +240,10 @@ img.ink{display:block;height:56px;width:auto;max-width:100%;margin:2px 0 8px}
       <button class="btn go" id="sGo" disabled>Sign the agreement</button><p class="msg" id="sMsg" role="alert"></p>
       <button type="button" class="linkbtn" id="dBtn">Something is not right? Decline or ask for changes</button>
       <div id="dBox" class="hidden"><label class="f"><span>What should change? (optional)</span><textarea id="dWhy" rows="3"></textarea></label><button type="button" class="btn light" id="dGo">Decline this agreement</button></div></form>`;
-    const f=$('#sign'),ready=()=>{const need=$('#sName').value.trim().length>=2&&$('#sAgree').checked&&$('#sEsign').checked&&(!pl.autopay||$('#sAuto').checked)&&(pl.method!=='either'||f.querySelector('input[name=m]:checked'));$('#sGo').disabled=!need};
+    const f=$('#sign'),pad=SignPad($('#sPad'),{onChange:()=>ready()}),ready=()=>{const need=!pad.empty()&&$('#sName').value.trim().length>=2&&$('#sAgree').checked&&$('#sEsign').checked&&(!pl.autopay||$('#sAuto').checked)&&(pl.method!=='either'||f.querySelector('input[name=m]:checked'));$('#sGo').disabled=!need};
     f.addEventListener('input',ready);f.addEventListener('change',ready);
     f.addEventListener('submit',async e=>{e.preventDefault();$('#sGo').disabled=true;$('#sMsg').textContent='';
-      try{const body={name:$('#sName').value,title:$('#sTitle').value,agree:$('#sAgree').checked,esign:$('#sEsign').checked};if(pl.autopay)body.autopay=$('#sAuto').checked;if(pl.method==='either')body.method=f.querySelector('input[name=m]:checked').value;
+      try{const body={name:$('#sName').value,title:$('#sTitle').value,agree:$('#sAgree').checked,esign:$('#sEsign').checked,ink:pad.data()};if(pl.autopay)body.autopay=$('#sAuto').checked;if(pl.method==='either')body.method=f.querySelector('input[name=m]:checked').value;
         const r=await api('/sign',{body});$('#bar').classList.add('hidden');const d=await api('');render(d);window.scrollTo({top:0,behavior:'smooth'})}
       catch(x){$('#sMsg').textContent=x.message;ready()}});
     $('#dBtn').onclick=()=>$('#dBox').classList.toggle('hidden');

@@ -81,6 +81,7 @@ export function contractPdf(rendered, state = {}) {
     const cs = state.clientSignature;
     if (cs) {
       const bits = [`Consent to sign electronically: ${cs.esign ? 'given' : 'not recorded'}.`, `Read and agreed to the contract: ${cs.agree ? 'yes' : 'no'}.`];
+      bits.push(cs.ink ? 'Signed by hand on the signing page (drawn with a finger, pen or mouse) and by typing their name.' : 'Signed by typing their name.');
       if (cs.method) bits.push(`Payment method chosen: ${cs.method === 'ach' ? 'ACH bank debit' : 'card'}.`);
       if (cs.autopay) bits.push('Authorized the automatic payments in the payment schedule.');
       doc.fillColor(INK).font('SG').fontSize(9.5).text(bits.join(' '), L, cy, { width: CW, lineGap: 2 });

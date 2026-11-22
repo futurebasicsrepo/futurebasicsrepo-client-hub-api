@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { journey, ok, summary, api, jpeg, codeFrom, sleep, navTo, waitAi, forge, sql, stamp, S, setAsideOpportunities, withOpportunityLock, ownerOf } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, codeFrom, sleep, navTo, waitAi, forge, sql, stamp, S, signWithFinger, setAsideOpportunities, withOpportunityLock, ownerOf } from './lib.mjs';
 const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright');
 const BASE = 'http://127.0.0.1:3123', LOG = `${S}/server-j-a.log`, call = api(BASE), runner = jpeg(), FX = (await import('./lib.mjs')).FX;
 let n = 0; const em = tag => `ju${tag}-${stamp}-${++n}@chaos.test`;
@@ -2608,6 +2608,51 @@ await journey('J309', "The price catalogue gives a starting cost, and the produc
     ok(await page.locator(`#priceCard-${pen} #catSug-${pen} .cat-row`).count() === 0 && /Nothing in the catalogue is close to/.test(await page.innerText(`#catSug-${pen}`)), '11. a product nothing in the catalogue resembles is offered none, and is told to search');
     ok(page.errs.length === 0, '    no page errors', page.errs);
   } finally { await ctx.close(); }
+});
+
+await journey('J323', "A client accepts a quote by signing it with a finger: on a phone, Accept opens a sheet with a signing pad and their name; Accept and sign waits for both (a tap is not a signature); the signature is turned into ink and kept on the quote; staff see who accepted and signed it, with the ink; a drawing the server cannot read is refused in words", async () => {
+  const r = await room('323'), W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' }), adm = (path, o = {}) => call(path, { ...o, token: admin });
+  await adm(`/v1/admin/products/${r.id}/price-tiers`, { body: { minQuantity: 50, unitCostCents: 900, wholesaleCents: 2300, srpCents: 5400 } });
+  const mk = async () => { const q = (await adm(`/v1/admin/clients/${r.clientId}/order-quotes`, { body: { lines: [{ productId: r.id, quantity: 50, unitCents: 2300 }] } })).json?.quote?.id; await adm(`/v1/admin/order-quotes/${q}/send`, { body: {} }); return q; };
+  const qid = await mk();
+  ok(sql(`select status from order_quotes where id='${qid}'`) === 'sent', '   a quote is out with the client');
+  // the service: a picture with nothing drawn in it is refused, and the quote stays out
+  const sharp = (await import('sharp')).default, blank = `data:image/png;base64,${(await sharp({ create: { width: 400, height: 140, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer()).toString('base64')}`;
+  const no = await call(`/v1/order-quotes/${qid}/decision`, { token: r.token, body: { decision: 'accept', name: 'Ola Client', ink: blank } });
+  ok(no.status === 422 && /Sign in the box again/.test(no.json?.error || '') && sql(`select status from order_quotes where id='${qid}'`) === 'sent', '1. a signature with nothing drawn is refused in words, and the quote is not accepted', no);
+  const { ctx, page } = await phone();
+  try {
+    page.said = []; page.on('dialog', d => { page.said.push(d.message()); d.dismiss().catch(() => {}); });
+    await page.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token);
+    await page.goto(`${BASE}/hub`, { waitUntil: 'networkidle' }); await page.waitForSelector('.wait-item.oq button', { timeout: 15000 });
+    await page.click('.wait-item.oq button:has-text("Accept")'); await page.waitForSelector('#signDialog[open] #sdPad canvas', { timeout: 8000 });
+    ok(page.said.length === 0, '2. Accept opens a sheet to sign in, not a yes/no pop-up', page.said);
+    const fits = await page.$eval('#signDialog', d => { const b = d.getBoundingClientRect(); return b.left >= 0 && b.right <= innerWidth + 1; });
+    ok(await page.isDisabled('#sdGo') && fits, '   it fits the phone, and Accept and sign waits for a signature and a name', { fits });
+    await page.fill('#sdName', 'Ola Client'); const pb = await page.locator('#sdPad canvas').boundingBox(); await page.touchscreen.tap(pb.x + 40, pb.y + 60);
+    ok(await page.isDisabled('#sdGo'), '3. a name and a tap are not enough');
+    await signWithFinger(page, '#sdPad'); ok(!(await page.isDisabled('#sdGo')), '   signing with a finger turns it on');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j323-sign.png` }).catch(() => {});
+    await page.locator('#sdPad .spad-clear').click(); ok(await page.isDisabled('#sdGo'), '   Clear wipes it and it is off again');
+    await signWithFinger(page, '#sdPad'); await page.click('#sdGo');
+    await page.waitForFunction(id => !document.querySelector(`.wait-item.oq button[onclick*="${id}"]`), qid, { timeout: 15000 }).catch(() => {});
+    const row = sql(`select status||'|'||(accepted_signature->>'name')||'|'||coalesce(accepted_signature->>'ink','') from order_quotes where id='${qid}'`).split('|');
+    ok(row[0] === 'accepted' && row[1] === 'Ola Client' && /^[0-9a-f-]{36}$/.test(row[2]), '4. the quote is accepted, signed with the name typed and the drawing', row);
+    ok(sql(`select count(*) from signature_marks where id='${row[2]}'`) === '1', '   the drawing is kept as ink');
+    const seen = (await call('/v1/order-quotes', { token: r.token })).json.quotes.find(q => q.id === qid);
+    ok(seen?.signature?.name === 'Ola Client' && seen.signature.ink === `/v1/public/signature-marks/${row[2]}` && !JSON.stringify(seen).includes('"ip"'), '   the client\'s copy shows who signed and the ink, not where they signed from', seen?.signature);
+    ok(page.errs.length === 0, '   no page errors', page.errs);
+  } finally { await ctx.close(); }
+  // staff see it on the quote in the room
+  const st = await consoleAt(admin, 1280, 950);
+  try {
+    await st.page.goto(`${W}/clients/${r.clientId}`, { waitUntil: 'networkidle' }); await st.page.evaluate(() => window.selectRoom('invoices')); await st.page.waitForSelector('#roomQuotes .oq-card', { timeout: 15000 });
+    const signed = st.page.locator('#roomQuotes .oq-signed'); await signed.first().waitFor({ timeout: 8000 }).catch(() => {});
+    ok(/Accepted and signed by Ola Client/.test(await signed.first().innerText().catch(() => '')) && await st.page.locator('#roomQuotes .oq-signed img[alt="Signature of Ola Client"]').count() === 1, '5. staff see who accepted and signed it, with the signature in ink');
+    ok(await st.page.$eval('#roomQuotes .oq-signed img', i => i.complete && i.naturalWidth > 10).catch(() => false), '   and the ink loads');
+    ok(st.page.errs.length === 0, '   no page errors', st.page.errs);
+  } finally { await st.ctx.close(); }
 });
 
 await browser.close();

@@ -107,9 +107,14 @@ export function cleanInvoiceAdjust(input, q) {
   return { value: { comped, ...(discount ? { discount } : {}) } };
 }
 
+// The signature given when a quote was accepted (the ink is a signature mark, served by its id: src/signatures.js)
+export const signatureView = g => (g && typeof g === 'object' ? { name: g.name || '', at: g.at || null, ink: /^[0-9a-f-]{36}$/i.test(String(g.ink || '')) ? `/v1/public/signature-marks/${g.ink}` : null } : null);
+// what the client sends to sign as they accept: their name, and the signature drawn with a finger (optional: a typed name alone still accepts)
+export const cleanAcceptSignature = (body, fallbackName = '') => { const name = String(body?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 120) || String(fallbackName || '').slice(0, 120); return { name, image: body?.ink ?? null }; };
+
 // The client's view of a quote: no costs, no margins
 export const clientQuote = q => ({ id: q.id, number: q.number, status: q.status, title: q.title || '', lines: (q.lines || []).map(l => ({ title: l.title, quantity: l.quantity, sizes: l.sizes || {}, unitCents: l.unitCents, totalCents: l.totalCents, note: l.note || '' })),
-  extras: q.extras || [], totalCents: Number(q.total_cents), currency: q.currency || 'USD', notes: q.notes || '', validUntil: q.valid_until instanceof Date ? q.valid_until.toISOString().slice(0, 10) : q.valid_until || null, sentAt: q.sent_at, acceptedAt: q.accepted_at, reply: q.reply || '', payUrl: q.status === 'accepted' ? q.pay_url || '' : '',
+  extras: q.extras || [], totalCents: Number(q.total_cents), currency: q.currency || 'USD', notes: q.notes || '', validUntil: q.valid_until instanceof Date ? q.valid_until.toISOString().slice(0, 10) : q.valid_until || null, sentAt: q.sent_at, acceptedAt: q.accepted_at, signature: signatureView(q.accepted_signature), reply: q.reply || '', payUrl: q.status === 'accepted' ? q.pay_url || '' : '',
   ...(q.status === 'accepted' && invoiceOf(q).adjusted ? { invoice: (i => ({ comped: i.extras.filter(x => x.comped).map(x => x.label), discount: i.discount, totalCents: i.totalCents }))(invoiceOf(q)) } : {}) });
 
 export const quoteNumber = (n, year = new Date().getUTCFullYear()) => `Q-${year}-${String(n).padStart(4, '0')}`;
