@@ -247,3 +247,22 @@ test('sales tax follows where the goods are delivered: PA at 6% (8% Philadelphia
   assert.ok(!sendProblems(fee({ state: 'NY' }), { taxRatePct: 6 }).some(p => /delivered/.test(p)));
   assert.equal(taxRule({ state: 'PA' }, 6.5).ratePct, 6.5, 'the PA rate comes from Settings');
 });
+
+test('a product contract chooses when its balance falls due: on final sample approval (the default) or before production ships', () => {
+  const ship = buildPlan({ type: 'split', totalCents: 496000, depositPct: 50, balanceOn: 'ship' }).plan, sample = buildPlan({ type: 'split', totalCents: 496000, depositPct: 50 }).plan;
+  assert.equal(ship.balanceOn, 'ship'); assert.equal(sample.balanceOn, undefined, 'the default is not stored');
+  assert.equal(buildPlan({ type: 'split', totalCents: 496000, balanceOn: 'whenever' }).plan.balanceOn, undefined, 'an unknown choice is dropped');
+  assert.equal(planWords(ship, 'USD', 'product'), '$2,480.00 on signing, $2,480.00 before production ships');
+  assert.equal(planWords(sample, 'USD', 'product'), '$2,480.00 on signing, $2,480.00 on final sample approval');
+  assert.equal(planWords(ship, 'USD', 'website'), '$2,480.00 on signing, $2,480.00 on delivery', 'digital work is always on delivery');
+  assert.deepEqual([eventLabel('delivery', 'product', ship), eventLabel('delivery', 'product', sample), eventLabel('signing', 'product', ship)], ['Before production ships', 'On final sample approval', 'On signing']);
+  // kept through cleaning for a product only, and printed in the schedule and the timeline
+  const prod = { ...base(), kind: 'product', product: { categories: ['headwear'] }, sections: defaultSections('product'), fee: { totalCents: 496000, currency: 'USD' }, timeline: { effectiveOn: '2026-11-21', startOn: '2026-11-24', completionOn: '2027-01-15' }, plan: ship };
+  const { value } = cleanContent(prod); assert.equal(value.plan.balanceOn, 'ship');
+  assert.equal(cleanContent({ ...prod, kind: 'website', sections: defaultSections() }).value.plan.balanceOn, undefined);
+  const r = renderContract({ ...value, number: 'FB-C-2026-009' }, {}), sched = r.sections.find(s => s.kind === 'schedule'), tl = r.sections.find(s => s.kind === 'timeline');
+  assert.deepEqual(sched.rows.map(x => x.when), ['On signing', 'Before production ships']); assert.match(sched.summary, /before production ships/);
+  assert.ok(tl.rows.some(x => x[0] === 'Estimated ship date'), JSON.stringify(tl.rows));
+  const r2 = renderContract({ ...cleanContent({ ...prod, plan: sample }).value, number: 'FB-C-2026-010' }, {});
+  assert.deepEqual(r2.sections.find(s => s.kind === 'schedule').rows.map(x => x.when), ['On signing', 'On final sample approval']);
+});

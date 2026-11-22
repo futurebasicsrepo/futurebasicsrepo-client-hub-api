@@ -300,6 +300,20 @@ await journey('J188', 'Contracts for a physical product (a hat): its own wording
   ok(rows.every(r => r[0] === 'product') && /final sample is approved/.test(rows[1][1]), 'the invoices bill as product work, and the balance says when it is due', JSON.stringify(rows));
   const dv = await K(`/${id}/delivered`, { body: { on: '2027-01-10' } }); ok(dv.status === 200 && dv.json.events.some(e => /Final sample approved on 2027-01-10/.test(e.detail || '')), 'recording the approval is worded for a product', JSON.stringify((dv.json.events || []).slice(-1)));
   const pr = await fetch(`${BASE}/v1/contracts/${id}/pdf`, { headers: { Authorization: 'Bearer ' + colby } }); ok(pr.status === 200 && /pdf/.test(pr.headers.get('content-type') || ''), 'the PDF can be made');
+
+  // the same product contract with the balance due before production ships instead
+  const shipPlan = await C('/plan', { body: { type: 'split', totalCents: 900000, depositPct: 50, kind: 'product', balanceOn: 'ship' } });
+  ok(shipPlan.status === 200 && shipPlan.json.plan.balanceOn === 'ship' && shipPlan.json.summary === '$4,500.00 on signing, $4,500.00 before production ships', 'staff can set a product balance to fall due before production ships', shipPlan.json);
+  ok((await C('/plan', { body: { type: 'split', totalCents: 900000, depositPct: 50, kind: 'website', balanceOn: 'ship' } })).json.plan.balanceOn === undefined, 'a digital contract has no such choice: it is paid on delivery');
+  const sc = await C('', { body: { content: { ...content, plan: shipPlan.json.plan, timeline: { ...content.timeline, completionOn: '2027-03-01' } }, dealId: hDeal } }), sid = sc.json.contract?.id;
+  const srend = (await C(`/${sid}`)).json.rendered, ssch = srend.sections.find(s => s.kind === 'schedule'), stl = srend.sections.find(s => s.kind === 'timeline');
+  ok(ssch.rows[1].when === 'Before production ships' && /before production ships/.test(ssch.summary) && stl.rows.some(r => r[0] === 'Estimated ship date'), 'the agreement says the balance is due before production ships, with an estimated ship date', { rows: ssch.rows, tl: stl.rows });
+  const ssent = await C(`/${sid}/send`, { body: {} }), stoken = tokenOf(ssent.json.link);
+  ok(/before production ships/.test(((await outbox(HSIGN)).filter(e => /Please review and sign/.test(e.subject)).at(-1) || {}).text || ''), 'the email says so too');
+  ok((await P(stoken)).json.rendered.sections.find(s => s.kind === 'schedule').rows[1].when === 'Before production ships', 'and the client\'s signing page');
+  await P(stoken, '/sign', { body: { name: 'Hattie Ames', title: 'Founder', agree: true, esign: true } }); await K(`/${sid}/countersign`, { body: {} }); await K(`/${sid}/invoices`, { body: {} });
+  ok(/before the production order ships/.test(sql(`select notes from money_invoices where contract_id='${sid}' and contract_seq=2`)), 'its balance invoice says it is due before the production order ships');
+  const sdv = await K(`/${sid}/delivered`, { body: { on: '2027-02-20' } }); ok(sdv.status === 200 && sdv.json.events.some(e => /Production ready to ship on 2027-02-20: payments due on production being ready to ship fall due now/.test(e.detail || '')), 'staff record the order ready to ship, and the balance falls due that day', JSON.stringify((sdv.json.events || []).slice(-1)));
 });
 
 await journey('J317', 'The client\'s address fills itself in: from the account they set up in the hub, on a new contract and on a draft left without one; it can be changed for one contract without touching the account, and with nothing on the account the last contract\'s address is used', async () => {
@@ -442,6 +456,12 @@ await journey('J189', 'Contracts in a browser: a physical product agreement is c
     await page.check('[data-cat="electronics"]'); await page.selectOption('[data-k="product.production.mode"]', 'through_us'); await page.waitForSelector('[data-k="product.production.depositPct"]');
     await page.fill('[data-k="product.production.depositPct"]', '30'); await page.fill('[data-k="scopeText"]', 'A complete tech pack\nTwo rounds of samples');
     await page.waitForFunction(() => /on final sample approval/.test(document.querySelector('#pOut')?.innerText || ''), null, { timeout: 8000 }); ok(true, 'the schedule says "on final sample approval"');
+    // when the balance falls due: on final sample approval, or before production ships
+    ok(await page.locator('#pParams [data-p="balanceOn"]').count() === 1 && await page.inputValue('#pParams [data-p="balanceOn"]') === 'sample', 'a product\'s plan has a "Balance due" choice, on final sample approval to start with');
+    await page.selectOption('#pParams [data-p="balanceOn"]', 'ship');
+    await page.waitForFunction(() => /before production ships/.test(document.querySelector('#pOut')?.innerText || '') && /Before production ships/.test(document.querySelector('#pOut')?.innerText || ''), null, { timeout: 8000 }); ok(true, 'choosing "Before production ships" changes the schedule and its rows');
+    ok(await page.evaluate(() => document.querySelector('[data-k="timeline.completionOn"]')?.closest('label')?.querySelector('span')?.textContent) === 'Estimated ship date', 'the timeline\'s estimated date is now the estimated ship date');
+    await page.selectOption('#pParams [data-p="balanceOn"]', 'sample'); await page.waitForFunction(() => /on final sample approval/.test(document.querySelector('#pOut')?.innerText || ''), null, { timeout: 8000 });
     await page.click('#ePrev'); await page.waitForSelector('#ePrevBox .preview'); const pv = await page.innerText('#ePrevBox');
     ok(/Samples and approval/.test(pv) && /30% deposit/.test(pv) && /lithium batteries/.test(pv) && /Quality and inspection/.test(pv), 'Preview shows the product wording, the production deposit and the electronics rules', pv.slice(0, 120));
     await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/contract-product.png` }).catch(() => {});

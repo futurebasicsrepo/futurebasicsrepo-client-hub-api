@@ -34,7 +34,7 @@
 // was made from), sending moves it to Proposal, signing by both wins it, and declining, expiring or voiding loses it unless something else on it is live.
 import { addressLine } from './onboarding.js';
 import { invoiceOf, sizesWords } from './order-quotes.js';
-import { cleanTaxRate, taxOf, taxableOf, unitsTotal, taxRule, stateOf, localOf, US_STATES, REGISTERED_STATES, PA_LOCAL, cleanUnits, cleanContent, renderContract, sendProblems, docHash, signToken, readToken, nextNumber, checkSignature, buildPlan, planWords, schedule, defaultSections, dollars, longDate, todayISO, addDays, KINDS, TERMS, isProduct, defaultProduct, PRODUCT_CATEGORIES, INCOTERMS, PRODUCTION_MODES } from './contracts.js';
+import { cleanTaxRate, taxOf, taxableOf, unitsTotal, taxRule, stateOf, localOf, US_STATES, REGISTERED_STATES, PA_LOCAL, cleanUnits, cleanContent, renderContract, sendProblems, docHash, signToken, readToken, nextNumber, checkSignature, buildPlan, planWords, dueWords, schedule, defaultSections, dollars, longDate, todayISO, addDays, KINDS, TERMS, isProduct, defaultProduct, PRODUCT_CATEGORIES, INCOTERMS, PRODUCTION_MODES } from './contracts.js';
 import { contractPdf } from './contract-pdf.js';
 import { pdfName, disposition } from './pdf-name.js';
 import { markUrl } from './signatures.js';
@@ -217,7 +217,7 @@ export function registerContractRoutes(app, d) {
 
   app.post('/v1/contracts/plan', { preHandler: pre }, async (req, reply) => {
     const b = req.body || {}, total = Math.round(Number(b.totalCents));
-    const r = buildPlan({ type: b.type, totalCents: total, depositPct: b.depositPct === '' ? null : b.depositPct, depositCents: b.depositCents === '' ? null : b.depositCents, months: b.months, firstDueOn: b.firstDueOn || null, deliveryOn: b.deliveryOn || null, milestones: Array.isArray(b.milestones) ? b.milestones : [], method: b.method, autopay: b.autopay === true, note: b.note });
+    const r = buildPlan({ type: b.type, totalCents: total, depositPct: b.depositPct === '' ? null : b.depositPct, depositCents: b.depositCents === '' ? null : b.depositCents, months: b.months, firstDueOn: b.firstDueOn || null, deliveryOn: b.deliveryOn || null, milestones: Array.isArray(b.milestones) ? b.milestones : [], method: b.method, autopay: b.autopay === true, note: b.note, balanceOn: b.kind === 'product' ? b.balanceOn : null });
     if (r.error) return bad(reply, r.error); return { plan: r.plan, summary: planWords(r.plan, 'USD', KINDS[b.kind] ? b.kind : '') };
   });
 
@@ -444,7 +444,7 @@ export function registerContractRoutes(app, d) {
         // the tax as tax on the invoice; when no pre-tax amount rounds to this payment exactly, the tax is its own line instead
         n++; const pl = paymentLines(p); const number = nextInvoiceNumber([...used, ...made.map(m => m.number)]), due = p.falls || todayISO();
         const inv = cleanInvoice({ number, company: c.client.company, contactName: c.client.signerName, contactEmail: c.client.signerEmail, address: c.client.address, issuedOn: todayISO(), dueOn: due < todayISO() ? todayISO() : due, terms: `Per agreement ${r.number}`,
-          lines: pl.lines, ...(pl.tax ? { taxRatePct: rate, chargeTax: true } : {}), notes: [payNote, p.event === 'delivery' && !p.dueOn ? (isProduct(c.kind) ? 'Due when the final sample is approved.' : 'Due when the work is delivered.') : ''].filter(Boolean).join(' '), currency: c.fee.currency, workKind: isProduct(c.kind) ? 'product' : 'software', projectId: r.project_id });
+          lines: pl.lines, ...(pl.tax ? { taxRatePct: rate, chargeTax: true } : {}), notes: [payNote, p.event === 'delivery' && !p.dueOn ? dueWords(c.kind, c.plan).note : ''].filter(Boolean).join(' '), currency: c.fee.currency, workKind: isProduct(c.kind) ? 'product' : 'software', projectId: r.project_id });
         if (inv.error) throw new Error(inv.error); const v = inv.value;
         const row = (await db.query(`insert into money_invoices(number,company,contact_name,contact_email,address,issued_on,terms,due_on,lines,tax_rate,charge_tax,credits,due_now_label,due_now_cents,subtotal_cents,tax_cents,total_cents,notes,currency,status,source,created_by,client_id,contact_id,deal_id,project_id,work_kind,contract_id,contract_seq)
           values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,'draft','app',$20,$21,$22,$23,$24,$25,$26,$27) returning id, number`, [v.number, v.company, v.contactName || contact?.name || '', v.contactEmail || contact?.email || '', v.address, v.issuedOn, v.terms, v.dueOn, JSON.stringify(v.lines), v.taxRatePct, v.chargeTax, JSON.stringify(v.credits), v.dueNowLabel, v.dueNowCents, v.subtotalCents, v.taxCents, v.totalCents, v.notes, v.currency, userId, r.client_id, r.contact_id, r.deal_id, r.project_id, isProduct(c.kind) ? 'product' : 'software', r.id, n])).rows[0];
@@ -470,7 +470,7 @@ export function registerContractRoutes(app, d) {
     const hosted = (await autopay.chosen()) === 'stripe';
     if (hosted && kind === 'card' && !m && stripe.embedded()) stripe.registerDomain(new URL(publicUrl).host).catch(() => {}); // Apple Pay shows in the form only on a domain Stripe knows: register it before the form loads (once per process)
     return { kind, ready: rd.ready, hosted, embedded: hosted && stripe.embedded(), publishableKey: hosted && stripe.embedded() ? stripe.publishableKey() : null, processor: await autopay.chosen(), testMode: hosted ? !stripe.live() : qbConfig(env).mode !== 'production', tokensUrl: rd.ready && !hosted ? tokensUrl(qbConfig(env)) : null, method: m ? { label: m.label, kind: m.kind } : null, authorization: authorizationText(kind, r.content.provider?.name || 'Future Basics'), paused: ov.paused,
-      upcoming: ov.installments.map(i => ({ label: i.label, amountCents: i.amountCents, falls: i.falls, state: i.state })) };
+      upcoming: ov.installments.map(i => ({ label: i.label, amountCents: i.amountCents, falls: i.falls, state: i.state, waits: dueWords(r.content.kind, r.content.plan).on })) };
   };
 
   // ---- automatic payments: staff -------------------------------------------------------------------------------------------------------------------
@@ -503,7 +503,7 @@ export function registerContractRoutes(app, d) {
   app.post('/v1/contracts/:id/delivered', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
     if (!needId(req, reply)) return; const r = await fresh(await one(req.params.id)); if (!r) return bad(reply, 'Not found', 404); if (r.status !== 'executed') return bad(reply, 'The work is delivered under a signed agreement', 409);
     const on = req.body?.on ? String(req.body.on).slice(0, 10) : todayISO(); if (!/^\d{4}-\d{2}-\d{2}$/.test(on) || Number.isNaN(Date.parse(on))) return bad(reply, 'That is not a date');
-    await pool.query('update contracts set delivered_on=$2, updated_at=now() where id=$1', [r.id, on]); await ev(r.id, 'delivered', { actor: req.signer.email, detail: `${isProduct(r.content?.kind) ? 'Final sample approved' : 'Delivered'} on ${on}: payments due on ${isProduct(r.content?.kind) ? 'final sample approval' : 'delivery'} fall due now` });
+    await pool.query('update contracts set delivered_on=$2, updated_at=now() where id=$1', [r.id, on]); await ev(r.id, 'delivered', { actor: req.signer.email, detail: `${dueWords(r.content?.kind, r.content?.plan).done} on ${on}: payments due on ${dueWords(r.content?.kind, r.content?.plan).moment} fall due now` });
     return detail(await one(r.id));
   });
   // Run the payments job now (the job runs by itself every hour). `today` is honoured only on the journey servers.
@@ -580,7 +580,7 @@ export function registerContractRoutes(app, d) {
       const signedOn = iso(r.client_signature?.at || r.executed_at), deliveryOn = iso(r.delivered_on) || c.timeline?.completionOn || null;
       const payments = schedule(c.plan, { signedOn, deliveryOn }).map((p, n) => {
         const i = inv.find(x => Number(x.contract_seq) === n + 1 && x.status !== 'draft'), paid = i && (i.status === 'paid' || Number(i.paid_cents) >= Number(i.total_cents));
-        return { seq: n + 1, label: p.label || '', amountCents: Number(p.amountCents) || 0, when: p.dueOn ? 'on ' + longDate(p.dueOn) : p.event === 'signing' ? 'on signing' : isProduct(c.kind) ? 'on final sample approval' : 'on delivery', falls: p.falls || null,
+        return { seq: n + 1, label: p.label || '', amountCents: Number(p.amountCents) || 0, when: p.dueOn ? 'on ' + longDate(p.dueOn) : p.event === 'signing' ? 'on signing' : dueWords(c.kind, c.plan).when, falls: p.falls || null,
           state: paid ? 'paid' : i ? 'invoiced' : 'upcoming', invoice: i ? { number: i.number, dueOn: iso(i.due_on), payUrl: paid ? '' : i.pay_url || '' } : null };
       });
       const shown = inv.filter(x => x.status !== 'draft'), invoicedCents = shown.reduce((a, x) => a + Number(x.total_cents), 0), paidCents = shown.reduce((a, x) => a + (x.status === 'paid' ? Number(x.total_cents) : Math.min(Number(x.paid_cents), Number(x.total_cents))), 0);

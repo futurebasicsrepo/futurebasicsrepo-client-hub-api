@@ -68,7 +68,12 @@ What is different from the digital agreement:
 | Our promise / Liability | no promise of sales, certification or factory dates; the client is responsible for the product it sells under its name and should carry product liability insurance |
 | No hosting clause | hosting does not apply |
 
-Payments work as for digital work, but a payment that waits for the work is "**on final sample approval**" instead of "on delivery". Staff press **Record final sample approval** (the button that says Record delivery on a digital contract) and those payments fall due. Invoices drafted from a product contract are product work (so their payment link follows the product-development route), and the starting milestone plan is a kick-off payment and a payment on final sample approval.
+Payments work as for digital work, but a payment that waits for the work falls due at a point the contract chooses, under **Balance due** in the payment plan (`plan.balanceOn`):
+
+- **On final sample approval** (the default). Staff press **Record final sample approval** (the button that says Record delivery on a digital contract) and those payments fall due.
+- **Before production ships** (`ship`). The agreement, the email, the signing page and the balance invoice say "before production ships" (the timeline's date becomes the estimated ship date). Staff press **Record production ready to ship** when the order is ready, and the balance falls due that day, so it is paid before the goods leave.
+
+Either way it is the one moment staff record on the contract (`delivered_on`), so automatic payments, invoices and reminders work the same. Invoices drafted from a product contract are product work (so their payment link follows the product-development route), and the starting milestone plan is a kick-off payment and a payment on final sample approval.
 
 Production orders are not part of this plan: each run is confirmed by a written order outside the contract's fixed fee (we order from the factory, and the order shows the client's price only), or, when the client orders directly, the client pays the factory.
 
