@@ -108,7 +108,7 @@ export const NODES = [
    what:'The Future Basics store sells tech packs and Lab access; a sync every 5 minutes unlocks what was paid. Payouts come into the ledger. Merchants connect their own stores by OAuth for product and theme pushes.',
    code:['src/shopify.js','src/payments.js','src/shopify-payouts.js','src/shopify-merchant.js'],data:[],talks:[]},
   {id:'qbo',lane:'ext',t:'ext',name:'QuickBooks, Stripe',sub:'books · cards · ACH',
-   what:'QuickBooks Online gets invoices and payments; QuickBooks Payments or Stripe charge cards, Apple Pay, Google Pay and ACH for autopay, with Stripe payments booked back into QuickBooks.',
+   what:'QuickBooks Online gets invoices and payments; QuickBooks Payments or Stripe charge cards, Apple Pay, Google Pay and ACH for autopay, with Stripe payments booked back into QuickBooks. Clients add Stripe details in Stripe\'s form set inside our signing page, in our brand.',
    code:['src/quickbooks.js','src/qb-payments.js','src/stripe-payments.js'],data:[],talks:[]},
   {id:'resend',lane:'ext',t:'ext',name:'Resend, Google',sub:'email · sign-in',
    what:'Resend sends sign-in codes, notifications and sales email, and posts back deliveries, bounces and replies. Google provides sign-in.',

@@ -168,7 +168,7 @@ export function registerContractRoutes(app, d) {
   }
 
   // Which payment processor takes new card and bank details (QuickBooks Payments or Stripe), and whether each is ready. Only the signers can change it.
-  const paymentsView = async () => ({ processor: autopay ? await autopay.chosen() : 'quickbooks', stripe: { configured: stripe.configured(), live: stripe.live(), webhook: Boolean(stripe.webhookSecret()), webhookUrl: `${publicUrl}/v1/stripe/webhook` }, quickbooks: { ready: autopay ? (await autopay.readiness('quickbooks')).ready : false } });
+  const paymentsView = async () => ({ processor: autopay ? await autopay.chosen() : 'quickbooks', stripe: { configured: stripe.configured(), live: stripe.live(), embedded: stripe.embedded(), webhook: Boolean(stripe.webhookSecret()), webhookUrl: `${publicUrl}/v1/stripe/webhook` }, quickbooks: { ready: autopay ? (await autopay.readiness('quickbooks')).ready : false } });
   app.get('/v1/contracts/settings', { preHandler: pre }, async () => ({ settings: await settings(), payments: await paymentsView(), tax: { states: US_STATES, registered: REGISTERED_STATES, local: PA_LOCAL } }));
   // the state (and Pennsylvania local tax) of a delivery address, as the sales tax reads it
   app.get('/v1/contracts/delivery', { preHandler: pre }, async (req) => { const a = clip(req.query?.address, 300); return { state: stateOf(a), local: localOf(a) }; });
@@ -465,7 +465,8 @@ export function registerContractRoutes(app, d) {
     if (!autopay || !r.content.plan.autopay || !r.client_signature?.autopay || !['signed_by_client', 'executed'].includes(r.status)) return null;
     const rd = await autopay.readiness(), m = await autopay.activeMethod(r.id), kind = (r.content.plan.method === 'either' ? r.client_signature.method : r.content.plan.method) === 'card' ? 'card' : 'bank', ov = await autopay.overview(r);
     const hosted = (await autopay.chosen()) === 'stripe';
-    return { kind, ready: rd.ready, hosted, processor: await autopay.chosen(), testMode: hosted ? !stripe.live() : qbConfig(env).mode !== 'production', tokensUrl: rd.ready && !hosted ? tokensUrl(qbConfig(env)) : null, method: m ? { label: m.label, kind: m.kind } : null, authorization: authorizationText(kind, r.content.provider?.name || 'Future Basics'), paused: ov.paused,
+    if (hosted && kind === 'card' && !m && stripe.embedded()) stripe.registerDomain(new URL(publicUrl).host).catch(() => {}); // Apple Pay shows in the form only on a domain Stripe knows: register it before the form loads (once per process)
+    return { kind, ready: rd.ready, hosted, embedded: hosted && stripe.embedded(), publishableKey: hosted && stripe.embedded() ? stripe.publishableKey() : null, processor: await autopay.chosen(), testMode: hosted ? !stripe.live() : qbConfig(env).mode !== 'production', tokensUrl: rd.ready && !hosted ? tokensUrl(qbConfig(env)) : null, method: m ? { label: m.label, kind: m.kind } : null, authorization: authorizationText(kind, r.content.provider?.name || 'Future Basics'), paused: ov.paused,
       upcoming: ov.installments.map(i => ({ label: i.label, amountCents: i.amountCents, falls: i.falls, state: i.state })) };
   };
 
@@ -650,6 +651,28 @@ export function registerContractRoutes(app, d) {
     if (out.notReady) await notifyStaff(`${r.content.client.company} tried to add payment details for ${r.number}`, `<p>${emailEscape(out.notReady)}</p>${hubButton(`${workUrl}/money#settings`, 'Open Money settings')}`);
     if (out.error) return bad(reply, out.error, out.status || 422);
     return { ok: true, url: out.url };
+  });
+  // the same, in Stripe's Payment Element on our own signing page: a SetupIntent the page confirms with Stripe.js (needs STRIPE_PUBLISHABLE_KEY)
+  app.post('/v1/public/contracts/:token/payment-intent', async (req, reply) => {
+    const r = await byToken(req, reply); if (!r) return;
+    if (!throttle(`contract-pay-start:${req.ip}`, { limit: 30, windowMs: 3600_000 })) return bad(reply, 'Too many tries from here. Please wait a few minutes.', 429);
+    if (!autopay || (await autopay.chosen()) !== 'stripe' || !stripe.embedded()) return bad(reply, 'Automatic payments are not set up', 409);
+    if (req.body?.agree !== true) return bad(reply, 'Please tick the box to authorize the payments');
+    const out = await autopay.startStripeSetup(r, { embedded: true, domain: new URL(publicUrl).host, kind: req.body?.kind === 'card' ? 'card' : req.body?.kind === 'bank' ? 'bank' : null, ip: ipOf(req) });
+    if (out.notReady) await notifyStaff(`${r.content.client.company} tried to add payment details for ${r.number}`, `<p>${emailEscape(out.notReady)}</p>${hubButton(`${workUrl}/money#settings`, 'Open Money settings')}`);
+    if (out.error) return bad(reply, out.error, out.status || 422);
+    return reply.header('cache-control', 'no-store').send({ ok: true, clientSecret: out.clientSecret, publishableKey: out.publishableKey, kind: out.kind });
+  });
+  app.post('/v1/public/contracts/:token/payment-intent/complete', async (req, reply) => {
+    const r = await byToken(req, reply); if (!r) return;
+    if (!throttle(`contract-pay-back:${req.ip}`, { limit: 40, windowMs: 3600_000 })) return bad(reply, 'Too many tries from here. Please wait a few minutes.', 429);
+    const intentId = String(req.body?.setupIntentId || ''); if (!/^seti_[\w]{8,200}$/.test(intentId)) return bad(reply, 'The payment form did not say what happened. Try again.');
+    if (!autopay || !stripe.configured()) return bad(reply, 'Automatic payments are not set up', 409);
+    const out = await autopay.completeStripeIntent(r, intentId, { ip: ipOf(req), ua: uaOf(req) });
+    if (out.pending) return reply.code(202).send({ ok: true, pending: true, message: out.message });
+    if (out.error) return bad(reply, out.error, out.status || 422);
+    if (!out.already && r.status === 'executed') await autopay.runFor(r.id).catch(() => {}); // a payment already due (the deposit on signing) is taken now
+    return { ok: true, method: out.method };
   });
   app.post('/v1/public/contracts/:token/payment-session/complete', async (req, reply) => {
     const r = await byToken(req, reply); if (!r) return;

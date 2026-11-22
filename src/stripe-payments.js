@@ -1,7 +1,8 @@
 // Stripe as the payment processor for automatic payments: cards (with Apple Pay and Google Pay) and US bank accounts (ACH). Same seam as qb-payments.js, so autopay.js
 // does not know which one it is talking to. Money that was taken is still booked in QuickBooks by autopay.js; this file only knows Stripe.
 //
-//   * The client adds their details on Stripe's own page (Checkout in setup mode), never on ours: the number, the bank login and the wallet sheet all stay with Stripe,
+//   * The client adds their details in Stripe's Payment Element, shown inside our signing page in our brand (with STRIPE_PUBLISHABLE_KEY), or on Stripe's own
+//     hosted page (Checkout in setup mode) without it. Either way the fields are Stripe's: the number, the bank login and the wallet sheet stay with Stripe,
 //     so none of it can reach this server, a log or the database. We keep only the ids Stripe hands back (a customer, a payment method) and the last four digits.
 //   * Every charge carries an Idempotency-Key that is the same for the same attempt, so asking twice can never take the money twice.
 //   * A card answers at once. A bank debit is "processing" for a few business days, then it settles or fails (read by polling, and sooner when the webhook arrives).
@@ -36,6 +37,10 @@ export function createStripe({ env = process.env, fetchImpl = (...a) => fetch(..
   const configured = () => /^(sk|rk)_(test|live)_/.test(key()) || (Boolean(env.STRIPE_API_BASE) && Boolean(key()));
   const live = () => /_live_/.test(key());
   const webhookSecret = () => String(env.STRIPE_WEBHOOK_SECRET || '').trim();
+  // The publishable key lets the signing page show Stripe's Payment Element inside our own page (embedded), styled in our brand. Without it the
+  // client is sent to Stripe's hosted page instead. It must be the same mode (test or live) as the secret key.
+  const publishableKey = () => { const k = String(env.STRIPE_PUBLISHABLE_KEY || '').trim(); return /^pk_(test|live)_/.test(k) && /_live_/.test(k) === live() ? k : ''; };
+  const embedded = () => configured() && Boolean(publishableKey());
 
   async function call(path, { method = 'GET', form, idempotencyKey, expand = [] } = {}) {
     const q = expand.map(e => `expand[]=${encodeURIComponent(e)}`).join('&'), url = `${base()}/v1${path}${method === 'GET' && q ? `?${q}` : ''}`;
@@ -63,6 +68,21 @@ export function createStripe({ env = process.env, fetchImpl = (...a) => fetch(..
       ...(kind === 'bank' ? { payment_method_options: { us_bank_account: { financial_connections: { permissions: ['payment_method'] } } } } : {}) };
     const s = await call('/checkout/sessions', { method: 'POST', form, idempotencyKey });
     return { id: String(s.id), url: String(s.url) };
+  }
+  // The embedded form: a SetupIntent the page confirms with Stripe.js. → { id, clientSecret }. The secret lets only that page finish this one setup.
+  async function startIntent({ customerId, kind, metadata = {}, idempotencyKey }) {
+    const form = { customer: customerId, usage: 'off_session', payment_method_types: [kind === 'bank' ? 'us_bank_account' : 'card'], metadata,
+      ...(kind === 'bank' ? { payment_method_options: { us_bank_account: { verification_method: 'automatic', financial_connections: { permissions: ['payment_method'] } } } } : {}) };
+    const si = await call('/setup_intents', { method: 'POST', form, idempotencyKey });
+    return { id: String(si.id), clientSecret: String(si.client_secret) };
+  }
+  // Apple Pay shows in the embedded form only on a domain registered with Stripe. Registering again is harmless; one try per domain per process.
+  const registered = new Map();
+  function registerDomain(domain) {
+    const d = String(domain || '').toLowerCase().replace(/^https?:\/\//, '').replace(/[/:].*$/, '');
+    if (!d || /^(localhost|127\.|\d+\.\d+\.\d+\.\d+$)/.test(d)) return Promise.resolve(false);
+    if (!registered.has(d)) registered.set(d, call('/payment_method_domains', { method: 'POST', form: { domain_name: d } }).then(() => true, e => { if (/already|exists/i.test(e.detail || '')) return true; registered.delete(d); return false; }));
+    return registered.get(d);
   }
   const instrumentOf = pm => {
     if (!pm) return null;
@@ -109,5 +129,5 @@ export function createStripe({ env = process.env, fetchImpl = (...a) => fetch(..
     return bt && typeof bt === 'object' ? { feeCents: Number(bt.fee || 0), netCents: Number(bt.net || 0), payoutId: '' } : null;
   }
 
-  return { name: 'stripe', configured, live, webhookSecret, ensureCustomer, startSetup, readSetup, readIntent, instrumentOf, removeInstrument, charge, status, fees, saveInstrument: async () => { throw new Error('Stripe details are added on the Stripe page'); } };
+  return { name: 'stripe', configured, live, webhookSecret, publishableKey, embedded, startIntent, registerDomain, ensureCustomer, startSetup, readSetup, readIntent, instrumentOf, removeInstrument, charge, status, fees, saveInstrument: async () => { throw new Error('Stripe details are added on the Stripe page'); } };
 }

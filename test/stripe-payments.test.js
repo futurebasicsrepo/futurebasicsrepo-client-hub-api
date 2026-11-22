@@ -42,3 +42,28 @@ test('a card the bank refuses is a decline, not a failure to ask; a bad key is a
   const p = await mk(200, { id: 'pi_1', status: 'processing' }).charge(null, { kind: 'bank', instrumentId: 'pm_1', customerId: 'cus_1', amountCents: 100, requestId: 'k' });
   assert.deepEqual([p.status, p.id], ['pending', 'pi_1']);
 });
+
+test('the embedded form needs a publishable key of the same mode as the secret key', () => {
+  const mk = (sk, pk) => createStripe({ env: { STRIPE_SECRET_KEY: sk, ...(pk ? { STRIPE_PUBLISHABLE_KEY: pk } : {}) } });
+  assert.deepEqual([mk('sk_test_a').embedded(), mk('sk_test_a', 'pk_test_b').embedded(), mk('sk_live_a', 'pk_live_b').embedded()], [false, true, true]);
+  assert.deepEqual([mk('sk_live_a', 'pk_test_b').embedded(), mk('sk_test_a', 'pk_live_b').publishableKey(), mk('sk_test_a', 'nope').embedded()], [false, '', false], 'a test key never pairs with a live one');
+});
+
+test('the embedded form starts a SetupIntent for later payments, and registers the domain for Apple Pay once', async () => {
+  const seen = [];
+  const s = createStripe({ env: { STRIPE_SECRET_KEY: 'sk_test_x' }, log: {}, fetchImpl: async (url, o) => { seen.push({ url, body: decodeURIComponent(o.body || '') });
+    if (url.endsWith('/payment_method_domains') && seen.filter(x => x.url.endsWith('/payment_method_domains')).length === 2) return { ok: false, status: 400, json: async () => ({ error: { message: 'Domain hub.example.com already exists' } }) };
+    return { ok: true, status: 200, json: async () => (url.endsWith('/setup_intents') ? { id: 'seti_1', client_secret: 'seti_1_secret_z' } : { id: 'pmd_1' }) }; } });
+  const card = await s.startIntent({ customerId: 'cus_1', kind: 'card', metadata: { contract: 'c1' } });
+  assert.deepEqual(card, { id: 'seti_1', clientSecret: 'seti_1_secret_z' });
+  assert.match(seen[0].body, /customer=cus_1/); assert.match(seen[0].body, /usage=off_session/); assert.match(seen[0].body, /payment_method_types\[\]=card/); assert.match(seen[0].body, /metadata\[contract\]=c1/);
+  await s.startIntent({ customerId: 'cus_1', kind: 'bank' });
+  assert.match(seen[1].body, /payment_method_types\[\]=us_bank_account/); assert.match(seen[1].body, /financial_connections\]\[permissions\]\[\]=payment_method/);
+  assert.equal(await s.registerDomain('https://hub.example.com/sign/x'), true);
+  assert.equal(await s.registerDomain('hub.example.com'), true, 'asked again in the same process: not sent again');
+  assert.equal(seen.filter(x => x.url.endsWith('/payment_method_domains')).length, 1);
+  assert.match(seen.at(-1).body, /domain_name=hub\.example\.com$/);
+  assert.equal(await s.registerDomain('127.0.0.1:3100'), false, 'a local address is never sent');
+  assert.equal(await s.registerDomain('localhost'), false);
+  assert.equal(await s.registerDomain('pay.example.com'), true, 'a domain Stripe already has counts as registered');
+});

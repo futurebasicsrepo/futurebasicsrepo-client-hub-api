@@ -108,29 +108,35 @@ export function createAutopay(d) {
     return { ok: true, method };
   }
 
-  // ---- Stripe: the client is sent to Stripe's page to add the card (Apple Pay and Google Pay come with it) or bank account, then comes back ----
+  // ---- Stripe: the client adds the card (Apple Pay and Google Pay come with it) or bank account in Stripe's form on our page, or on Stripe's own page ----
   const wantKind = r => ((r.content.plan.method === 'either' ? r.client_signature?.method : r.content.plan.method) === 'card' ? 'card' : 'bank');
-  async function startStripeSetup(r, { returnUrl, kind = null, ip = '' }) {
+  // embedded: the Payment Element on our signing page (a SetupIntent its page confirms) instead of Stripe's hosted page (a Checkout session).
+  async function startStripeSetup(r, { returnUrl = '', kind = null, ip = '', embedded = false, domain = '' }) {
     const plan = r.content.plan, sig = r.client_signature, rd = await readiness('stripe');
     if (!plan.autopay || !sig?.autopay) return { error: 'This agreement does not have automatic payments', status: 409 };
     if (!['signed_by_client', 'executed'].includes(r.status)) return { error: 'Sign the agreement first', status: 409 };
     const want = wantKind(r); if (kind && kind !== want) return { error: want === 'bank' ? 'This agreement is paid by bank account (ACH)' : 'This agreement is paid by card', status: 422 };
     if (!rd.ready) return { error: 'Payment details cannot be taken just yet. We have been told and will email you the moment they can.', status: 503, notReady: rd.why };
     const c = r.content.client; let sess;
+    const metadata = { contract: r.id, kind: want, consent_by: String(sig.name || '').slice(0, 120), consent_at: new Date().toISOString(), consent_ip: String(ip).slice(0, 64), consent_hash: String(r.doc_hash || '').slice(0, 64) };
     try {
       const prior = (await pool.query(`select customer_id from contract_payment_methods where contract_id=$1 and processor='stripe' order by created_at desc limit 1`, [r.id])).rows[0];
       const cust = await stripe.ensureCustomer({ id: prior?.customer_id || '', email: c.signerEmail, name: c.signerName || c.company, metadata: { contract: r.number, company: String(c.company || '').slice(0, 200) } });
-      const sep = returnUrl.includes('?') ? '&' : '?';
-      sess = await stripe.startSetup({ customerId: cust.id, kind: want, successUrl: `${returnUrl}${sep}pay=done&session_id={CHECKOUT_SESSION_ID}`, cancelUrl: `${returnUrl}${sep}pay=cancel`,
-        metadata: { contract: r.id, kind: want, consent_by: String(sig.name || '').slice(0, 120), consent_at: new Date().toISOString(), consent_ip: String(ip).slice(0, 64), consent_hash: String(r.doc_hash || '').slice(0, 64) } });
+      if (embedded) {
+        if (want === 'card' && domain) await stripe.registerDomain(domain); // so Apple Pay shows on our own page
+        sess = await stripe.startIntent({ customerId: cust.id, kind: want, metadata });
+      } else {
+        const sep = returnUrl.includes('?') ? '&' : '?';
+        sess = await stripe.startSetup({ customerId: cust.id, kind: want, successUrl: `${returnUrl}${sep}pay=done&session_id={CHECKOUT_SESSION_ID}`, cancelUrl: `${returnUrl}${sep}pay=cancel`, metadata });
+      }
     } catch (e) {
       log.warn?.({ payments: true, err: String(e.message).slice(0, 200), code: e.code }, 'starting the Stripe page failed');
       await ev(r.id, 'payment_method_failed', { actor: sig.name, detail: String(e.message).replace(/^Stripe: /, '').slice(0, 300), meta: { processor: 'stripe', step: 'start' } });
       await notifyStaff(`Could not open the payment page for ${r.number} (${c.company})`, `<p>${emailEscape(String(e.message).slice(0, 400))}</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}`);
-      return { error: 'Could not open the payment page. Try again in a minute.', status: 502 };
+      return { error: embedded ? 'Could not open the payment form. Try again in a minute.' : 'Could not open the payment page. Try again in a minute.', status: 502 };
     }
-    await ev(r.id, 'payment_setup_started', { actor: sig.name, detail: want, meta: { processor: 'stripe' } });
-    return { ok: true, url: sess.url };
+    await ev(r.id, 'payment_setup_started', { actor: sig.name, detail: want, meta: { processor: 'stripe', embedded } });
+    return embedded ? { ok: true, clientSecret: sess.clientSecret, publishableKey: stripe.publishableKey(), kind: want } : { ok: true, url: sess.url };
   }
   // The client came back from Stripe's page (or Stripe told us): keep what they saved. `read` is { complete, verifying, customerId, metadata, instrument } from Stripe.
   async function finishStripeSetup(r, read, { ip = '', ua = '', by = '' } = {}) {
@@ -141,6 +147,11 @@ export function createAutopay(d) {
     const k = read.instrument.kind, want = wantKind(r); if (k !== want) return { error: want === 'bank' ? 'This agreement is paid by bank account (ACH)' : 'This agreement is paid by card', status: 422 };
     const out = await store(r, { processor: 'stripe', k, customerId: read.customerId, inst: read.instrument, by: by || read.metadata.consent_by || sig.name, at: read.metadata.consent_at || new Date().toISOString(), ip: ip || read.metadata.consent_ip || '', ua, rd: await readiness('stripe') });
     return out;
+  }
+  // The embedded form finished (or Stripe sent the client back after their bank or card asked them to confirm): keep what the SetupIntent saved.
+  async function completeStripeIntent(r, intentId, meta = {}) {
+    let read; try { read = await stripe.readIntent(intentId); } catch (e) { log.warn?.({ payments: true, err: String(e.message).slice(0, 200) }, 'reading the Stripe setup failed'); return { error: 'Could not confirm the payment details just yet. Refresh this page in a minute.', status: 502 }; }
+    return finishStripeSetup(r, read, meta);
   }
   async function completeStripePage(r, sessionId, meta = {}) {
     let read; try { read = await stripe.readSetup(sessionId); } catch (e) { log.warn?.({ payments: true, err: String(e.message).slice(0, 200) }, 'reading the Stripe page failed'); return { error: 'Could not confirm the payment details just yet. Refresh this page in a minute.', status: 502 }; }
@@ -314,5 +325,5 @@ export function createAutopay(d) {
     const res = await attempt(r, seq, Number(prior) + 1, 'staff', today); return res.tried ? { ok: true, result: res.tried } : { error: res.skipped, status: 409 };
   }
 
-  return { saveMethod, startStripeSetup, completeStripePage, stripeEvent, chosen, run, runFor, chargeNow, overview, readiness, activeMethod, askForDetails, sched, linkOf };
+  return { saveMethod, startStripeSetup, completeStripePage, completeStripeIntent, stripeEvent, chosen, run, runFor, chargeNow, overview, readiness, activeMethod, askForDetails, sched, linkOf };
 }
