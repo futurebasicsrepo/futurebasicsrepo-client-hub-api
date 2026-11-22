@@ -625,5 +625,13 @@ export function registerMoneyRoutes(app, d) {
     if (lines.length > 12 || lines.some(l => l.length > 120)) return bad(reply, 'Payment instructions are at most 12 lines of 120 characters');
     await setSetting('moneyPayment', { instructions: lines.join('\n') }); return { ok: true, instructions: lines.join('\n') };
   });
-  return { syncQuickBooks, syncShopifyLinks, syncPayouts, qbContext, qbFailed: failed, pushAndSave, bookAutopay, invoiceOne: one, receiptFor, receiptSent, stripeInvoiceEvent, payToken };
+  // A contract's payment due on signing is asked for at once on our pay page (src/contracts-routes.js askForPayment): the invoice is set to be paid
+  // through Stripe and sent, and its pay link is given back. null when Stripe is not set up for invoices, or there is nothing to pay on it.
+  async function stripePayLink(id) {
+    if (!stripe.embedded()) return null; const cur = await one(id); if (!cur || ['paid', 'void'].includes(cur.status)) return null;
+    const url = `${hubUrl}/pay/${payToken(cur.id)}`;
+    await pool.query(`update money_invoices set pay_with='stripe', pay_url=$2, pay_channel='stripe', status=case when status in ('draft','unrecorded') then 'sent' else status end, sent_at=coalesce(sent_at, now()), updated_at=now() where id=$1`, [cur.id, url]);
+    await onChange('pay-link', cur.id); return url;
+  }
+  return { syncQuickBooks, syncShopifyLinks, syncPayouts, qbContext, qbFailed: failed, pushAndSave, bookAutopay, invoiceOne: one, receiptFor, receiptSent, stripeInvoiceEvent, payToken, stripePayLink, stripeReady: () => stripe.embedded() };
 }

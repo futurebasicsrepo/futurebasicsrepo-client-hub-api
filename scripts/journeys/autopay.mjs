@@ -521,6 +521,54 @@ try {
     }
   });
 
+  await journey('J324', 'A payment due on signing is asked for on every contract, not only those with automatic payments: paid by invoice in full on signing, the client is told it is coming while Future Basics has yet to sign; once both have signed its invoice is sent at once to be paid on our pay page (Apple Pay first), the email and the signing page both say Pay now, and paying it clears it; a contract signed before this, with no invoices, is asked for when staff draft them', async () => {
+    const PI = (token, path = '', o = {}) => call(`/v1/public/invoices/${token}${path}`, o), full = buildPlan({ type: 'full', totalCents: 300000, method: 'invoice', autopay: false }).plan;
+    const S10 = SIGNER.replace('pay-', 'pay10-'), A = await make('PN', S10, full);
+    ok((await P(A.token, '/sign', { body: sign({ autopay: false }) })).status === 200, 'the client signs a contract paid by invoice, in full on signing, with no automatic payments');
+    let pub = (await P(A.token)).json;
+    ok(pub.status === 'signed_by_client' && pub.dueOnSigningCents === 300000 && pub.payNow === null && pub.pay === null, '1. while Future Basics has yet to sign, the page knows $3,000 is due on signing, and nothing is taken yet', { status: pub.status, due: pub.dueOnSigningCents, payNow: pub.payNow });
+    ok(sql(`select count(*) from money_invoices where contract_id='${A.id}'`) === '0', '   and no invoice is made before the agreement is final');
+    ok((await K(`/${A.id}/countersign`, { body: {} })).status === 200, 'Future Basics signs: it is final');
+    const inv = sql(`select id||'|'||status||'|'||pay_with||'|'||pay_channel||'|'||total_cents from money_invoices where contract_id='${A.id}' and contract_seq=1`).split('|');
+    ok(inv[1] === 'sent' && inv[2] === 'stripe' && inv[3] === 'stripe' && inv[4] === '300000', '2. its invoice is drafted and sent at once, to be paid on our pay page', inv);
+    pub = (await P(A.token)).json;
+    ok(pub.payNow?.amountCents === 300000 && pub.payNow.invoices.length === 1 && /\/pay\/[0-9a-f-]{36}\.[\w-]{32}$/.test(pub.payNow.invoices[0].url), '3. the signing page now says $3,000 is to pay now, with the pay page link', pub.payNow);
+    const mail = (await outbox(S10)).find(e => /^Signed by both parties/.test(e.subject));
+    ok(mail && /Payment due now: \$3,000\.00/.test(mail.html) && mail.html.includes(pub.payNow.invoices[0].url) && /Pay \$3,000\.00 now/.test(mail.html), '4. the "Signed by both parties" email has Payment due now and a Pay $3,000.00 now button to the same page', mail && mail.subject);
+    ok(sql(`select count(*) from contract_events where contract_id='${A.id}' and kind='payment_asked'`) === '1', '   and the contract\'s trail records that the payment was asked for');
+    const tok = pub.payNow.invoices[0].url.split('/pay/')[1], pubInv = (await PI(tok)).json;
+    ok(pubInv.pay?.open === true && pubInv.dueNowCents === 300000 && pubInv.pay.publishableKey === 'pk_test_journey', '5. the pay page takes it: Apple Pay, a card or the bank', pubInv.pay);
+    const pid = (await PI(tok, '/payment-intent', { body: { go: true } })).json.clientSecret.split('_secret_')[0]; stripePay(pid, 'pm_card_ok');
+    const done = await PI(tok, '/complete', { body: { paymentIntentId: pid } });
+    ok(done.json.paid === true && sql(`select status from money_invoices where id='${inv[0]}'`) === 'paid', '6. paid: the invoice is paid', done.json);
+    pub = (await P(A.token)).json; ok(pub.payNow === null, '   and the signing page no longer asks for it');
+    // the signing page in a browser: right after signing, the payment is the next thing on it
+    if (playwright) {
+      const B = await make('PN2', S10.replace('pay10', 'pay10b'), full); await P(B.token, '/sign', { body: sign({ autopay: false }) }); await K(`/${B.id}/countersign`, { body: {} });
+      const br = await playwright.chromium.launch(); const errs = [];
+      try {
+        const pg = await (await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true })).newPage(); pg.on('pageerror', e => errs.push(String(e)));
+        await pg.goto(`${BASE}/sign/${B.token}`, { waitUntil: 'networkidle' }); await pg.waitForSelector('#payNow', { timeout: 10000 });
+        const box = await pg.$eval('#payNow', e => { const r = e.getBoundingClientRect(); return { top: r.top, text: e.innerText.replace(/\s+/g, ' '), href: e.querySelector('a.btn')?.getAttribute('href') || '' }; });
+        ok(/One step left/i.test(box.text) && /Pay \$3,000\.00 now/.test(box.text) && /Apple Pay/.test(box.text) && /\/pay\//.test(box.href) && box.top < 844, '7. on a phone, the signed page leads with Pay $3,000.00 now, in view without scrolling, to our pay page', box);
+        ok(/One step left: pay \$3,000\.00/.test(await pg.innerText('.banner.ok')), '   and the banner says so');
+        await pg.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j324-paynow.png` }).catch(() => {});
+        ok(errs.length === 0, '   no page errors', errs);
+      } finally { await br.close(); }
+    }
+    // a contract signed by both before this: no invoices yet; staff drafting them asks for what is due on signing, by email
+    const S11 = SIGNER.replace('pay-', 'pay11-'), O = await make('PN3', S11, full); await P(O.token, '/sign', { body: sign({ autopay: false }) }); await K(`/${O.id}/countersign`, { body: {} });
+    sql(`delete from money_invoices where contract_id='${O.id}'`); sql(`update contracts set invoices_at=null where id='${O.id}'`); sql(`delete from contract_events where contract_id='${O.id}' and kind='payment_asked'`);
+    ok((await P(O.token)).json.payNow === null, '8. a contract signed before this, with no invoices, asks for nothing on its own');
+    const dr = await K(`/${O.id}/invoices`, { body: {} });
+    ok(dr.status === 200 && dr.json.asked?.length === 1 && dr.json.asked[0].amountCents === 300000, '   Draft the invoices drafts them and asks for the payment due on signing', dr.json.asked);
+    const pm = (await outbox(S11)).find(e => /^Payment due:/.test(e.subject));
+    ok(pm && /Pay \$3,000\.00 now/.test(pm.html) && /\/pay\//.test(pm.html), '   the client is emailed Payment due with the Pay now button', pm && pm.subject);
+    ok((await P(O.token)).json.payNow?.amountCents === 300000, '   and their signing page shows it');
+    // with automatic payments nothing changes: the details form asks, and the charge is taken from them
+    ok((await P((await make('PN4', S11.replace('pay11', 'pay11b'), planCard)).token)).json.dueOnSigningCents === 0, '9. a contract with automatic payments keeps its own way of paying');
+  });
+
 } finally { mock.close(); stripeMock.close(); }
 
 // The mark in the places people see it: the hub's icons, the link-preview picture, the pages whose links get shared, and the header of our own emails.

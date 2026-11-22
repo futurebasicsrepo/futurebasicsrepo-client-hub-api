@@ -304,7 +304,9 @@ await journey('J188', 'Contracts for a physical product (a hat): its own wording
   ok(mail && /final sample approval/.test(mail.text), 'the email says when the payments fall', mail?.text.slice(0, 240));
   const sg = await P(token, '/sign', { body: { name: 'Hattie Ames', title: 'Founder', agree: true, esign: true } }); ok(sg.status === 200, 'the client signs', sg.json.error);
   ok((await K(`/${id}/countersign`, { body: {} })).status === 200, 'Future Basics countersigns');
-  const inv = await K(`/${id}/invoices`, { body: {} }); ok(inv.status === 200 && inv.json.made.length === 2, 'two invoices are drafted', inv.json.error);
+  // paid by invoice with a deposit due on signing: both invoices are drafted the moment it is final, and the deposit is sent to be paid now
+  ok(sql(`select count(*) from money_invoices where contract_id='${id}'`) === '2' && (await K(`/${id}/invoices`, { body: {} })).status === 409, 'two invoices are drafted as it becomes final (nothing left for Draft the invoices)');
+  ok(sql(`select status||'|'||pay_with from money_invoices where contract_id='${id}' order by contract_seq`).split('\n').join() === 'sent|stripe,draft|', 'the deposit due on signing is sent to be paid now on our pay page; the balance waits as a draft', sql(`select status||'|'||pay_with from money_invoices where contract_id='${id}' order by contract_seq`));
   const rows = sql(`select work_kind, notes from money_invoices where contract_id='${id}' order by contract_seq`).split('\n').map(l => l.split('|'));
   ok(rows.every(r => r[0] === 'product') && /final sample is approved/.test(rows[1][1]), 'the invoices bill as product work, and the balance says when it is due', JSON.stringify(rows));
   const dv = await K(`/${id}/delivered`, { body: { on: '2027-01-10' } }); ok(dv.status === 200 && dv.json.events.some(e => /Final sample approved on 2027-01-10/.test(e.detail || '')), 'recording the approval is worded for a product', JSON.stringify((dv.json.events || []).slice(-1)));

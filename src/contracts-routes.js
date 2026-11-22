@@ -379,14 +379,39 @@ export function registerContractRoutes(app, d) {
     await pool.query(`update contracts set status='executed', executed_at=now(), updated_at=now() where id=$1 and status in ('sent','signed_by_client')`, [r.id]);
     await ev(r.id, 'executed', { detail: 'Both parties have signed' });
     await syncContractDeal(pool, await one(r.id), { log }); // the deal is won at the contract's value (opened first if there was none), before the invoices are drafted with it
-    if (r.content.plan.method !== 'invoice') { const now = await one(r.id); if (now && !now.invoices_at) { const out = await draftInvoices(now, 'on signing'); if (out.error) await ev(r.id, 'invoices_failed', { actor: 'on signing', detail: out.error }); } }
+    // without automatic payments, what is due on signing is asked for now on our pay page, so its invoice is drafted now whatever the method
+    if (r.content.plan.method !== 'invoice' || payable(r)) { const now = await one(r.id); if (now && !now.invoices_at) { const out = await draftInvoices(now, 'on signing'); if (out.error) await ev(r.id, 'invoices_failed', { actor: 'on signing', detail: out.error }); } }
     if (autopay && r.content.plan.autopay && await autopay.activeMethod(r.id)) autopay.runFor(r.id).catch(() => {}); // details were added before Future Basics signed: what is already due is taken now
+    const owed = await askForPayment(await one(r.id)).catch(e => { log.warn?.({ contracts: true, err: String(e.message).slice(0, 200) }, 'the payment due on signing could not be asked for'); return []; });
     const fresh2 = await one(r.id), c = fresh2.content, link = linkOf(fresh2);
     // the signed agreement goes with the email as a PDF (both signatures, the fingerprint and the audit trail), so the client has the file itself
     const signedPdf = await contractPdf(await renderOf(fresh2), await pdfState(fresh2)).catch(e => { log.warn?.({ contracts: true, err: String(e.message).slice(0, 200) }, 'the signed PDF could not be made for the email'); return null; });
-    await sendHubEmail({ to: c.client.signerEmail, subject: `Signed by both parties: ${c.title} (${r.number})`, html: hubEmailShell(`Signed: ${c.title}`, `<p>Hi ${emailEscape(firstName(c.client.signerName))},</p><p>The agreement <b>${emailEscape(c.title)}</b> (${emailEscape(r.number)}) is now signed by both parties. ${signedPdf ? 'The signed copy is attached as a PDF. You can also open it any time:' : 'You can open it and download the signed copy any time:'}</p>${hubButton(link, 'Open the signed agreement')}<p style="font-size:12px;color:#717177">Keep this email: ${signedPdf ? 'the attachment and the link are' : 'the link is'} your copy.</p>`), ...(signedPdf ? { attachments: [{ filename: agreementName(fresh2), content: signedPdf }] } : {}) }).catch(() => {});
-    await notifyStaff(`Signed by both parties: ${r.number} (${c.client.company})`, `<p><b>${emailEscape(c.title)}</b> is fully signed (${emailEscape(dollars(r.total_cents, r.currency))}).</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}<p>${c.plan.method !== 'invoice' && fresh2.invoices_at ? 'The invoices are drafted from the payment schedule and show in Money. Next: start the project.' : 'Next: draft the invoices from the payment schedule, and start the project.'}</p>`);
+    await sendHubEmail({ to: c.client.signerEmail, subject: `Signed by both parties: ${c.title} (${r.number})`, html: hubEmailShell(`Signed: ${c.title}`, `<p>Hi ${emailEscape(firstName(c.client.signerName))},</p><p>The agreement <b>${emailEscape(c.title)}</b> (${emailEscape(r.number)}) is now signed by both parties.</p>${payHtml(owed, c.fee.currency)}<p>${signedPdf ? 'The signed copy is attached as a PDF. You can also open it any time:' : 'You can open it and download the signed copy any time:'}</p>${hubButton(link, 'Open the signed agreement')}<p style="font-size:12px;color:#717177">Keep this email: ${signedPdf ? 'the attachment and the link are' : 'the link is'} your copy.</p>`), ...(signedPdf ? { attachments: [{ filename: agreementName(fresh2), content: signedPdf }] } : {}) }).catch(() => {});
+    await notifyStaff(`Signed by both parties: ${r.number} (${c.client.company})`, `<p><b>${emailEscape(c.title)}</b> is fully signed (${emailEscape(dollars(r.total_cents, r.currency))}).</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}<p>${owed.length ? `${emailEscape(c.client.signerName || 'The client')} was asked to pay ${emailEscape(dollars(owed.reduce((n, o) => n + o.amountCents, 0), c.fee.currency))} now, on our pay page (invoice ${emailEscape(owed.map(o => o.number).join(', '))}). ` : ''}${fresh2.invoices_at ? 'The invoices are drafted from the payment schedule and show in Money. Next: start the project.' : 'Next: draft the invoices from the payment schedule, and start the project.'}</p>`);
   }
+
+  // ---- the payment due on signing, asked for on our pay page ---------------------------------------------------------------------------------------
+  // A fully signed contract without automatic payments: each payment due on signing (or on a date already come) is sent as an invoice to be paid on
+  // our pay page, with Apple Pay first, then a card or the bank (src/pay.html, money-routes.js stripePayLink). → [{ number, amountCents, url }]
+  const payable = r => !!(money?.stripePayLink && money.stripeReady?.() && !r.content.plan.autopay);
+  async function askForPayment(r) {
+    if (!r || r.status !== 'executed' || !payable(r)) return [];
+    const today = todayISO(), signedOn = iso(r.client_signature?.at || r.executed_at) || today;
+    const seqs = schedule(r.content.plan, { signedOn, deliveryOn: iso(r.delivered_on) || null }).map((p, i) => ({ ...p, seq: i + 1 })).filter(p => p.event === 'signing' || (p.falls && p.falls <= today)).map(p => p.seq);
+    if (!seqs.length) return [];
+    const rows = (await pool.query(`select id, number, total_cents from money_invoices where contract_id=$1 and contract_seq = any($2::int[]) and status not in ('paid','void') order by contract_seq`, [r.id, seqs])).rows;
+    const out = []; for (const i of rows) { const url = await money.stripePayLink(i.id); if (url) out.push({ number: i.number, amountCents: Number(i.total_cents), url }); }
+    if (out.length) await ev(r.id, 'payment_asked', { actor: 'on signing', detail: out.map(o => `${o.number}: ${dollars(o.amountCents, r.content.fee.currency)}`).join(', ') });
+    return out;
+  }
+  // what the client still owes now on a fully signed contract, payable on our pay page: shown on the signing page
+  async function owedNow(r) {
+    if (r.status !== 'executed' || r.content.plan.autopay) return null;
+    const rows = (await pool.query(`select i.number, i.pay_url, i.total_cents - coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id), 0) owed from money_invoices i
+      where i.contract_id=$1 and i.pay_channel='stripe' and i.pay_url<>'' and i.status not in ('paid','void','draft') and i.due_on <= current_date order by i.contract_seq`, [r.id])).rows.filter(i => Number(i.owed) > 0);
+    return rows.length ? { amountCents: rows.reduce((n, i) => n + Number(i.owed), 0), invoices: rows.map(i => ({ number: i.number, amountCents: Number(i.owed), url: i.pay_url })) } : null;
+  }
+  const payHtml = (owed, currency) => owed.length ? `<p style="margin:18px 0 6px"><b>Payment due now: ${emailEscape(dollars(owed.reduce((n, o) => n + o.amountCents, 0), currency))}</b>. Pay with Apple Pay, a card or your bank:</p>${owed.map(o => hubButton(o.url, owed.length > 1 ? `Pay ${dollars(o.amountCents, currency)} (invoice ${o.number})` : `Pay ${dollars(o.amountCents, currency)} now`)).join('')}` : '';
 
   // Future Basics signed with a typed name (the signer had no handwritten signature yet): the same person can put their ink on that signature,
   // while the contract still waits on the client. The text, its fingerprint and the time of signing do not change; the audit trail records it.
@@ -463,7 +488,10 @@ export function registerContractRoutes(app, d) {
     if (r.status !== 'executed') return bad(reply, 'Invoices are drafted from a contract that both parties have signed', 409);
     if (r.invoices_at) return bad(reply, 'The invoices for this contract were already drafted', 409);
     const out = await draftInvoices(r, req.signer.email, req.signer.id); if (out.error) return bad(reply, out.error, 422);
-    return { ...(await detail(await one(r.id))), made: out.made };
+    // what is already due (the payment on signing) is asked for now, on our pay page, by email
+    const owed = await askForPayment(await one(r.id)).catch(() => []), c = r.content;
+    if (owed.length) await sendHubEmail({ to: c.client.signerEmail, subject: `Payment due: ${c.title} (${r.number})`, html: hubEmailShell(`Payment due: ${c.title}`, `<p>Hi ${emailEscape(firstName(c.client.signerName))},</p><p>Thank you for signing <b>${emailEscape(c.title)}</b> (${emailEscape(r.number)}).</p>${payHtml(owed, c.fee.currency)}<p style="font-size:12px;color:#717177">Questions? Just reply to this email.</p>`) }).catch(() => {});
+    return { ...(await detail(await one(r.id))), made: out.made, asked: owed.map(o => ({ number: o.number, amountCents: o.amountCents })) };
   });
 
   // What the client's page needs to take payment details: only once they have signed an agreement with automatic payments.
@@ -612,7 +640,7 @@ export function registerContractRoutes(app, d) {
     }
     const rendered = await renderOf(r), c = r.content;
     return reply.header('cache-control', 'no-store').send({ status: r.status, number: r.number, title: r.title, rendered, expiresAt: r.expires_at, sentAt: r.sent_at, canSign: r.status === 'sent', plan: { method: c.plan.method, autopay: !!c.plan.autopay },
-      pay: await payInfo(r), signer: { name: c.client.signerName, title: c.client.signerTitle, email: c.client.signerEmail }, clientSignature: sigView(r.client_signature), providerSignature: sigView(r.provider_signature), declined: r.declined ? { at: r.declined.at } : null, executedAt: r.executed_at, hash: r.doc_hash });
+      pay: await payInfo(r), payNow: await owedNow(r), dueOnSigningCents: payable(r) ? c.plan.installments.filter(p => p.event === 'signing').reduce((n, p) => n + Number(p.amountCents), 0) : 0, signer: { name: c.client.signerName, title: c.client.signerTitle, email: c.client.signerEmail }, clientSignature: sigView(r.client_signature), providerSignature: sigView(r.provider_signature), declined: r.declined ? { at: r.declined.at } : null, executedAt: r.executed_at, hash: r.doc_hash });
   });
   app.get('/v1/public/contracts/:token/pdf', async (req, reply) => {
     const r = await byToken(req, reply); if (!r) return; if (['void', 'draft'].includes(r.status)) return bad(reply, 'This agreement is no longer open', 404);
