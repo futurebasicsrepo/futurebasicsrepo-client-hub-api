@@ -136,7 +136,9 @@ body.fbcollapsed .fbside a .dot{position:absolute;top:6px;right:8px;width:8px;he
  .fbside{width:100vw;background:#141416;color:#fff;transform:translateY(-102%);transition:transform .5s cubic-bezier(.2,.8,.2,1)}
  body.fbopen .fbside{box-shadow:none}
  .fbside .quick{padding:14px 64px 0 18px;position:relative;z-index:2}
- .fbside .quick input{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#fff}.fbside .quick input::placeholder{color:rgba(255,255,255,.55)}
+ .fbside .quick input{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#fff;caret-color:#4bff9a;font-size:16px;padding:10px 12px}.fbside .quick input::placeholder{color:rgba(255,255,255,.55)}
+ /* focused on the ink tray it stays dark with light text (the light-page focus turned it white, so white text vanished), and 16px keeps a phone from zooming in */
+ .fbside .quick input:focus{background:rgba(255,255,255,.14);color:#fff;outline:2px solid #4bff9a;outline-offset:0}
  .fbclose{display:grid;place-items:center;position:absolute;top:10px;right:10px;width:44px;height:44px;border:0;border-radius:12px;background:transparent;color:#fff;cursor:pointer;z-index:3}
  .fbclose:focus-visible{outline:2px solid #4bff9a}
  .fbside nav{position:relative;z-index:2;padding:22px 22px calc(40px + env(safe-area-inset-bottom,0px));gap:4px}
@@ -158,6 +160,8 @@ body.fbcollapsed .fbside a .dot{position:absolute;top:6px;right:8px;width:8px;he
  body.fbcollapsed .fbside .lbl{display:revert}body.fbcollapsed .fbside a{justify-content:flex-start;padding:9px 10px}body.fbcollapsed .fbside nav a{justify-content:flex-end;padding:8px 4px}body.fbcollapsed .fbside a .dot{display:none!important}
  .fbside .foot{display:none}
  body.fbcollapsed .fbside .quick input{display:block}body.fbcollapsed .fbside .quick button.start span{display:inline}
+ /* the tray opens full width even when the desktop rail is collapsed, so the search results show too */
+ body.fbcollapsed .fbside .fbjump:not([hidden]){display:grid}
  body.fbcollapsed .fbside .bdg:not([hidden]){display:inline-block}
 }
 @keyframes fbIn{from{opacity:0;transform:translateX(18px)}}@keyframes fbDraw{to{stroke-dashoffset:0}}
