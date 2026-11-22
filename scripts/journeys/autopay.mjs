@@ -79,7 +79,7 @@ const mock = http.createServer((req, res) => {
 await new Promise(r => mock.listen(3133, '127.0.0.1', r));
 
 // ---- the stand-in for Stripe: customers, Checkout pages (setup mode), payment methods, payment intents (idempotent), fees ----
-const stm = { customers: [], sessions: {}, intents: {}, byKey: {}, detached: [], seen: [], n: 0 };
+const stm = { customers: [], sessions: {}, intents: {}, setups: {}, domains: [], byKey: {}, detached: [], seen: [], n: 0 };
 const PMS = {
   pm_card_ok: { id: 'pm_card_ok', type: 'card', card: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2031, wallet: { type: 'apple_pay' } } },
   pm_card_declined: { id: 'pm_card_declined', type: 'card', card: { brand: 'visa', last4: '0002', exp_month: 12, exp_year: 2031 } },
@@ -95,6 +95,10 @@ const stripeMock = http.createServer((req, res) => {
     if (u.pathname === '/v1/checkout/sessions' && req.method === 'POST') { const id = `cs_test_${++stm.n}x${Math.random().toString(36).slice(2, 8)}`; stm.sessions[id] = { id, params: Object.fromEntries(form.entries()), types: form.getAll('payment_method_types[]'), metadata: meta(), customer: g('customer'), status: 'open', url: `http://127.0.0.1:3135/pay/${id}` }; return json(200, { id, url: stm.sessions[id].url }); }
     let m = /^\/v1\/checkout\/sessions\/(cs_[\w]+)$/.exec(u.pathname);
     if (m) { const s = stm.sessions[m[1]]; if (!s) return json(404, { error: { message: 'No such session' } }); return json(200, { id: s.id, status: s.status, mode: 'setup', customer: s.customer, metadata: s.metadata, setup_intent: s.si || null }); }
+    // the embedded form: a SetupIntent our page confirms with Stripe.js, and the domain registered for Apple Pay
+    if (u.pathname === '/v1/setup_intents' && req.method === 'POST') { const id = `seti_${++stm.n}x${Math.random().toString(36).slice(2, 10)}`; stm.setups[id] = { id, client_secret: `${id}_secret_${Math.random().toString(36).slice(2, 10)}`, status: 'requires_payment_method', customer: g('customer'), usage: g('usage'), types: form.getAll('payment_method_types[]'), metadata: meta(), raw }; return json(200, stm.setups[id]); }
+    if (u.pathname === '/v1/payment_method_domains' && req.method === 'POST') { stm.domains.push(g('domain_name')); return json(200, { id: `pmd_${++stm.n}`, domain_name: g('domain_name') }); }
+    m = /^\/v1\/setup_intents\/(seti_[\w]+)$/.exec(u.pathname); if (m && stm.setups[m[1]]) { const { raw: _r, types: _t, ...si } = stm.setups[m[1]]; return json(200, si); }
     m = /^\/v1\/setup_intents\/(seti_[\w]+)$/.exec(u.pathname); if (m) { const s = Object.values(stm.sessions).find(x => x.si?.id === m[1]); return s ? json(200, s.si) : json(404, { error: { message: 'No such setup intent' } }); }
     if (u.pathname === '/v1/payment_intents' && req.method === 'POST') {
       const key = req.headers['idempotency-key']; if (key && stm.byKey[key]) return json(stm.byKey[key].code, stm.byKey[key].body);
@@ -113,6 +117,8 @@ const stripeMock = http.createServer((req, res) => {
 });
 await new Promise(r => stripeMock.listen(3135, '127.0.0.1', r));
 // the client finishes on Stripe's page: the payment method is saved against the customer and the session completes
+// the client finishes the embedded form: Stripe.js confirms the SetupIntent with what they entered (here, a test payment method)
+const stripeConfirm = (id, pm, over = {}) => Object.assign(stm.setups[id], { status: 'succeeded', payment_method: PMS[pm], ...over });
 const stripeFinish = (sessionId, pm, over = {}) => { const s = stm.sessions[sessionId]; s.status = 'complete'; s.si = { id: `seti_${sessionId.slice(8, 20).replace(/\W/g, '')}`, status: 'succeeded', customer: s.customer, metadata: s.metadata, payment_method: PMS[pm], ...over }; return s.si; };
 const hook = async (type, object, { secret = 'whsec_journey', badSig = false } = {}) => { const rawBody = JSON.stringify({ id: `evt_${Math.random().toString(36).slice(2)}`, type, data: { object } }); return fetch(`${BASE}/v1/stripe/webhook`, { method: 'POST', headers: { 'content-type': 'application/json', 'stripe-signature': badSig ? 't=1,v1=00' : signWebhook({ rawBody, secret }) }, body: rawBody }); };
 
@@ -299,6 +305,54 @@ try {
     await run('2031-01-01'); ok((await outbox(SIGNER3.replace('pay3', 'pay4'))).every(e => !/Add your payment details/.test(e.subject)), 'and is never asked once the details are on file');
   });
 
+  await journey('J321', 'Stripe inside our own page: with a publishable key the signing page shows Stripe\'s Payment Element in our type and colours (Apple Pay, Google Pay or a card), the details go only to Stripe, and what Stripe saved is kept, once, for this agreement only', async () => {
+    ok((await K('/autopay/processor', { method: 'PUT', body: { processor: 'stripe' } })).json.payments.stripe.embedded === true, 'staff see the embedded form is on (STRIPE_PUBLISHABLE_KEY is set)');
+    const S8 = SIGNER.replace('pay-', 'pay8-'), E = await make('E8', S8, planCard); await P(E.token, '/sign', { body: sign() }); await K(`/${E.id}/countersign`, { body: {} });
+    const pay = (await P(E.token)).json.pay; ok(pay.embedded === true && pay.publishableKey === 'pk_test_journey' && pay.kind === 'card', 'the client page gets the form and the publishable key, never the secret one', pay);
+    ok((await P(E.token, '/payment-intent', { body: { kind: 'card' } })).status === 422 && (await P(E.token, '/payment-intent', { body: { agree: true, kind: 'bank' } })).status === 422, 'it needs the authorization ticked, and the agreement\'s own kind of payment');
+    const pi = await P(E.token, '/payment-intent', { body: { agree: true, kind: 'card' } }); const seti = pi.json.clientSecret && pi.json.clientSecret.split('_secret_')[0], si = stm.setups[seti];
+    ok(pi.status === 200 && si && si.usage === 'off_session' && si.types.join() === 'card' && si.metadata.contract === E.id && si.metadata.consent_by === 'Pat Payer' && stm.customers.some(c => c.id === si.customer && c.email === S8), 'a SetupIntent for a card, for later payments, for this agreement and its signer', si);
+    ok(!JSON.stringify(pi.json).includes('sk_test_') && sql(`select count(*) from contract_payment_methods where contract_id='${E.id}'`) === '0', 'the page gets only the one-time secret, and nothing is saved yet');
+    ok((await P(E.token, '/payment-intent/complete', { body: { setupIntentId: seti } })).status === 409, 'finishing before Stripe confirmed saves nothing');
+    const F9 = await make('F9', S8.replace('pay8', 'pay9'), planCard); await P(F9.token, '/sign', { body: sign() }); await K(`/${F9.id}/countersign`, { body: {} });
+    const other = (await P(F9.token, '/payment-intent', { body: { agree: true, kind: 'card' } })).json.clientSecret.split('_secret_')[0]; stripeConfirm(other, 'pm_card_ok');
+    ok((await P(E.token, '/payment-intent/complete', { body: { setupIntentId: other } })).status === 403, 'another agreement\'s setup cannot be used on this one');
+    ok((await P(E.token, '/payment-intent/complete', { body: { setupIntentId: 'cs_nope' } })).status === 422, 'only a setup id is taken');
+    stripeConfirm(seti, 'pm_card_ok');
+    const done = await P(E.token, '/payment-intent/complete', { body: { setupIntentId: seti } }); ok(done.status === 200 && done.json.method.label === 'Apple Pay · Visa ending 4242', 'confirmed by Stripe, the card is kept and named for what it is', done.json);
+    ok(sql(`select processor||'|'||instrument_id from contract_payment_methods where contract_id='${E.id}' and status='active'`) === 'stripe|pm_card_ok' && Object.values(stm.intents).some(x => x.meta?.contract === E.number && x.meta.seq === '1' && x.status === 'succeeded'), 'kept as a Stripe payment method, and the deposit due on signing is taken');
+    ok((await P(E.token, '/payment-intent/complete', { body: { setupIntentId: seti } })).status === 200 && sql(`select count(*) from contract_payment_methods where contract_id='${E.id}'`) === '1', 'finishing twice (the page and Stripe\'s redirect) keeps it once');
+    // a bank account: the form asks Stripe for a bank SetupIntent with the bank sign-in
+    const B9 = await make('B9', S8.replace('pay8', 'pay8b'), planBank); await P(B9.token, '/sign', { body: sign() }); await K(`/${B9.id}/countersign`, { body: {} });
+    const bi = (await P(B9.token, '/payment-intent', { body: { agree: true, kind: 'bank' } })).json; const bsi = stm.setups[bi.clientSecret.split('_secret_')[0]];
+    ok(bi.kind === 'bank' && bsi.types.join() === 'us_bank_account' && /financial_connections/.test(decodeURIComponent(bsi.raw)), 'a bank account agreement gets a bank SetupIntent, with the bank sign-in', bsi && bsi.types);
+    if (playwright) {
+      // in a browser, with Stripe.js stood in for: the form is ours around Stripe's frame, in our type and colours
+      const S9 = await make('G9', S8.replace('pay8', 'pay8c'), planCard); await P(S9.token, '/sign', { body: sign() }); await K(`/${S9.id}/countersign`, { body: {} });
+      const FAKE = `window.Stripe=function(pk){window.__pk=pk;return{elements:function(o){window.__el=o;return{create:function(t,co){window.__pe=co;var h={};return{mount:function(sel){document.querySelector(sel).innerHTML='<div id="fakePe">Card · Apple Pay · Google Pay</div>';setTimeout(function(){h.change&&h.change({complete:true})},30)},on:function(e,f){h[e]=f}}},submit:function(){return Promise.resolve({})}}},confirmSetup:function(o){window.__confirm=o;return new Promise(function(ok){window.__finish=function(){ok({setupIntent:{id:o.clientSecret.split('_secret_')[0],status:'succeeded'}})}})}}};`;
+      const br = await playwright.chromium.launch(); const errs = [];
+      try {
+        const ctx = await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true }); await ctx.route('https://js.stripe.com/**', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: FAKE }));
+        const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(String(e)));
+        const resp = await pg.goto(`${BASE}/sign/${S9.token}`, { waitUntil: 'networkidle' }); const csp = resp.headers()['content-security-policy'] || '';
+        ok(/script-src[^;]*https:\/\/js\.stripe\.com/.test(csp) && /frame-src[^;]*https:\/\/js\.stripe\.com/.test(csp) && /connect-src[^;]*https:\/\/api\.stripe\.com/.test(csp) && /payment=\(self "https:\/\/js\.stripe\.com"/.test(resp.headers()['permissions-policy'] || ''), 'the page lets Stripe.js, its frames and Apple Pay in, and nothing else new', csp);
+        await pg.waitForSelector('#fakePe', { timeout: 10000 }); const txt = await pg.locator('#payBox').innerText();
+        ok(/Apple Pay/.test(txt) && /Google Pay/.test(txt) && /Secured by Stripe/.test(txt) && !(await pg.locator('#cNum').count()) && !/Continue to secure payment/.test(txt), 'on a phone the form sits on our page: Apple Pay, Google Pay or a card, no trip to another page');
+        const el = await pg.evaluate(() => ({ pk: window.__pk, mode: window.__el.mode, types: window.__el.paymentMethodTypes, font: window.__el.appearance.variables.fontFamily, primary: window.__el.appearance.variables.colorPrimary, fonts: window.__el.fonts[0].cssSrc, name: window.__pe.defaultValues.billingDetails.name, wallets: window.__pe.wallets }));
+        ok(el.pk === 'pk_test_journey' && el.mode === 'setup' && el.types.join() === 'card' && /Space Grotesk/.test(el.font) && el.primary === '#141416' && /\/fonts\/fonts\.css$/.test(el.fonts) && el.name === 'Pat Payer' && el.wallets.applePay === 'auto', 'Stripe\'s form is set in our type and colours, with the signer\'s name filled in', el);
+        await pg.waitForTimeout(100); ok(await pg.locator('#pGo').isDisabled(), 'the button waits for the authorization'); await pg.check('#pAuth'); ok(await pg.locator('#pGo').isEnabled(), 'and wakes once it is ticked');
+        await pg.click('#pGo'); await pg.waitForFunction(() => window.__confirm, null, { timeout: 10000 });
+        const conf = await pg.evaluate(() => ({ secret: window.__confirm.clientSecret, redirect: window.__confirm.redirect, back: window.__confirm.confirmParams.return_url }));
+        const gid = conf.secret.split('_secret_')[0]; ok(stm.setups[gid]?.metadata.contract === S9.id && conf.redirect === 'if_required' && conf.back.includes(`/sign/${S9.token}?pay=intent`), 'pressing Save asks for this agreement\'s setup and confirms it with Stripe, staying on the page', conf);
+        stripeConfirm(gid, 'pm_card_ok'); await pg.evaluate(() => window.__finish());
+        await pg.waitForFunction(() => /Automatic payments are set up/.test(document.querySelector('#payBox')?.innerText || ''), null, { timeout: 10000 });
+        ok(/Apple Pay · Visa ending 4242/.test(await pg.locator('#payBox').innerText()) && sql(`select label from contract_payment_methods where contract_id='${S9.id}' and status='active'`) === 'Apple Pay · Visa ending 4242', 'the page then says automatic payments are set up, on the Apple Pay card');
+        await pg.screenshot({ path: '/tmp/j321-sign.png' }).catch(() => {});
+        ok(errs.length === 0, 'no page errors', errs);
+      } finally { await br.close(); }
+    }
+  });
+
   await journey('J320', 'A contract\'s invoice paid on its own (the client pays the QuickBooks link): the next sync sends the client the branded receipt with its PDF, once; a payment from weeks ago, read when QuickBooks is connected, sends nothing', async () => {
     const S7 = SIGNER.replace('pay-', 'pay7-'), H = await make('H', S7, buildPlan({ type: 'split', totalCents: 300000, depositPct: 50, method: 'ach', autopay: false }).plan);
     ok((await P(H.token, '/sign', { body: sign({ autopay: false }) })).status === 200 && (await K(`/${H.id}/countersign`, { body: {} })).status === 200, 'signed by both, paid by invoice');
@@ -321,7 +375,7 @@ try {
     const set = await K('/autopay/processor', { method: 'PUT', body: { processor: 'stripe' } }); ok(set.status === 200 && set.json.payments.processor === 'stripe' && set.json.payments.stripe.configured, 'staff switch automatic payments to Stripe', set.json);
     ok((await C('/autopay/processor', { method: 'PUT', body: { processor: 'quickbooks' } })).status === 403, 'only a signer can switch it back');
     const F = await make('F', SIGNER4, planCard); ok((await P(F.token, '/sign', { body: sign() })).status === 200 && (await K(`/${F.id}/countersign`, { body: {} })).status === 200, 'a card contract is signed by both');
-    const pay = (await P(F.token)).json.pay; ok(pay.hosted && pay.processor === 'stripe' && pay.ready && pay.tokensUrl === null && pay.kind === 'card', 'the client page uses the Stripe page, not our own card form', pay);
+    const pay = (await P(F.token)).json.pay; ok(pay.hosted && pay.processor === 'stripe' && pay.ready && pay.tokensUrl === null && pay.kind === 'card', 'the client page uses Stripe, not our own card form', pay);
     ok((await P(F.token, '/payment-session', { body: {} })).status === 422, 'the client has to tick the authorization first');
     const ps = await P(F.token, '/payment-session', { body: { agree: true, kind: 'bank' } }); ok(ps.status === 422, 'asking for a bank account on a card contract is refused');
     const st = await P(F.token, '/payment-session', { body: { agree: true, kind: 'card' } }); ok(st.status === 200 && /\/pay\/cs_test_/.test(st.json.url), 'the client is sent to Stripe\'s page', st.json);
@@ -349,16 +403,6 @@ try {
     ok((await hook('checkout.session.completed', { id: sid, mode: 'setup', metadata: { contract: F.id } })).status === 200 && sql(`select count(*) from contract_payment_methods where contract_id='${F.id}'`) === '1', 'a repeated "details saved" from Stripe changes nothing');
     // a client who never made it back to our page is still saved, from Stripe's own word
     const G2 = await make('G2', SIGNER6, planCard); await P(G2.token, '/sign', { body: sign() }); await K(`/${G2.id}/countersign`, { body: {} });
-    if (playwright) {
-      const br = await playwright.chromium.launch(); const errs = [];
-      try { const pg = await (await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true })).newPage(); pg.on('pageerror', e => errs.push(String(e)));
-        await pg.goto(`${BASE}/sign/${G2.token}`, { waitUntil: 'networkidle' }); await pg.waitForSelector('#pGo', { timeout: 10000 });
-        const txt = await pg.locator('#payBox').innerText(); ok(/Apple Pay/.test(txt) && /Google Pay/.test(txt) && /Continue to secure payment/.test(txt) && !(await pg.locator('#cNum').count()), 'on a phone the page offers Apple Pay, Google Pay or a card on the secure page, and has no card form of its own');
-        ok(await pg.locator('#pGo').isDisabled(), 'the button waits for the authorization'); await pg.check('#pAuth'); ok(await pg.locator('#pGo').isEnabled(), 'and wakes once it is ticked');
-        await Promise.all([pg.waitForURL(/127\.0\.0\.1:3135\/pay\/cs_test_/, { timeout: 10000 }).catch(() => {}), pg.click('#pGo')]); ok(/3135\/pay\/cs_test_/.test(pg.url()), 'pressing it takes them to Stripe\'s page', pg.url());
-        ok(errs.length === 0, 'no page errors', errs);
-      } finally { await br.close(); }
-    }
     const sid3 = (await P(G2.token, '/payment-session', { body: { agree: true, kind: 'card' } })).json.url.split('/pay/')[1]; stripeFinish(sid3, 'pm_card_ok');
     ok((await hook('checkout.session.completed', { id: sid3, mode: 'setup', metadata: { contract: G2.id } })).status === 200 && sql(`select label from contract_payment_methods where contract_id='${G2.id}' and status='active'`) === 'Apple Pay · Visa ending 4242', 'a client who closed the tab on Stripe\'s page is still saved, by Stripe\'s webhook');
     // changing the card detaches the old one at Stripe
