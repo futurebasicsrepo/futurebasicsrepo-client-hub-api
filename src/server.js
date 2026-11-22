@@ -850,7 +850,7 @@ const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting
   },
   // Shopify Payments payouts (needs the app's read_shopify_payments_payouts scope; a store without Shopify Payments has no account to read)
   shopifyReady: shopifyConfigured,
-  sendHubEmail, hubEmailShell, emailEscape, // the receipt, emailed with its PDF once an invoice is paid
+  sendHubEmail, hubEmailShell, emailEscape, hubButton, // the receipt, emailed with its PDF once an invoice is paid; an invoice sent to the client with its Pay now button
   shopifyPayouts: async ({ after } = {}) => {
     if (!shopifyConfigured()) return null;
     const acct = (await shopifyGraphql(PAYOUTS_QUERY, { after: after || null })).shopifyPaymentsAccount;

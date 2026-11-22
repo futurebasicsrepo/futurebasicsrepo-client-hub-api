@@ -52,6 +52,7 @@
     .linkbtn{background:none;border:0;color:var(--dim);text-decoration:underline;cursor:pointer;padding:6px 0;font-size:14px}
     .bar{position:fixed;left:0;right:0;bottom:0;z-index:15;background:rgba(20,20,22,.97);color:#fff;padding:12px clamp(14px,4vw,28px) calc(12px + env(safe-area-inset-bottom));display:flex;gap:14px;align-items:center;justify-content:space-between}
     .bar b{font-weight:500;font-size:20px;letter-spacing:-.02em}.bar small{display:block;color:#a9a9b0;font-size:12px}.bar .btn{width:auto;background:var(--cue);color:var(--ink);padding:12px 20px;font-size:15px}
+    .paynow{background:var(--paper);border:2px solid var(--ink);border-radius:22px;padding:20px 22px;margin:0 0 14px;display:grid;gap:8px}.paynow h2{margin:0;font-size:clamp(26px,7vw,34px);font-weight:500;letter-spacing:-.03em;line-height:1.05}.paynow p{margin:0;color:var(--dim)}.paynow .btn{margin-top:6px}
     .done{text-align:center;padding:30px 10px}.done h2{font-size:30px;font-weight:500;margin:6px 0}.done p{color:var(--dim);margin:0 0 16px}.tick{width:58px;height:58px;border-radius:50%;background:var(--cue);border:2px solid var(--ink);display:inline-grid;place-items:center;font-size:30px}
     .center{max-width:520px;margin:60px auto;text-align:center;padding:0 18px}.center h1{font-size:34px}
     @media print{header,.bar,.sign,.noprint{display:none!important}body{background:#fff}main{padding:0}}
@@ -86,13 +87,17 @@ img.ink{display:block;height:56px;width:auto;max-width:100%;margin:2px 0 8px}
     if(s.kind==='schedule'){h+=`<p><b>${esc(s.summary)}</b></p><table><thead><tr><th>Payment</th><th>Due</th><th class="n">Amount</th></tr></thead><tbody>${s.rows.map(r=>`<tr><td>${esc(r.label)}</td><td>${esc(r.when)}</td><td class="n">${esc(r.amountText)}</td></tr>`).join('')}</tbody></table>`+paras(s.body)}
     return h+'</section>';
   }
+  // what is due on signing, once both have signed and there are no automatic payments: paid on our pay page (Apple Pay, a card or the bank)
+  const usd=n=>'$'+(Number(n)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  function payNowBox(c){const p=c.payNow,one=p.invoices.length===1;
+    $('#payBox').innerHTML=`<section class="paynow" id="payNow" aria-labelledby="pnH"><span class="meta">One step left</span><h2 id="pnH">Pay ${usd(p.amountCents)} now</h2><p>${one?`Invoice ${esc(p.invoices[0].number)}, due on signing.`:`${p.invoices.length} invoices are due now.`} Pay with Apple Pay, a card or your bank.</p>${p.invoices.map(i=>`<a class="btn go" href="${esc(i.url)}">${one?`Pay ${usd(i.amountCents)}`:`Pay ${usd(i.amountCents)} · ${esc(i.number)}`}</a>`).join('')}</section>`}
   function render(c){
     const r=c.rendered,P=r.parties,fee=r.sections.find(s=>s.kind==='fee'),sch=r.sections.find(s=>s.kind==='schedule');
     document.title=`${c.title} — sign`;
     const sigs=`${c.providerSignature?`<p>Signed for ${esc(P.provider.name)} by <b>${esc(c.providerSignature.name)}</b> on ${esc(when(c.providerSignature.at))}.</p>${c.providerSignature.ink?`<img class="ink" src="${esc(c.providerSignature.ink)}" alt="Signature of ${esc(c.providerSignature.name)}">`:''}`:''}${c.clientSignature?`<p>Signed for ${esc(P.client.company)} by <b>${esc(c.clientSignature.name)}</b> on ${esc(when(c.clientSignature.at))}.</p>${c.clientSignature.ink?`<img class="ink" src="${esc(c.clientSignature.ink)}" alt="Signature of ${esc(c.clientSignature.name)}">`:''}`:''}`;
     let top='';
-    if(c.status==='executed')top=`<div class="banner ok"><b>Signed by both parties</b>This is your copy. Download the PDF and keep it with your records.${sigs}</div>`;
-    else if(c.status==='signed_by_client')top=`<div class="banner ok"><b>You have signed. Thank you.</b>It becomes final when ${esc(P.provider.name)} signs too. We will email you a copy.${sigs}</div>`;
+    if(c.status==='executed')top=`<div class="banner ok"><b>Signed by both parties</b>${c.payNow?`One step left: pay ${usd(c.payNow.amountCents)}, just below. `:''}This is your copy. Download the PDF and keep it with your records.${sigs}</div>`;
+    else if(c.status==='signed_by_client')top=`<div class="banner ok"><b>You have signed. Thank you.</b>It becomes final when ${esc(P.provider.name)} signs too. We will email you a copy${c.dueOnSigningCents>0?`, with a link to pay the ${usd(c.dueOnSigningCents)} due on signing (Apple Pay, a card or your bank). This page will show it too`:''}.${sigs}</div>`;
     else if(c.status==='declined')top=`<div class="banner bad"><b>This agreement was declined</b>If that was a mistake, ask ${esc(P.provider.name)} to send it again.</div>`;
     else if(c.status==='expired')top=`<div class="banner warn"><b>This link has expired</b>Ask ${esc(P.provider.name)} to send a fresh copy of the agreement.</div>`;
     else if(c.expiresAt)top=`<div class="banner"><b>Please review and sign by ${esc(day(c.expiresAt))}</b>Read the agreement below, then sign at the bottom. It takes a couple of minutes.</div>`;
@@ -105,8 +110,9 @@ img.ink{display:block;height:56px;width:auto;max-width:100%;margin:2px 0 8px}
     $('#state').classList.add('hidden');$('#app').classList.remove('hidden');
     const pdf=$('#pdfTop');pdf.href=`/v1/public/contracts/${encodeURIComponent(TOKEN)}/pdf?dl=1`;pdf.setAttribute('download','');pdf.classList.remove('hidden');
     if(c.pay)payForm(c);
+    if(c.payNow&&!c.pay)payNowBox(c);
     if(c.canSign){signForm(c);$('#barFee').textContent=fee.totalText;$('#barLabel').textContent=fee.units&&fee.units.length?'Total':'Fixed fee';$('#bar').classList.remove('hidden')}
-    else{$('#bar').classList.add('hidden');if(c.status==='executed'||c.status==='signed_by_client')$('#signBox').innerHTML=`<div class="sign done"><div class="tick">✓</div><h2>${c.status==='executed'?'Fully signed':'Waiting for '+esc(P.provider.name)}</h2><p>${c.status==='executed'?'Both parties have signed this agreement.':'You will get an email when it is final.'}</p><a class="btn light" href="${pdf.href}" target="_blank" rel="noopener">Download the PDF</a></div>`}
+    else{$('#bar').classList.add('hidden');if(c.status==='executed'||c.status==='signed_by_client')$('#signBox').innerHTML=`<div class="sign done"><div class="tick">✓</div><h2>${c.status==='executed'?'Fully signed':'Waiting for '+esc(P.provider.name)}</h2><p>${c.status==='executed'?(c.payNow?`Both parties have signed. Next: pay ${usd(c.payNow.amountCents)}.`:'Both parties have signed this agreement.'):'You will get an email when it is final.'}</p>${c.status==='executed'&&c.payNow&&!c.pay?c.payNow.invoices.map(i=>`<a class="btn go" href="${esc(i.url)}" style="margin-bottom:10px">Pay ${usd(i.amountCents)} now</a>`).join(''):''}<a class="btn light" href="${pdf.href}" target="_blank" rel="noopener">Download the PDF</a></div>`}
   }
   // Payment details for automatic payments. The number goes from this page straight to the payment provider, which sends back a one-time token: only the token reaches us.
   const luhn=n=>{const d=String(n).replace(/\D/g,'');if(d.length<12||d.length>19)return false;let t=0;for(let i=0;i<d.length;i++){let x=+d[d.length-1-i];if(i%2){x*=2;if(x>9)x-=9}t+=x}return t%10===0};
