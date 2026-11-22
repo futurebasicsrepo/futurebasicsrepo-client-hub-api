@@ -329,25 +329,45 @@ try {
     if (playwright) {
       // in a browser, with Stripe.js stood in for: the form is ours around Stripe's frame, in our type and colours
       const S9 = await make('G9', S8.replace('pay8', 'pay8c'), planCard); await P(S9.token, '/sign', { body: sign() }); await K(`/${S9.id}/countersign`, { body: {} });
-      const FAKE = `window.Stripe=function(pk){window.__pk=pk;return{elements:function(o){window.__el=o;return{create:function(t,co){window.__pe=co;var h={};return{mount:function(sel){document.querySelector(sel).innerHTML='<div id="fakePe">Card · Apple Pay · Google Pay</div>';setTimeout(function(){h.change&&h.change({complete:true})},30)},on:function(e,f){h[e]=f}}},submit:function(){return Promise.resolve({})}}},confirmSetup:function(o){window.__confirm=o;return new Promise(function(ok){window.__finish=function(){ok({setupIntent:{id:o.clientSecret.split('_secret_')[0],status:'succeeded'}})}})}}};`;
+      const S10 = await make('G10', S8.replace('pay8', 'pay8d'), planCard); await P(S10.token, '/sign', { body: sign() }); await K(`/${S10.id}/countersign`, { body: {} });
+      // Stripe.js stood in for: the card form (Payment Element) and the Apple Pay button (Express Checkout Element), each in its own Elements group
+      const FAKE = `window.Stripe=function(pk){window.__pk=pk;return{elements:function(o){var g={opts:o,submit:function(){return Promise.resolve({})},create:function(t,co){var h={};return{mount:function(sel){if(t==='payment'){window.__el=o;window.__pe=co;document.querySelector(sel).innerHTML='<div id="fakePe">Card number</div>';setTimeout(function(){h.change&&h.change({complete:true})},30)}else{window.__xo=o;window.__xe=co;window.__ece=h;document.querySelector(sel).innerHTML='<div id="fakeAp">Apple Pay</div>';setTimeout(function(){h.ready&&h.ready({availablePaymentMethods:{applePay:true,googlePay:false}})},30)}},on:function(e,f){h[e]=f}}}};return g},confirmSetup:function(o){window.__confirm=o;window.__group=o.elements.opts.appearance.variables.borderRadius;return new Promise(function(ok){window.__finish=function(){ok({setupIntent:{id:o.clientSecret.split('_secret_')[0],status:'succeeded'}})}})}}};`;
       const br = await playwright.chromium.launch(); const errs = [];
       try {
         const ctx = await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true }); await ctx.route('https://js.stripe.com/**', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: FAKE }));
         const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(String(e)));
         const resp = await pg.goto(`${BASE}/sign/${S9.token}`, { waitUntil: 'networkidle' }); const csp = resp.headers()['content-security-policy'] || '';
         ok(/script-src[^;]*https:\/\/js\.stripe\.com/.test(csp) && /frame-src[^;]*https:\/\/js\.stripe\.com/.test(csp) && /connect-src[^;]*https:\/\/api\.stripe\.com/.test(csp) && /payment=\(self "https:\/\/js\.stripe\.com"/.test(resp.headers()['permissions-policy'] || ''), 'the page lets Stripe.js, its frames and Apple Pay in, and nothing else new', csp);
-        await pg.waitForSelector('#fakePe', { timeout: 10000 }); const txt = await pg.locator('#payBox').innerText();
-        ok(/Apple Pay/.test(txt) && /Google Pay/.test(txt) && /Secured by Stripe/.test(txt) && !(await pg.locator('#cNum').count()) && !/Continue to secure payment/.test(txt), 'on a phone the form sits on our page: Apple Pay, Google Pay or a card, no trip to another page');
-        const el = await pg.evaluate(() => ({ pk: window.__pk, mode: window.__el.mode, types: window.__el.paymentMethodTypes, font: window.__el.appearance.variables.fontFamily, primary: window.__el.appearance.variables.colorPrimary, fonts: window.__el.fonts[0].cssSrc, name: window.__pe.defaultValues.billingDetails.name, wallets: window.__pe.wallets }));
-        ok(el.pk === 'pk_test_journey' && el.mode === 'setup' && el.types.join() === 'card' && /Space Grotesk/.test(el.font) && el.primary === '#141416' && /\/fonts\/fonts\.css$/.test(el.fonts) && el.name === 'Pat Payer' && el.wallets.applePay === 'auto', 'Stripe\'s form is set in our type and colours, with the signer\'s name filled in', el);
-        await pg.waitForTimeout(100); ok(await pg.locator('#pGo').isDisabled(), 'the button waits for the authorization'); await pg.check('#pAuth'); ok(await pg.locator('#pGo').isEnabled(), 'and wakes once it is ticked');
-        await pg.click('#pGo'); await pg.waitForFunction(() => window.__confirm, null, { timeout: 10000 });
-        const conf = await pg.evaluate(() => ({ secret: window.__confirm.clientSecret, redirect: window.__confirm.redirect, back: window.__confirm.confirmParams.return_url }));
-        const gid = conf.secret.split('_secret_')[0]; ok(stm.setups[gid]?.metadata.contract === S9.id && conf.redirect === 'if_required' && conf.back.includes(`/sign/${S9.token}?pay=intent`), 'pressing Save asks for this agreement\'s setup and confirms it with Stripe, staying on the page', conf);
+        await pg.waitForSelector('#fakeAp', { timeout: 10000 }); await pg.waitForSelector('#pMore:not(.hidden)', { timeout: 5000 });
+        const txt = await pg.locator('#payBox').innerText();
+        ok(/More payment options/.test(txt) && /Secured by Stripe/.test(txt) && await pg.locator('#pCard').isHidden() && !(await pg.locator('#cNum').count()) && !/Continue to secure payment/.test(txt), 'on a phone the Apple Pay button comes first, with the card form behind "More payment options", all on our page');
+        const el = await pg.evaluate(() => ({ pk: window.__pk, mode: window.__el.mode, types: window.__el.paymentMethodTypes, font: window.__el.appearance.variables.fontFamily, primary: window.__el.appearance.variables.colorPrimary, fonts: window.__el.fonts[0].cssSrc, name: window.__pe.defaultValues.billingDetails.name, peWallets: window.__pe.wallets, xMode: window.__xo.mode, xRadius: window.__xo.appearance.variables.borderRadius, xMethods: window.__xe.paymentMethods, xLayout: window.__xe.layout }));
+        ok(el.pk === 'pk_test_journey' && el.mode === 'setup' && el.types.join() === 'card' && /Space Grotesk/.test(el.font) && el.primary === '#141416' && /\/fonts\/fonts\.css$/.test(el.fonts) && el.name === 'Pat Payer', 'Stripe\'s card form is set in our type and colours, with the signer\'s name filled in', el);
+        ok(el.peWallets.applePay === 'never' && el.peWallets.link === 'never' && el.xMode === 'setup' && el.xRadius === '999px' && el.xMethods.applePay === 'always' && el.xMethods.link === 'never' && el.xLayout.maxRows === 0 && el.xLayout.overflow === 'never', 'Apple Pay (and Google Pay) live only in the pill button above; the card form has no wallets or Link of its own', el);
+        await pg.click('#pMore'); ok(await pg.locator('#pCard').isVisible() && (await pg.getAttribute('#pMore', 'aria-expanded')) === 'true' && await pg.locator('#pGo').isDisabled(), '"More payment options" opens the card form, whose Save waits for the authorization');
+        await pg.click('#pMore'); ok(await pg.locator('#pCard').isHidden(), 'and closes it again');
+        // Apple Pay without the box ticked: the sheet is not opened, and the page says why
+        await pg.evaluate(() => { window.__resolved = false; window.__ece.click({ resolve: () => { window.__resolved = true; } }); });
+        ok(!(await pg.evaluate(() => window.__resolved)) && /Tick the box above/.test(await pg.locator('#pMsg').innerText()) && /\bneed\b/.test(await pg.getAttribute('#pAuthBox', 'class')), 'pressing Apple Pay before ticking the authorization opens nothing and points at the box');
+        await pg.check('#pAuth'); ok((await pg.locator('#pMsg').innerText()) === '', 'ticking it clears the message');
+        await pg.evaluate(() => window.__ece.click({ resolve: () => { window.__resolved = true; } })); ok(await pg.evaluate(() => window.__resolved), 'with the box ticked, Apple Pay opens');
+        await pg.evaluate(() => { window.__ece.confirm({ paymentFailed: () => { window.__failed = true; } }); }); await pg.waitForFunction(() => window.__confirm, null, { timeout: 10000 });
+        const conf = await pg.evaluate(() => ({ secret: window.__confirm.clientSecret, redirect: window.__confirm.redirect, back: window.__confirm.confirmParams.return_url, group: window.__group }));
+        const gid = conf.secret.split('_secret_')[0]; ok(stm.setups[gid]?.metadata.contract === S9.id && conf.group === '999px' && conf.redirect === 'if_required' && conf.back.includes(`/sign/${S9.token}?pay=intent`), 'the Apple Pay sheet confirms this agreement\'s setup with Stripe, staying on the page', conf);
         stripeConfirm(gid, 'pm_card_ok'); await pg.evaluate(() => window.__finish());
         await pg.waitForFunction(() => /Automatic payments are set up/.test(document.querySelector('#payBox')?.innerText || ''), null, { timeout: 10000 });
         ok(/Apple Pay · Visa ending 4242/.test(await pg.locator('#payBox').innerText()) && sql(`select label from contract_payment_methods where contract_id='${S9.id}' and status='active'`) === 'Apple Pay · Visa ending 4242', 'the page then says automatic payments are set up, on the Apple Pay card');
-        await pg.screenshot({ path: '/tmp/j321-sign.png' }).catch(() => {});
+        // the card form, on another agreement: More payment options, the details, the box, Save
+        const pg2 = await ctx.newPage(); pg2.on('pageerror', e => errs.push(String(e)));
+        await pg2.goto(`${BASE}/sign/${S10.token}`, { waitUntil: 'networkidle' }); await pg2.waitForSelector('#pMore:not(.hidden)', { timeout: 10000 });
+        await pg2.click('#pMore'); await pg2.check('#pAuth'); ok(await pg2.locator('#pGo').isEnabled(), 'with the card form filled in and the box ticked, Save card wakes');
+        await pg2.click('#pGo'); await pg2.waitForFunction(() => window.__confirm, null, { timeout: 10000 });
+        const c2 = await pg2.evaluate(() => ({ secret: window.__confirm.clientSecret, group: window.__group }));
+        const g2 = c2.secret.split('_secret_')[0]; ok(stm.setups[g2]?.metadata.contract === S10.id && c2.group === '14px', 'Save card confirms with the card form, not the Apple Pay button', c2);
+        stripeConfirm(g2, 'pm_card_ok'); await pg2.evaluate(() => window.__finish());
+        await pg2.waitForFunction(() => /Automatic payments are set up/.test(document.querySelector('#payBox')?.innerText || ''), null, { timeout: 10000 });
+        ok(sql(`select count(*) from contract_payment_methods where contract_id='${S10.id}' and status='active'`) === '1', 'and the card is kept');
+        await pg2.screenshot({ path: '/tmp/j321-sign.png' }).catch(() => {});
         ok(errs.length === 0, 'no page errors', errs);
       } finally { await br.close(); }
     }
