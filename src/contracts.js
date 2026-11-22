@@ -12,8 +12,17 @@ export const STATUSES = ['draft', 'sent', 'signed_by_client', 'executed', 'decli
 export const PLAN_TYPES = { full: 'Pay in full', split: 'Deposit and balance', monthly: 'Monthly payments', milestones: 'By milestone' };
 export const METHODS = { invoice: 'Pay each invoice', ach: 'ACH bank debit on file', card: 'Card on file', either: 'ACH or card on file (client chooses)' };
 export const EVENTS = { signing: 'On signing', delivery: 'On delivery' };
-// What a payment that waits for the work to be done is called: for digital work it is delivery, for a physical product it is the approved final sample.
-export const eventLabel = (event, kind) => (event === 'delivery' && isProduct(kind) ? 'On final sample approval' : EVENTS[event] || '');
+// What a payment that waits for the work to be done is called. For digital work it is delivery. For a physical product the contract chooses
+// (plan.balanceOn): the approved final sample (the default), or the production order being ready to ship, so the balance is paid before it ships.
+// Either way it is the one moment staff record on the contract (delivered_on), and the payments that wait for it fall due that day.
+export const BALANCE_ON = { sample: 'On final sample approval', ship: 'Before production ships' };
+const DUE_WORDS = {
+  digital: { on: 'On delivery', when: 'on delivery', record: 'Record delivery', prompt: 'Date the work was delivered', done: 'Delivered', moment: 'delivery', note: 'Due when the work is delivered.', est: 'Estimated completion' },
+  sample: { on: 'On final sample approval', when: 'on final sample approval', record: 'Record final sample approval', prompt: 'Date the final sample was approved', done: 'Final sample approved', moment: 'final sample approval', note: 'Due when the final sample is approved.', est: 'Estimated final sample approval' },
+  ship: { on: 'Before production ships', when: 'before production ships', record: 'Record production ready to ship', prompt: 'Date the production order is ready to ship', done: 'Production ready to ship', moment: 'production being ready to ship', note: 'Due before the production order ships.', est: 'Estimated ship date' },
+};
+export const dueWords = (kind, plan) => (isProduct(kind) ? DUE_WORDS[plan?.balanceOn === 'ship' ? 'ship' : 'sample'] : DUE_WORDS.digital);
+export const eventLabel = (event, kind, plan) => (event === 'delivery' ? dueWords(kind, plan).on : EVENTS[event] || '');
 export const MAX_INSTALLMENTS = 48;
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -92,7 +101,7 @@ const perUnitFee = (fee, settings = {}) => {
   if (rule?.known) return `${start} ${rule.words} Import duties and anything not listed are not included unless the scope says otherwise.`;
   return PER_UNIT_FEE;
 };
-export function buildPlan({ type = 'full', totalCents, depositCents = null, depositPct = null, months = 0, firstDueOn = null, deliveryOn = null, milestones = [], method = 'invoice', autopay = false, note = '' } = {}) {
+export function buildPlan({ type = 'full', totalCents, depositCents = null, depositPct = null, months = 0, firstDueOn = null, deliveryOn = null, milestones = [], method = 'invoice', autopay = false, note = '', balanceOn = null } = {}) {
   const total = Math.round(Number(totalCents));
   if (!Number.isFinite(total) || total <= 0) return { error: 'Set the fixed fee first' };
   if (!PLAN_TYPES[type]) return { error: 'Choose how the fee is paid' };
@@ -121,7 +130,7 @@ export function buildPlan({ type = 'full', totalCents, depositCents = null, depo
       return { label: line(m.label, 80) || `Milestone ${i + 1}`, amountCents: amt, dueOn: isDate(m.dueOn) ? m.dueOn : null, event: isDate(m.dueOn) ? null : (EVENTS[m.event] ? m.event : 'delivery') };
     });
   }
-  const plan = { type, method: METHODS[method] ? method : 'invoice', autopay: !!autopay, installments, note: clip(note, 600) };
+  const plan = { type, method: METHODS[method] ? method : 'invoice', autopay: !!autopay, installments, note: clip(note, 600), ...(BALANCE_ON[balanceOn] ? { balanceOn } : {}) };
   const bad = checkPlan(plan, total); return bad ? { error: bad } : { plan };
 }
 
@@ -155,7 +164,7 @@ export function schedule(plan, { signedOn, deliveryOn = null } = {}) {
 
 export function planWords(plan, currency = 'USD', kind = '') {
   const c = n => dollars(n, currency), list = plan.installments;
-  const when = p => p.dueOn ? `on ${longDate(p.dueOn)}` : p.event === 'signing' ? 'on signing' : isProduct(kind) ? 'on final sample approval' : 'on delivery';
+  const when = p => p.dueOn ? `on ${longDate(p.dueOn)}` : p.event === 'signing' ? 'on signing' : dueWords(kind, plan).when;
   if (plan.type === 'monthly') {
     const monthly = list.filter(p => p.dueOn), dep = list.find(p => p.event === 'signing');
     return `${dep ? `${c(dep.amountCents)} on signing, then ` : ''}${monthly.length} monthly payments of ${c(monthly[0].amountCents)}${monthly.at(-1).amountCents !== monthly[0].amountCents ? ` (the last is ${c(monthly.at(-1).amountCents)})` : ''}, from ${longDate(monthly[0].dueOn)} to ${longDate(monthly.at(-1).dueOn)}`;
@@ -295,7 +304,7 @@ export function renderContract(c, settings = {}) {
     const body = say(s.body);
     if (s.kind === 'text') out.push({ id: s.id, title: s.title, kind: 'text', body });
     else if (s.kind === 'scope') out.push({ id: s.id, title: s.title, kind: 'scope', body, items: (c.scope || []).slice(), notIncluded: (c.notIncluded || []).slice() });
-    else if (s.kind === 'timeline') out.push({ id: s.id, title: s.title, kind: 'timeline', body, rows: [['Agreement date', longDate(c.timeline?.effectiveOn)], ['Work begins', longDate(c.timeline?.startOn)], [isProduct(c.kind) ? 'Estimated final sample approval' : 'Estimated completion', longDate(c.timeline?.completionOn)]].filter(r => r[1]) });
+    else if (s.kind === 'timeline') out.push({ id: s.id, title: s.title, kind: 'timeline', body, rows: [['Agreement date', longDate(c.timeline?.effectiveOn)], ['Work begins', longDate(c.timeline?.startOn)], [dueWords(c.kind, c.plan).est, longDate(c.timeline?.completionOn)]].filter(r => r[1]) });
     else if (s.kind === 'fee') {
       // priced per unit: the lines, and the clause in per-unit words unless it was rewritten by hand
       const units = c.fee.charge === 'unit' && Array.isArray(c.fee.units) ? c.fee.units : [], std = defaultSections(c.kind).find(x => x.kind === 'fee');
@@ -305,7 +314,7 @@ export function renderContract(c, settings = {}) {
         ...(units.length ? { units: units.map(u => ({ item: u.item + (u.taxable === false && c.fee.taxCents > 0 ? ' (no tax)' : ''), qty: u.qty, unitText: dollars(u.unitCents, c.fee.currency), amountText: dollars(u.qty * u.unitCents, c.fee.currency) })) } : {}), ...tax });
     }
     else if (s.kind === 'schedule') out.push({ id: s.id, title: s.title, kind: 'schedule', body: [say(s.body), methodParagraph(c.plan, map.provider_name), c.plan.note].filter(Boolean).join('\n\n'), summary: planWords(c.plan, c.fee.currency, c.kind),
-      rows: c.plan.installments.map(p => ({ label: p.label, amountCents: p.amountCents, amountText: dollars(p.amountCents, c.fee.currency), when: p.dueOn ? longDate(p.dueOn) : eventLabel(p.event, c.kind) })), method: c.plan.method, autopay: !!c.plan.autopay });
+      rows: c.plan.installments.map(p => ({ label: p.label, amountCents: p.amountCents, amountText: dollars(p.amountCents, c.fee.currency), when: p.dueOn ? longDate(p.dueOn) : eventLabel(p.event, c.kind, c.plan) })), method: c.plan.method, autopay: !!c.plan.autopay });
     else if (s.kind === 'circumvention') { if (c.product?.circumventionMonths > 0) out.push({ id: s.id, title: s.title, kind: 'text', body }); }
     else if (s.kind === 'production') { const w = productionWords(c.product, map, c.fee?.charge === 'unit' && (c.fee.units || []).length > 0); if (w) out.push({ id: s.id, title: s.title, kind: 'text', body: [say(s.body), w].filter(Boolean).join('\n\n') }); }
     else if (s.kind === 'hosting') { if (c.hosting?.included && c.hosting.monthlyCents > 0) out.push({ id: s.id, title: s.title, kind: 'text', body: [say(s.body) || `After launch, Future Basics hosts and maintains the finished work for ${dollars(c.hosting.monthlyCents, c.fee.currency)} a month, billed monthly, starting the month after delivery. It covers hosting, security updates, backups and monitoring. Either party can end hosting with 30 days' written notice, and on request we hand over the files so the Client can host elsewhere.`, c.hosting.note].filter(Boolean).join('\n\n') }); }
@@ -339,7 +348,7 @@ export function cleanContent(input, { settings = {}, lenient = false } = {}) {
   const tl = i.timeline || {};
   const timeline = { effectiveOn: isDate(tl.effectiveOn) ? tl.effectiveOn : todayISO(), startOn: isDate(tl.startOn) ? tl.startOn : '', completionOn: isDate(tl.completionOn) ? tl.completionOn : '' };
   if (timeline.startOn && timeline.completionOn && timeline.completionOn < timeline.startOn) errors.push('The estimated completion is before the start');
-  const plan = i.plan ? { type: i.plan.type, ...(i.plan.unset === true ? { unset: true } : {}), method: i.plan.method, autopay: !!i.plan.autopay, note: clip(i.plan.note, 600), installments: (Array.isArray(i.plan.installments) ? i.plan.installments : []).map(p => ({ label: line(p.label, 80), amountCents: Math.round(Number(p.amountCents)), dueOn: isDate(p.dueOn) ? p.dueOn : null, event: p.event && EVENTS[p.event] ? p.event : null })) } : null;
+  const plan = i.plan ? { type: i.plan.type, ...(i.plan.unset === true ? { unset: true } : {}), ...(kind === 'product' && BALANCE_ON[i.plan.balanceOn] ? { balanceOn: i.plan.balanceOn } : {}), method: i.plan.method, autopay: !!i.plan.autopay, note: clip(i.plan.note, 600), installments: (Array.isArray(i.plan.installments) ? i.plan.installments : []).map(p => ({ label: line(p.label, 80), amountCents: Math.round(Number(p.amountCents)), dueOn: isDate(p.dueOn) ? p.dueOn : null, event: p.event && EVENTS[p.event] ? p.event : null })) } : null;
   if (plan && Number.isFinite(total) && total > 0) { const bad = checkPlan(plan, total); if (bad) errors.push(bad); } else if (!plan) errors.push('Choose how the fee is paid');
   const hosting = { included: !isProduct(kind) && !!i.hosting?.included, monthlyCents: Math.max(0, Math.round(Number(i.hosting?.monthlyCents) || 0)), note: clip(i.hosting?.note, 600) };
   if (hosting.included && hosting.monthlyCents <= 0) errors.push('Hosting is included: set its monthly price, or turn it off');

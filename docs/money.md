@@ -27,6 +27,10 @@ The kind of work decides how a client pays, and the link prints in the PDF's "Ho
 - Editing an invoice drops its Shopify link (the amount may have changed): make it again from the invoice. A paid or void invoice prints no link.
 - The QuickBooks email to the client, when you use "Create and email from QuickBooks", is QuickBooks's own design. The PDF from Money, the work console and the hub is the Future Basics one.
 
+## What PDFs are called
+
+Every invoice, receipt and agreement PDF is named for the client, then what it is and its number: `Comet over Delphi - Invoice 1043.pdf`, `Comet over Delphi - Receipt R-1043.pdf`, `Comet over Delphi - Agreement FB-C-2026-004 (signed).pdf` (`src/pdf-name.js`). The download buttons in the work console, Money, Contracts, the client's hub and the signing page save the file under that name, and the emails attach it under the same name, so a phone keeps it instead of calling it "Unknown.pdf".
+
 ## Receipts
 
 Once a client has paid, they get a **receipt**: the invoice's twin on the same letterhead (`src/receipt-pdf.js`). It is headed Receipt with a green Paid pill and numbered `R-` plus the invoice number. It shows:

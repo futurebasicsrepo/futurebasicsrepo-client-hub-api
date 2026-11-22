@@ -1,6 +1,7 @@
 // The Future Basics receipt: the invoice's twin on the brand letterhead (brand-pdf.js), sent once a client has paid. It reads like the invoice it
 // answers (who it is for, the same lines and totals) and says what was received: when, how (Shopify and its order number, a bank transfer, a card),
 // and that nothing is left to pay. A payment that leaves a balance makes a receipt for what came in, with the balance still due.
+import { pdfName } from './pdf-name.js';
 import { brandDoc, fact, pill, table, money, fmtDate, safe, INK, DIM, LINE, CUE, GREEN } from './brand-pdf.js';
 
 const SUPPORT = 'hub@thefuturebasics.com';
@@ -105,5 +106,5 @@ export function receiptEmail(input, { message = '', esc = s => String(s) } = {})
     + `<p>Thank you for your payment. We received <b>${esc(money(r.paidCents, cur))}</b>${r.paidOn ? ` on ${esc(dateOf(r.paidOn))}` : ''} for invoice <b>${esc(r.invoiceNumber)}</b>${r.paidInFull ? ', which is now paid in full' : `; <b>${esc(money(r.balanceCents, cur))}</b> is still due`}.</p>`
     + (message ? `<p style="padding:10px 14px;border-left:3px solid #4bff9a;background:#f5f5f2">${esc(message).replace(/\n/g, '<br>')}</p>` : '')
     + `<p>Your receipt, ${esc(r.number)}, is attached as a PDF for your records.</p>`;
-  return { subject, body, filename: `TFB Receipt ${String(r.number).replace(/[^A-Za-z0-9_-]/g, '-')}.pdf` };
+  return { subject, body, filename: pdfName(r.company, `Receipt ${r.number}`) };
 }
