@@ -2419,6 +2419,12 @@ export async function migrate() {
     -- the receipt sent once it was paid (src/receipt-pdf.js)
     alter table money_invoices add column if not exists receipt_sent_at timestamptz;
     alter table money_invoices add column if not exists receipt_sent_to text;
+    -- how the client pays an invoice, chosen when it is made: '' (by the kind of work: QuickBooks for software, Shopify for products), stripe (our pay page), quickbooks, shopify
+    alter table money_invoices add column if not exists pay_with text not null default '';
+    alter table money_invoices add column if not exists stripe_customer_id text not null default '';
+    alter table money_invoices add column if not exists stripe_pi text not null default '';
+    alter table money_payments drop constraint if exists money_payments_source_check;
+    alter table money_payments add constraint money_payments_source_check check (source in ('manual','history','quickbooks','shopify','stripe'));
     -- Automatic payments on a signed contract (autopay.js). The card or bank account is kept at the processor (QuickBooks Payments): we hold only its id and the last four digits.
     alter table contracts add column if not exists delivered_on date;
     -- physical product development agreements: the kind column's check also allows 'product'

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Pay your invoice — Future Basics</title><link rel="icon" href="/icons/icon-192.png" type="image/png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta property="og:type" content="website"><meta property="og:site_name" content="Future Basics"><meta property="og:title" content="Pay your Future Basics invoice"><meta property="og:description" content="See the invoice and pay it with Apple Pay, a card or your bank."><meta property="og:image" content="/icons/og-image.png">
+  <style>
+    @import url('/fonts/fonts.css');
+    :root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#6e6e75;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--ease:cubic-bezier(.22,1,.36,1)}
+    *{box-sizing:border-box}html{background:var(--fog)}body{margin:0;color:var(--ink);font:400 16px/1.55 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+    button{font:inherit}.hidden{display:none!important}
+    header{height:60px;background:var(--ink);color:#fff;padding:0 clamp(16px,4vw,40px);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:20}
+    .wm{font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:12px}.wm i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cue);margin-left:6px}
+    header a{color:#fff;text-decoration:none;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;padding:8px 12px;border:1px solid rgba(255,255,255,.3);border-radius:999px}
+    main{max-width:680px;margin:0 auto;padding:clamp(20px,4vw,40px) clamp(14px,4vw,28px) 60px;display:flex;flex-direction:column;gap:16px}
+    main>*{margin:0}
+    .meta{font:500 10px/1.35 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.15em;color:var(--dim)}
+    h1{font-weight:500;letter-spacing:-.04em;line-height:1;font-size:clamp(30px,7vw,44px);margin:6px 0 6px;text-wrap:balance}
+    .sub{color:var(--dim);margin:0}
+    .fee{background:var(--ink);color:#fff;border-radius:22px;padding:20px 22px;display:grid;gap:4px}.fee .meta{color:#9d9da4}.fee b{font-weight:500;font-size:clamp(32px,9vw,46px);letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}.fee span{color:#cfcfd4;font-size:15px}.fee span.late{color:#ffb4a8}
+    .card{background:var(--paper);border:1px solid var(--line);border-radius:22px;padding:clamp(18px,4vw,26px)}
+    .card.pay{border-color:var(--ink)}.card h2{margin:0;font-size:22px;font-weight:500;letter-spacing:-.02em}
+    .ep{display:flex;flex-direction:column;gap:12px}.ep>*{margin:0}
+    .xpay{min-height:50px}
+    .more{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:50px;padding:0 20px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--ink);font-weight:500;font-size:15px;cursor:pointer}
+    .more:hover{border-color:var(--ink)}.more:focus-visible,.btn:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(75,255,154,.55)}.more svg{transition:transform .2s var(--ease)}.more[aria-expanded=true] svg{transform:rotate(180deg)}
+    .cardbox{display:flex;flex-direction:column;gap:12px}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:52px;padding:0 24px;border-radius:999px;border:1px solid var(--ink);background:var(--cue);color:var(--ink);font-weight:600;cursor:pointer;text-decoration:none;width:100%;font-size:16px}
+    .btn:disabled{opacity:.4;cursor:not-allowed}.btn.light{background:var(--paper);height:46px;font-size:15px;font-weight:500}
+    .msg{margin:0;font-size:14px;line-height:1.45;color:var(--bad);text-align:center}.msg:empty{display:none}
+    .secure{display:flex;align-items:center;gap:8px;justify-content:center;color:var(--dim);font-size:12.5px}.secure svg{flex:none}
+    .testnote{background:#fff7d6;border:1px solid #e6d27a;border-radius:12px;padding:8px 12px;font-size:14px}
+    .banner{padding:14px 16px;border-radius:16px;border:1px solid #e6d27a;background:#fffbea}.banner b{display:block;font-weight:600}
+    .done{text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center}.done h2{font-size:28px}.done p{color:var(--dim);margin:0}
+    .tick{width:56px;height:56px;border-radius:50%;background:var(--cue);border:2px solid var(--ink);display:inline-grid;place-items:center;font-size:28px}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%}
+    table{width:100%;border-collapse:collapse;font-size:14.5px}th{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);text-align:left;padding:6px 0;border-bottom:1px solid var(--line)}
+    td{padding:9px 0;border-bottom:1px solid var(--line);vertical-align:top}td:first-child{overflow-wrap:anywhere}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}th+th,td+td{padding-left:14px}
+    tr.sum td{border-bottom:0;padding:5px 0 3px;color:#3a3a40}tr.sum td+td{padding-left:14px}tr.top td{border-top:1px solid var(--ink);padding-top:10px}tr.due td{font-weight:600;color:var(--ink);font-size:16px;padding-top:8px}
+    @media (max-width:520px){table{font-size:13.5px}th{font-size:9px;letter-spacing:.08em}th+th,td+td{padding-left:10px}}
+    .parties{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 16px}.parties small{display:block;color:var(--dim);font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;text-transform:uppercase}.parties b{display:block;font-weight:500;font-size:16px;margin-top:2px}
+    .notes{margin:14px 0 0;color:#3a3a40;font-size:14px;white-space:pre-line}.instr{margin:14px 0 0;padding:12px 14px;border-radius:14px;background:var(--fog);font-size:14px;white-space:pre-line}.instr b{display:block;font-weight:600;margin-bottom:2px}
+    .center{max-width:520px;margin:60px auto;text-align:center;padding:0 18px}.center h1{font-size:32px}
+    @media (hover:none),(pointer:coarse){html{-webkit-text-size-adjust:100%;text-size-adjust:100%}}
+    @media(prefers-reduced-motion:reduce){.more svg{transition:none}}
+  </style>
+</head>
+<body>
+<header><span class="wm">Future Basics<i></i></span><a href="#" id="pdfTop" class="hidden" download>Invoice PDF</a></header>
+<div id="state" class="center"><h1>Loading your invoice…</h1></div>
+<main id="app" class="hidden"></main>
+<script>
+(()=>{
+  // The client's page for one invoice: what is owed, and paying it with Apple Pay (Google Pay on Android and Chrome), a card or a US bank account.
+  // Stripe's own frames take the details (src/money-routes.js makes the PaymentIntent and records the payment); this page never sees a card number.
+  const TOKEN=location.pathname.split('/').filter(Boolean).pop(),$=s=>document.querySelector(s);
+  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let CUR='USD';const money=c=>new Intl.NumberFormat('en-US',{style:'currency',currency:CUR}).format((Number(c)||0)/100);
+  const day=d=>d?new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'';
+  const api=async(path,o={})=>{const r=await fetch(`/v1/public/invoices/${encodeURIComponent(TOKEN)}${path}`,{method:o.body?'POST':'GET',headers:o.body?{'content-type':'application/json'}:{},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(j.error||'Something went wrong. Try again.');e.status=r.status;throw e}return j};
+  const showState=(h,p)=>{$('#app').classList.add('hidden');const s=$('#state');s.classList.remove('hidden');s.innerHTML=`<h1>${esc(h)}</h1><p class="sub">${esc(p||'')}</p>`};
+  const LOCK='<svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true"><rect x="1" y="6" width="10" height="7.5" rx="1.6" fill="currentColor"/><path d="M3.4 6V4.4a2.6 2.6 0 0 1 5.2 0V6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+  const CHEV='<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const BRAND={theme:'stripe',labels:'above',variables:{colorPrimary:'#141416',colorBackground:'#f5f5f2',colorText:'#141416',colorTextSecondary:'#6e6e75',colorTextPlaceholder:'#9a9aa0',colorDanger:'#a02a20',colorSuccess:'#17603a',iconColor:'#141416',fontFamily:"'Space Grotesk', system-ui, sans-serif",fontSizeBase:'16px',fontWeightNormal:'400',fontWeightMedium:'500',borderRadius:'14px',spacingUnit:'4px',gridRowSpacing:'14px',gridColumnSpacing:'12px',focusBoxShadow:'0 0 0 3px rgba(75,255,154,.55)',focusOutline:'none'},
+    rules:{'.Input':{border:'1px solid rgba(20,20,22,.14)',boxShadow:'none',padding:'14px 16px'},'.Input:focus':{border:'1px solid #141416'},'.Input--invalid':{border:'1px solid #a02a20',boxShadow:'none'},'.Label':{fontWeight:'500',fontSize:'14px',color:'#141416',marginBottom:'6px'},
+      '.Tab':{border:'1px solid rgba(20,20,22,.14)',boxShadow:'none',backgroundColor:'#ffffff',borderRadius:'14px'},'.Tab:hover':{color:'#141416',border:'1px solid #141416'},'.Tab--selected':{border:'1px solid #141416',backgroundColor:'#ffffff',boxShadow:'0 0 0 2px #4bff9a'},'.TabIcon--selected':{fill:'#141416'},'.TabLabel--selected':{color:'#141416'},'.Error':{fontSize:'13.5px'}}};
+  let stripeJs=null;
+  const loadStripe=()=>stripeJs||(stripeJs=new Promise((ok,no)=>{if(window.Stripe)return ok();const s=document.createElement('script');s.src='https://js.stripe.com/v3/';s.onload=()=>ok();s.onerror=()=>{stripeJs=null;no(new Error('The secure payment form could not load. Check your connection and try again.'))};document.head.appendChild(s)}));
+  function toast(m){const t=document.createElement('div');t.textContent=m;t.setAttribute('role','status');t.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#141416;color:#fff;padding:12px 18px;border-radius:12px;z-index:30;font-size:15px;max-width:90vw';document.body.appendChild(t);setTimeout(()=>t.remove(),4200)}
+
+  function render(v){
+    CUR=v.currency||'USD';$('#state').classList.add('hidden');const app=$('#app');app.classList.remove('hidden');
+    const pdf=$('#pdfTop');pdf.href=`/v1/public/invoices/${encodeURIComponent(TOKEN)}/pdf?dl=1`;pdf.classList.remove('hidden');
+    const paid=v.status==='paid',owed=v.dueNowCents;
+    const sums=[['Subtotal',v.subtotalCents],...(v.taxCents>0?[[`Sales tax${v.taxRatePct?` (${v.taxRatePct}%)`:''}`,v.taxCents]]:[]),...(v.credits||[]).map(c=>[c.label,-c.amountCents]),...(v.paidCents>0?[['Paid',-v.paidCents]]:[])];
+    const table=`<table><thead><tr><th>Item</th><th class="n">Qty</th><th class="n">Price</th><th class="n">Amount</th></tr></thead><tbody>
+      ${v.lines.map(l=>`<tr><td>${esc(l.description)}</td><td class="n">${esc(Number(l.qty).toLocaleString('en-US'))}</td><td class="n">${money(l.rateCents)}</td><td class="n">${money(l.amountCents)}</td></tr>`).join('')}
+      ${sums.map((s,i)=>`<tr class="sum${i===0?' top':''}"><td colspan="3">${esc(s[0])}</td><td class="n">${s[1]<0?'−'+money(-s[1]):money(s[1])}</td></tr>`).join('')}
+      <tr class="sum due"><td colspan="3">${esc(paid?'Balance':v.dueNowLabel||'Total due')}</td><td class="n">${money(paid?0:owed)}</td></tr></tbody></table>`;
+    app.innerHTML=`<div><p class="meta">Invoice · ${esc(v.number)}</p><h1>${paid?'Paid. Thank you.':`Pay invoice ${esc(v.number)}`}</h1><p class="sub">From Future Basics to ${esc(v.company)}</p></div>
+      <div class="fee"><span class="meta">${esc(paid?'Paid':v.dueNowLabel||'Total due')}</span><b>${money(paid?v.paidCents:owed)}</b><span class="${v.overdue&&!paid?'late':''}">${paid?'Your receipt is in your email.':v.dueOn?`${v.overdue?'Was due':'Due'} ${esc(day(v.dueOn))}`:''}</span></div>
+      <div id="payBox"></div>
+      <div class="card"><div class="parties"><div><small>From</small><b>Future Basics</b></div><div><small>To</small><b>${esc(v.company)}</b>${v.contactName?`<span class="sub">${esc(v.contactName)}</span>`:''}</div></div>${table}
+        ${v.notes?`<p class="notes">${esc(v.notes)}</p>`:''}${v.instructions&&!paid?`<div class="instr"><b>Other ways to pay</b>${esc(v.instructions)}</div>`:''}</div>`;
+    payBox(v);
+  }
+  function payBox(v){
+    const box=$('#payBox'),rcpt=`/v1/public/invoices/${encodeURIComponent(TOKEN)}/receipt.pdf?dl=1`;
+    if(v.status==='paid'){box.innerHTML=`<div class="card done"><div class="tick">✓</div><h2>Paid in full</h2><p>We received ${money(v.paidCents)}. Your receipt is in your email, and here:</p><div class="row2"><a class="btn" href="${rcpt}" download>Download receipt</a><a class="btn light" href="/v1/public/invoices/${encodeURIComponent(TOKEN)}/pdf?dl=1" download>Invoice PDF</a></div></div>`;return}
+    if(v.status==='void'){box.innerHTML='<div class="banner"><b>This invoice was cancelled</b>Nothing is owed on it. Ask us if you were expecting one.</div>';return}
+    if(v.pay.pending){box.innerHTML='<div class="banner"><b>Your bank payment is on its way</b>It takes a few business days to clear. We email your receipt when it does.</div>';return}
+    if(v.pay.otherUrl){box.innerHTML=`<div class="card pay ep"><h2>Pay ${money(v.dueNowCents)}</h2><a class="btn" href="${esc(v.pay.otherUrl)}" rel="noopener">Pay this invoice</a></div>`;return}
+    if(!v.pay.open||!v.pay.publishableKey){box.innerHTML=v.dueNowCents>0?'<div class="banner"><b>Online payment is not available for this invoice</b>Please use the payment details below, or reply to our email and we will help.</div>':'';return}
+    box.innerHTML=`<form class="card pay ep" id="pf" novalidate>
+      <h2>Pay ${money(v.dueNowCents)}</h2>
+      ${v.pay.testMode?'<p class="testnote"><b>Test mode.</b> Use the test card <b>4242 4242 4242 4242</b>, any future expiry, any 3-digit code and any ZIP. For a bank account, choose the test bank.</p>':''}
+      <div id="pX" class="xpay" aria-live="polite"></div>
+      <button type="button" class="more hidden" id="pMore" aria-expanded="false" aria-controls="pCard">More payment options${CHEV}</button>
+      <div id="pCard" class="cardbox hidden"><div id="pEl"><p class="sub">Loading the secure form…</p></div><button class="btn" id="pGo" disabled>Pay ${money(v.dueNowCents)}</button></div>
+      <p class="msg" id="pMsg" role="alert"></p>
+      <p class="secure">${LOCK}Secured by Stripe · we never see your details</p></form>`;
+    const go=$('#pGo'),msg=$('#pMsg'),label=go.textContent;let stripe=null,elements=null,complete=false,busy=false;
+    const sync=()=>{go.disabled=busy||!(elements&&complete)};const say=t=>{msg.textContent=t||''};
+    const cardOpen=open=>{$('#pCard').classList.toggle('hidden',!open);$('#pMore').setAttribute('aria-expanded',String(open))};
+    const finish=async id=>{const r=await api('/complete',{body:{paymentIntentId:id}});if(r.pending){toast(r.message);render(r.invoice);return}toast('Paid. Your receipt is on its way to your email.');render(r.invoice)};
+    const confirmWith=async els=>{
+      const sub=await els.submit();if(sub.error)throw new Error(sub.error.message);
+      const r=await api('/payment-intent',{body:{go:true}});
+      const out=await stripe.confirmPayment({elements:els,clientSecret:r.clientSecret,redirect:'if_required',confirmParams:{return_url:`${location.origin}${location.pathname}?paid=1`}});
+      if(out.error)throw new Error(out.error.message);
+      await finish(out.paymentIntent.id);
+    };
+    loadStripe().then(()=>{
+      stripe=window.Stripe(v.pay.publishableKey);
+      const base={mode:'payment',amount:v.dueNowCents,currency:CUR.toLowerCase(),fonts:[{cssSrc:`${location.origin}/fonts/fonts.css`}],loader:'never'};
+      elements=stripe.elements({...base,paymentMethodTypes:['card','us_bank_account'],appearance:BRAND});
+      const pe=elements.create('payment',{layout:{type:'tabs'},defaultValues:{billingDetails:{name:v.contactName||''}},wallets:{applePay:'never',googlePay:'never',link:'never'}});
+      $('#pEl').innerHTML='';pe.mount('#pEl');pe.on('change',e=>{complete=!!e.complete;sync()});
+      // Apple Pay / Google Pay: its own Elements group, a pill like our buttons
+      const ex=stripe.elements({...base,paymentMethodTypes:['card'],appearance:{variables:{borderRadius:'999px'}}});
+      const ece=ex.create('expressCheckout',{buttonHeight:50,buttonType:{applePay:'plain',googlePay:'plain'},buttonTheme:{applePay:'black',googlePay:'black'},paymentMethods:{applePay:'always',googlePay:'auto',link:'never',paypal:'never',amazonPay:'never',klarna:'never'},layout:{maxColumns:1,maxRows:0,overflow:'never'}});
+      let shown=false;const noWallet=()=>{if(shown)return;shown=true;$('#pX').classList.add('hidden');$('#pMore').classList.add('hidden');cardOpen(true)};
+      const fallback=setTimeout(noWallet,6000);
+      ece.on('ready',e=>{clearTimeout(fallback);const m=e&&e.availablePaymentMethods;if(!m||!Object.values(m).some(Boolean))return noWallet();shown=true;$('#pMore').classList.remove('hidden')});
+      ece.on('loaderror',()=>{clearTimeout(fallback);noWallet()});
+      ece.on('click',e=>{say('');e.resolve({})});
+      ece.on('confirm',async e=>{busy=true;sync();try{await confirmWith(ex)}catch(x){if(e&&e.paymentFailed)e.paymentFailed({reason:'fail'});say(x.message);busy=false;sync()}});
+      ece.mount('#pX');
+    }).catch(e=>{$('#pEl').innerHTML='';$('#pX').classList.add('hidden');cardOpen(true);say(e.message)});
+    $('#pMore').onclick=()=>cardOpen($('#pCard').classList.contains('hidden'));
+    $('#pf').addEventListener('submit',async e=>{e.preventDefault();if(go.disabled)return;busy=true;sync();go.textContent='Paying…';say('');
+      try{await confirmWith(elements)}catch(x){say(x.message);busy=false;go.textContent=label;sync()}});
+  }
+  (async()=>{
+    // back from a bank or card check on another page: finish the payment Stripe sent back, then show the invoice as it now stands
+    const q=new URLSearchParams(location.search),pi=q.get('payment_intent');
+    if(pi||q.get('paid')){history.replaceState(null,'',location.pathname)}
+    try{if(pi&&/^pi_\w+$/.test(pi)){try{const r=await api('/complete',{body:{paymentIntentId:pi}});toast(r.pending?r.message:'Paid. Your receipt is on its way to your email.')}catch(x){toast(x.message)}}
+      render(await api(''))}
+    catch(x){showState(x.status===429?'Please wait a moment':'This link is not valid',x.message)}
+  })();
+})();
+</script>
+</body>
+</html>

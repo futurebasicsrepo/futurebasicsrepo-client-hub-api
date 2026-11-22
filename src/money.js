@@ -6,6 +6,9 @@ export const DEFAULT_MONEY_ACCESS = ['danielle@thefuturebasics.com', 'kyle@thefu
 export const TERMS = ['Due on receipt', 'Due upon receipt', 'Net 15', 'Net 30', 'Net 45', 'Net 60'];
 export const STATUSES = ['draft', 'sent', 'paid', 'void', 'unrecorded'];
 export const METHODS = ['wire', 'ach', 'card', 'check', 'shopify', 'quickbooks', 'cash', 'other'];
+export const PAY_WITH = { stripe: 'Our pay page (Stripe): Apple Pay, card or bank', quickbooks: 'QuickBooks pay link', shopify: 'Shopify checkout' };
+// the channel an invoice is paid through: its own choice, else the kind of work
+export const payChannelOf = (payWith, workKind) => (PAY_WITH[payWith] ? payWith : workKind === 'software' ? 'quickbooks' : workKind === 'product' ? 'shopify' : '');
 
 const clip = (v, n) => String(v ?? '').replace(/[\u0000-\u0008\u000B-\u001F]/g, ' ').trim().slice(0, n);
 const clipLines = (v, n) => String(v ?? '').replace(/\r/g, '').split('\n').map(l => l.replace(/[\u0000-\u0008\u000B-\u001F]/g, ' ').trim()).filter(Boolean).join('\n').slice(0, n);
@@ -78,11 +81,13 @@ export function cleanInvoice(input = {}, { today = iso(new Date()) } = {}) {
   }
   const workKind = ['product', 'software'].includes(i.workKind) ? i.workKind : '', projectId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(i.projectId || '')) ? String(i.projectId) : null;
   const chargeTax = i.chargeTax === true || i.chargeTax === 'true';
+  // how the client pays: chosen per invoice, or '' to follow the kind of work (software through QuickBooks, products through Shopify)
+  const payWith = PAY_WITH[i.payWith] ? i.payWith : '';
   const t = invoiceTotals({ lines, taxRatePct, chargeTax, credits, dueNowCents: i.dueNowCents === undefined || i.dueNowCents === null || i.dueNowCents === '' ? null : Math.round(Number(i.dueNowCents)) });
   if (t.creditsCents > t.totalCents) return { error: 'The deposits and credits are more than the invoice total' };
   if (i.dueNowCents !== undefined && i.dueNowCents !== null && i.dueNowCents !== '' && (!Number.isFinite(Number(i.dueNowCents)) || Number(i.dueNowCents) < 0)) return { error: 'The amount due now is not an amount' };
   return { value: { number: clip(i.number, 40), company, contactName: clip(i.contactName, 120), contactEmail: clip(i.contactEmail, 200).toLowerCase(), address: clipLines(i.address, 400), issuedOn, terms, dueOn,
-    lines, taxRatePct, chargeTax, credits, dueNowLabel: clip(i.dueNowLabel, 40) || (credits.length ? 'Final payment due' : 'Total due'), notes: clipLines(i.notes, 1000), currency: /^[A-Z]{3}$/.test(String(i.currency || 'USD').toUpperCase()) ? String(i.currency || 'USD').toUpperCase() : 'USD', workKind, projectId, ...t } };
+    lines, taxRatePct, chargeTax, credits, dueNowLabel: clip(i.dueNowLabel, 40) || (credits.length ? 'Final payment due' : 'Total due'), notes: clipLines(i.notes, 1000), currency: /^[A-Z]{3}$/.test(String(i.currency || 'USD').toUpperCase()) ? String(i.currency || 'USD').toUpperCase() : 'USD', workKind, projectId, payWith, ...t } };
 }
 
 // 11106 → 11107. Numbers that are not plain integers are ignored; with none, start at 1001.

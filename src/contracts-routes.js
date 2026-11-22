@@ -693,6 +693,11 @@ export function registerContractRoutes(app, d) {
     const raw = req.rawBody?.toString('utf8') || '';
     if (!verifyStripeWebhook({ rawBody: raw, header: req.headers['stripe-signature'], secret: stripe.webhookSecret() })) return bad(reply, 'Bad signature', 401);
     let evt; try { evt = JSON.parse(raw); } catch { return bad(reply, 'Bad body', 400); }
+    // an invoice paid on our pay page (money-routes.js): its payment is recorded there
+    if (evt?.data?.object?.metadata?.invoice && money?.stripeInvoiceEvent) {
+      try { return { ok: true, ...(await money.stripeInvoiceEvent(evt)) }; }
+      catch (e) { log.warn?.({ stripe: true, err: String(e.message).slice(0, 200), type: evt?.type }, 'Stripe webhook for an invoice failed'); return reply.code(500).send({ error: 'Try again' }); }
+    }
     if (!autopay) return { ok: true };
     try { const out = await autopay.stripeEvent(evt); return { ok: true, ...(out?.ignored ? { ignored: out.ignored } : {}) }; }
     catch (e) { log.warn?.({ stripe: true, err: String(e.message).slice(0, 200), type: evt?.type }, 'Stripe webhook failed'); return reply.code(500).send({ error: 'Try again' }); }

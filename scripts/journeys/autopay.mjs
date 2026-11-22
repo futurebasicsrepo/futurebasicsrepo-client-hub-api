@@ -103,6 +103,7 @@ const stripeMock = http.createServer((req, res) => {
     if (u.pathname === '/v1/payment_intents' && req.method === 'POST') {
       const key = req.headers['idempotency-key']; if (key && stm.byKey[key]) return json(stm.byKey[key].code, stm.byKey[key].body);
       const pm = g('payment_method'), id = `pi_${++stm.n}`, amount = Number(g('amount')), reply = (code, body, pi) => { if (key) stm.byKey[key] = { code, body }; if (pi) stm.intents[id] = pi; return json(code, body); };
+      if (!g('payment_method') && g('confirm') !== 'true') { const pi = { id, status: 'requires_payment_method', amount, currency: g('currency'), customer: g('customer'), client_secret: `${id}_secret_${Math.random().toString(36).slice(2, 10)}`, meta: meta(), metadata: meta(), types: form.getAll('payment_method_types[]'), raw }; return reply(200, pi, pi); }
       if (!PMS[pm]) return reply(400, { error: { type: 'invalid_request_error', code: 'resource_missing', message: `No such PaymentMethod: '${pm}'` } });
       if (g('off_session') !== 'true' || g('confirm') !== 'true' || !g('customer') || g('currency') !== 'usd') return reply(400, { error: { type: 'invalid_request_error', message: 'bad request' } });
       if (pm === 'pm_card_declined') { const pi = { id, status: 'requires_payment_method', amount, last_payment_error: { message: 'Your card was declined.' } }; return reply(402, { error: { type: 'card_error', code: 'card_declined', decline_code: 'generic_decline', message: 'Your card was declined.', payment_intent: pi } }, pi); }
@@ -110,6 +111,8 @@ const stripeMock = http.createServer((req, res) => {
       return reply(200, pi, pi);
     }
     m = /^\/v1\/payment_intents\/(pi_\d+)$/.exec(u.pathname);
+    if (m && req.method === 'POST') { const pi = stm.intents[m[1]]; if (!pi) return json(404, { error: { message: 'No such payment_intent' } }); if (g('amount')) pi.amount = Number(g('amount')); return json(200, pi); }
+    if (m && stm.intents[m[1]]?.client_secret) { const pi = stm.intents[m[1]], { raw: _r, ...out } = pi; return json(200, { ...out, metadata: pi.meta, payment_method: pi.pm ? PMS[pi.pm] : null, amount_received: pi.status === 'succeeded' ? pi.amount : 0 }); }
     if (m) { const pi = stm.intents[m[1]]; if (!pi) return json(404, { error: { message: 'No such payment_intent' } }); const fee = Math.round(pi.amount * (pi.pm === 'pm_bank_ok' ? 0.008 : 0.029)) + (pi.pm === 'pm_bank_ok' ? 0 : 30); return json(200, { ...pi, latest_charge: pi.status === 'succeeded' ? { balance_transaction: { fee, net: pi.amount - fee } } : null }); }
     m = /^\/v1\/payment_methods\/(pm_\w+)\/detach$/.exec(u.pathname); if (m && req.method === 'POST') { stm.detached.push(m[1]); return json(200, { id: m[1] }); }
     json(404, { error: { message: `Unrecognized request URL (${req.method}: ${u.pathname})` } });
@@ -117,6 +120,8 @@ const stripeMock = http.createServer((req, res) => {
 });
 await new Promise(r => stripeMock.listen(3135, '127.0.0.1', r));
 // the client finishes on Stripe's page: the payment method is saved against the customer and the session completes
+// the client pays on the pay page: Stripe.js confirms the PaymentIntent with what they entered (a card succeeds at once, a bank payment is processing)
+const stripePay = (id, pm, status = null) => Object.assign(stm.intents[id], { pm, status: status || (pm === 'pm_bank_ok' ? 'processing' : 'succeeded') });
 // the client finishes the embedded form: Stripe.js confirms the SetupIntent with what they entered (here, a test payment method)
 const stripeConfirm = (id, pm, over = {}) => Object.assign(stm.setups[id], { status: 'succeeded', payment_method: PMS[pm], ...over });
 const stripeFinish = (sessionId, pm, over = {}) => { const s = stm.sessions[sessionId]; s.status = 'complete'; s.si = { id: `seti_${sessionId.slice(8, 20).replace(/\W/g, '')}`, status: 'succeeded', customer: s.customer, metadata: s.metadata, payment_method: PMS[pm], ...over }; return s.si; };
@@ -448,6 +453,74 @@ try {
     ok(!stm.seen.some(x => /4111|4242424242424242|11000000333456781|322079353/.test(x.raw)), 'no card or bank number ever reached us or Stripe through us');
     const back = await K('/autopay/processor', { method: 'PUT', body: { processor: 'quickbooks' } }); ok(back.status === 200 && back.json.payments.processor === 'quickbooks', 'and staff can switch back to QuickBooks Payments');
   });
+  await journey('J322', 'An invoice paid on our own pay page: staff choose Stripe when they make it, the client sees the invoice with Apple Pay first and pays by card or bank, and the payment is recorded once, put in QuickBooks, and receipted with its PDF', async () => {
+    const M = (path, o = {}) => call('/v1/money' + path, { token: kyle, ...o }), PI = (token, path = '', o = {}) => call(`/v1/public/invoices/${token}${path}`, o);
+    const me = (await M('/me')).json; ok(me.payWith?.stripe === true, 'Money knows Stripe is set up for invoices', me);
+    const RC = `pay-inv-${stamp}@salon.test`;
+    const mkInv = async (n, cents, payWith = 'stripe') => (await M('/invoices', { body: { number: `PI-${stamp}-${n}`, company: 'Salon Supply Co', contactName: 'Pat Payer', contactEmail: RC, issuedOn: today, terms: 'Net 14', dueOn: today, lines: [{ description: 'Embroidered caps', qty: 100, rateCents: cents / 100 }], payWith, workKind: 'product' } })).json.invoice;
+    const inv = await mkInv(1, 120000); ok(inv && inv.payWith === 'stripe' && inv.payVia === 'stripe', 'an invoice is made to be paid on our pay page', inv);
+    const link = await M(`/invoices/${inv.id}/pay-link`, { body: {} });
+    ok(link.status === 201 && link.json.invoice.payChannel === 'stripe' && /\/pay\/[0-9a-f-]{36}\.[\w-]{32}$/.test(link.json.invoice.payUrl) && link.json.invoice.status === 'sent', 'its payment link is our pay page, and the invoice is sent', link.json.invoice);
+    const token = link.json.invoice.payUrl.split('/pay/')[1];
+    ok((await PI(token.slice(0, -2) + 'xx')).status === 404 && (await PI(`${inv.id}.nope`)).status === 404, 'a link that was not made by us opens nothing');
+    const pub = (await PI(token)).json;
+    ok(pub.pay.open === true && pub.pay.publishableKey === 'pk_test_journey' && pub.dueNowCents === 120000 && pub.lines[0].amountCents === 120000 && pub.company === 'Salon Supply Co' && !JSON.stringify(pub).includes('sk_test'), 'the client sees what is owed and can pay it, and the page gets only the publishable key', pub);
+    const pdf = await fetch(`${BASE}/v1/public/invoices/${token}/pdf?dl=1`); ok(pdf.status === 200 && /attachment; filename="Salon Supply Co - Invoice PI-/.test(pdf.headers.get('content-disposition') || ''), 'the invoice PDF downloads under its name');
+    const a = await PI(token, '/payment-intent', { body: { go: true } }); const pid = a.json.clientSecret?.split('_secret_')[0], pi = stm.intents[pid];
+    ok(a.status === 200 && pi && pi.amount === 120000 && pi.types.join() === 'card,us_bank_account' && pi.meta.invoice === inv.id && stm.customers.some(c => c.id === pi.customer && c.email === RC) && /financial_connections/.test(decodeURIComponent(pi.raw)), 'a payment for the amount due, by card (Apple Pay, Google Pay) or bank, for this invoice and its client', pi && { amount: pi.amount, types: pi.types, meta: pi.meta });
+    const b = await PI(token, '/payment-intent', { body: { go: true } }); ok(b.json.clientSecret?.split('_secret_')[0] === pid, 'asking again reuses the same payment: pressing twice never charges twice');
+    ok((await PI(token, '/complete', { body: { paymentIntentId: pid } })).status === 402 && sql(`select count(*) from money_payments where invoice_id='${inv.id}'`) === '0', 'finishing before paying records nothing');
+    const other = await mkInv(2, 50000); await M(`/invoices/${other.id}/pay-link`, { body: {} });
+    const otok = (await M(`/invoices/${other.id}`)).json.invoice.payUrl.split('/pay/')[1], opid = (await PI(otok, '/payment-intent', { body: { go: true } })).json.clientSecret.split('_secret_')[0];
+    ok((await PI(token, '/complete', { body: { paymentIntentId: opid } })).status === 403, 'another invoice\'s payment cannot settle this one');
+    // paid by Apple Pay
+    const qbBefore = qbm.payments.length; stripePay(pid, 'pm_card_ok');
+    const done = await PI(token, '/complete', { body: { paymentIntentId: pid } });
+    ok(done.status === 200 && done.json.paid === true && done.json.method === 'Apple Pay · Visa ending 4242' && done.json.invoice.status === 'paid', 'paid: the page says so', done.json);
+    ok(sql(`select source||'|'||method||'|'||amount_cents||'|'||reference||'|'||(qb_id is not null) from money_payments where invoice_id='${inv.id}'`) === `stripe|card|120000|${pid}|true` && sql(`select status from money_invoices where id='${inv.id}'`) === 'paid', 'recorded once in Money as a Stripe card payment, and the invoice is paid');
+    ok(qbm.payments.length === qbBefore + 1 && qbm.payments.at(-1).body.TotalAmt === 1200 && qbm.payments.at(-1).body.PaymentRefNum === pid.slice(0, 21), 'and put in QuickBooks against the invoice', qbm.payments.at(-1)?.body);
+    const rm = (await outbox(RC)).find(e => /^Receipt for invoice PI-/.test(e.subject)); ok(receiptPdfOn(rm) || (rm && rm.attachments.some(x => / - Receipt R-.+\.pdf$/.test(x.filename) && x.head === '%PDF-')), 'the client is emailed the receipt with its PDF', rm && [rm.subject, rm.attachments]);
+    ok((await PI(token, '/complete', { body: { paymentIntentId: pid } })).json.already === true && (await hook('payment_intent.succeeded', { id: pid, metadata: { invoice: inv.id } })).status === 200 && sql(`select count(*) from money_payments where invoice_id='${inv.id}'`) === '1', 'finishing again, or Stripe telling us again, records nothing more');
+    ok((await PI(token, '/payment-intent', { body: { go: true } })).status === 409 && (await fetch(`${BASE}/v1/public/invoices/${token}/receipt.pdf`)).status === 200, 'a paid invoice takes no more payments, and its receipt downloads from the page');
+    // paid by bank: on its way for a few days, then Stripe says it cleared
+    const bank = await mkInv(3, 500000); await M(`/invoices/${bank.id}/pay-link`, { body: {} });
+    const btok = (await M(`/invoices/${bank.id}`)).json.invoice.payUrl.split('/pay/')[1], bpid = (await PI(btok, '/payment-intent', { body: { go: true } })).json.clientSecret.split('_secret_')[0];
+    stripePay(bpid, 'pm_bank_ok'); const pend = await PI(btok, '/complete', { body: { paymentIntentId: bpid } });
+    ok(pend.status === 200 && pend.json.pending === true && pend.json.invoice.pay.pending === true && sql(`select count(*) from money_payments where invoice_id='${bank.id}'`) === '0', 'a bank payment is on its way: nothing is recorded yet, and the page says so');
+    ok((await PI(btok, '/payment-intent', { body: { go: true } })).status === 409, 'and it is not started a second time');
+    stm.intents[bpid].status = 'succeeded'; ok((await hook('payment_intent.succeeded', { id: bpid, metadata: { invoice: bank.id } })).status === 200 && sql(`select method||'|'||amount_cents from money_payments where invoice_id='${bank.id}'`) === 'ach|500000' && sql(`select status from money_invoices where id='${bank.id}'`) === 'paid', 'when the bank clears it, Stripe\'s word records it as an ACH payment and the invoice is paid');
+    // changing how it is paid drops the old link
+    const sw = await M(`/invoices/${other.id}`, { method: 'PUT', body: { ...(await M(`/invoices/${other.id}`)).json.invoice, payWith: 'quickbooks' } });
+    ok(sw.status === 200 && sw.json.invoice.payUrl === '' && sw.json.invoice.payVia === 'quickbooks', 'choosing QuickBooks instead drops the pay page link, to be made again', sw.json.invoice);
+    ok((await PI(otok, '/payment-intent', { body: { go: true } })).status === 409, 'and the old pay page no longer takes payments');
+    if (playwright) {
+      // the pay page on a phone, with Stripe.js stood in for: Apple Pay first, More payment options for the card or bank form, paid
+      const pinv = await mkInv(4, 80000); await M(`/invoices/${pinv.id}/pay-link`, { body: {} }); const ptok = (await M(`/invoices/${pinv.id}`)).json.invoice.payUrl.split('/pay/')[1];
+      const FAKE = `window.Stripe=function(pk){window.__pk=pk;return{elements:function(o){var g={opts:o,submit:function(){return Promise.resolve({})},create:function(t,co){var h={};return{mount:function(sel){if(t==='payment'){window.__el=o;window.__pe=co;document.querySelector(sel).innerHTML='<div id="fakePe">Card or bank</div>';setTimeout(function(){h.change&&h.change({complete:true})},30)}else{window.__xo=o;window.__xe=co;window.__ece=h;document.querySelector(sel).innerHTML='<div id="fakeAp">Apple Pay</div>';setTimeout(function(){h.ready&&h.ready({availablePaymentMethods:{applePay:true}})},30)}},on:function(e,f){h[e]=f}}}};return g},confirmPayment:function(o){window.__confirm=o;return new Promise(function(ok){window.__finish=function(){ok({paymentIntent:{id:o.clientSecret.split('_secret_')[0],status:'succeeded'}})}})}}};`;
+      const br = await playwright.chromium.launch(); const errs = [];
+      try {
+        const ctx = await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true }); await ctx.route('https://js.stripe.com/**', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: FAKE }));
+        const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(String(e)));
+        const resp = await pg.goto(`${BASE}/pay/${ptok}`, { waitUntil: 'networkidle' });
+        ok(/script-src[^;]*https:\/\/js\.stripe\.com/.test(resp.headers()['content-security-policy'] || '') && /payment=\(self/.test(resp.headers()['permissions-policy'] || ''), 'the pay page lets Stripe.js and Apple Pay in');
+        await pg.waitForSelector('#fakeAp', { timeout: 10000 }); await pg.waitForSelector('#pMore:not(.hidden)', { timeout: 5000 });
+        const txt = await pg.innerText('main');
+        ok(/Pay invoice PI-/.test(txt) && /\$800\.00/.test(txt) && /Embroidered caps/.test(txt) && /More payment options/.test(txt) && await pg.locator('#pCard').isHidden(), 'on a phone: the invoice, what is owed, Apple Pay first and the card or bank form behind More payment options');
+        const el = await pg.evaluate(() => ({ mode: window.__el.mode, amount: window.__el.amount, types: window.__el.paymentMethodTypes, xTypes: window.__xo.paymentMethodTypes, xRadius: window.__xo.appearance.variables.borderRadius, font: window.__el.appearance.variables.fontFamily }));
+        ok(el.mode === 'payment' && el.amount === 80000 && el.types.join() === 'card,us_bank_account' && el.xTypes.join() === 'card' && el.xRadius === '999px' && /Space Grotesk/.test(el.font), 'Stripe\'s forms are set for this amount, in our type, with the bank option in the form', el);
+        await pg.click('#pMore'); ok(await pg.locator('#pCard').isVisible() && /Pay \$800\.00/.test(await pg.innerText('#pGo')), 'More payment options opens the form and its Pay button');
+        await pg.evaluate(() => { window.__ece.click({ resolve: () => { window.__resolved = true; } }); window.__ece.confirm({}); }); await pg.waitForFunction(() => window.__confirm, null, { timeout: 10000 });
+        const conf = await pg.evaluate(() => ({ secret: window.__confirm.clientSecret, redirect: window.__confirm.redirect, back: window.__confirm.confirmParams.return_url, resolved: window.__resolved }));
+        const ppid = conf.secret.split('_secret_')[0]; ok(conf.resolved && stm.intents[ppid]?.meta.invoice === pinv.id && conf.redirect === 'if_required' && conf.back.includes(`/pay/${ptok}`), 'Apple Pay opens at once and pays this invoice, staying on the page', conf);
+        stripePay(ppid, 'pm_card_ok'); await pg.evaluate(() => window.__finish());
+        await pg.waitForFunction(() => /Paid in full/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 10000 });
+        ok(/Download receipt/.test(await pg.innerText('main')) && sql(`select status from money_invoices where id='${pinv.id}'`) === 'paid', 'the page then shows it paid, with the receipt to download');
+        await pg.screenshot({ path: '/tmp/j322-pay.png', fullPage: true }).catch(() => {});
+        ok(errs.length === 0, 'no page errors', errs);
+      } finally { await br.close(); }
+    }
+  });
+
 } finally { mock.close(); stripeMock.close(); }
 
 // The mark in the places people see it: the hub's icons, the link-preview picture, the pages whose links get shared, and the header of our own emails.

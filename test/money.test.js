@@ -94,3 +94,11 @@ test('sales tax is on the taxed lines only: freight, setup and service fees mark
   const c = cleanInvoice({ number: '2001', company: 'Cafe', issuedOn: '2026-11-21', terms: 'Due on receipt', lines, taxRatePct: 6, chargeTax: true });
   assert.ok(!c.error, c.error); assert.equal(c.value.lines[1].taxable, false); assert.equal('taxable' in c.value.lines[0], false); assert.equal(c.value.taxCents, 23400);
 });
+
+test('an invoice says how the client pays: its own choice, else the kind of work', async () => {
+  const { cleanInvoice, payChannelOf } = await import('../src/money.js');
+  const base = { company: 'Salon Supply Co', lines: [{ description: 'Caps', qty: 100, rateCents: 1200 }] };
+  assert.equal(cleanInvoice({ ...base, payWith: 'stripe' }).value.payWith, 'stripe');
+  assert.equal(cleanInvoice({ ...base, payWith: 'paypal' }).value.payWith, '', 'an unknown way to pay is dropped');
+  assert.deepEqual([payChannelOf('', 'software'), payChannelOf('', 'product'), payChannelOf('', ''), payChannelOf('stripe', 'software'), payChannelOf('quickbooks', 'product'), payChannelOf('shopify', '')], ['quickbooks', 'shopify', '', 'stripe', 'quickbooks', 'shopify']);
+});

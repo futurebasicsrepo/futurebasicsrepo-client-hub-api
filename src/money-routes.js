@@ -11,12 +11,15 @@
 //   GET  /v1/money/invoices/:id/receipt.pdf   POST /v1/money/invoices/:id/receipt { to?, message? }   the receipt for what was paid (src/receipt-pdf.js),
 //                                              downloaded, or emailed to the client with the PDF attached
 //   GET /v1/money/quickbooks/status   POST .../connect | test | sync | disconnect   GET .../callback (Intuit sends the browser back here)   POST /v1/money/invoices/:id/quickbooks
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { payoutRow, payoutTotals, needsScope } from './shopify-payouts.js';
-import { moneyAllowed, cleanInvoice, nextInvoiceNumber, invoiceState, aging, parseInvoiceCsv, METHODS } from './money.js';
+import { createStripe } from './stripe-payments.js';
+import { moneyAllowed, cleanInvoice, nextInvoiceNumber, invoiceState, aging, parseInvoiceCsv, METHODS, PAY_WITH, payChannelOf } from './money.js';
 import { moneyInvoicePdf } from './money-pdf.js';
 import { receiptPdf, receiptEmail, receiptNumber } from './receipt-pdf.js';
 import { pdfName, disposition } from './pdf-name.js';
-import { qbConfig, signState, readState, authUrl, endpoints, exchangeCode, revoke, companyInfo, pushInvoice, invoiceLink, paymentsSince, methodOf, recordPayment as qbRecordPayment, SCOPE, PAYMENT_SCOPE } from './quickbooks.js';
+import { qbConfig, signState, readState, authUrl, endpoints, exchangeCode, revoke, companyInfo, pushInvoice, invoiceLink, paymentsSince, methodOf, recordPayment as qbRecordPayment, ensureCustomer as qbEnsureCustomer, SCOPE, PAYMENT_SCOPE } from './quickbooks.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -24,7 +27,8 @@ const iso = d => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 export function registerMoneyRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {}, tokenSeal, stateSecret = 'money', workUrl = 'https://work.thefuturebasics.com', fetchImpl = fetch, log = console, shopifyInvoiceLink = null, shopifyDraftStatus = null, shopifyPayouts = null, shopifyReady = () => Boolean(shopifyPayouts) , sendHubEmail = null, hubEmailShell = (t, b) => b, emailEscape = v => String(v)} = d;
+  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {}, tokenSeal, stateSecret = 'money', workUrl = 'https://work.thefuturebasics.com', fetchImpl = fetch, log = console, shopifyInvoiceLink = null, shopifyDraftStatus = null, shopifyPayouts = null, shopifyReady = () => Boolean(shopifyPayouts) , sendHubEmail = null, hubEmailShell = (t, b) => b, emailEscape = v => String(v), publicUrl = env.CLIENT_HUB_URL || 'https://hub.thefuturebasics.com' } = d;
+  const stripe = d.stripe || createStripe({ env, log }), hubUrl = String(publicUrl).replace(/\/$/, '');
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   async function moneyOnly(req, reply) {
     const u = (await pool.query('select email from users where id=$1', [req.auth?.sub]).catch(() => ({ rows: [] }))).rows[0];
@@ -40,7 +44,7 @@ export function registerMoneyRoutes(app, d) {
     return { id: r.id, number: r.number, company: r.company, contactName: r.contact_name, contactEmail: r.contact_email, address: r.address, issuedOn: iso(r.issued_on), terms: r.terms, dueOn: iso(r.due_on), lines: r.lines, taxRatePct: Number(r.tax_rate), chargeTax: r.charge_tax,
       credits: r.credits, dueNowLabel: r.due_now_label, dueNowCents: r.due_now_cents == null ? null : Number(r.due_now_cents), subtotalCents: Number(r.subtotal_cents), taxCents: Number(r.tax_cents), totalCents: Number(r.total_cents), notes: r.notes, currency: r.currency,
       status: r.status, source: r.source, state: st.state, owedCents: st.owedCents, overdue: st.overdue, daysOverdue: st.daysOverdue, paidCents: paid, sentAt: r.sent_at, paidAt: r.paid_at, createdAt: r.created_at,
-      workKind: r.work_kind || '', projectId: r.project_id || null, projectName: r.project_name || '', dealId: r.deal_id || null, dealTitle: r.deal_title || '', payUrl: r.pay_url || '', payChannel: r.pay_channel || '',
+      workKind: r.work_kind || '', projectId: r.project_id || null, projectName: r.project_name || '', dealId: r.deal_id || null, dealTitle: r.deal_title || '', payUrl: r.pay_url || '', payChannel: r.pay_channel || '', payWith: r.pay_with || '', payVia: payChannelOf(r.pay_with, r.work_kind),
       qb: r.qb_id ? { id: r.qb_id, docNumber: r.qb_doc_number, link: r.qb_link, syncedAt: r.qb_synced_at } : null, receiptSentAt: r.receipt_sent_at || null, receiptSentTo: r.receipt_sent_to || '', contractId: r.contract_id || null, contractNumber: r.contract_number || '' };
   };
   // What is still owed by the numbers alone, whatever status the invoice has (a paid invoice reads 0 otherwise).
@@ -56,17 +60,17 @@ export function registerMoneyRoutes(app, d) {
   async function setWork(id, v) {
     let kind = v.workKind || '', clientId = null;
     if (v.projectId) { const p = (await pool.query('select client_id, kind from projects where id=$1', [v.projectId])).rows[0]; if (p) { kind = p.kind === 'software' ? 'software' : 'product'; clientId = p.client_id; } else v.projectId = null; }
-    const before = (await pool.query('select work_kind, pay_channel, shopify_draft_id from money_invoices where id=$1', [id])).rows[0] || {};
-    // a Shopify link was made for the old amount or kind: it is made again on request
-    const staleShopify = before.pay_channel === 'shopify';
-    await pool.query(`update money_invoices set work_kind=$2, project_id=$3, client_id=coalesce($4, client_id), pay_url=case when $5 then '' else pay_url end, pay_channel=case when $5 then '' else pay_channel end, shopify_draft_id=case when $5 then '' else shopify_draft_id end where id=$1`, [id, kind, v.projectId || null, clientId, staleShopify]);
+    const before = (await pool.query('select work_kind, pay_with, pay_channel, shopify_draft_id from money_invoices where id=$1', [id])).rows[0] || {};
+    // a Shopify link was made for the old amount or kind, or the invoice is now paid another way: the link is made again on request
+    const payWith = PAY_WITH[v.payWith] ? v.payWith : '', stale = before.pay_channel === 'shopify' || (before.pay_channel && before.pay_channel !== payChannelOf(payWith, kind));
+    await pool.query(`update money_invoices set work_kind=$2, project_id=$3, client_id=coalesce($4, client_id), pay_with=$6, pay_url=case when $5 then '' else pay_url end, pay_channel=case when $5 then '' else pay_channel end, shopify_draft_id=case when $5 then '' else shopify_draft_id end where id=$1`, [id, kind, v.projectId || null, clientId, !!stale, payWith]);
   }
   // The won deal an invoice bills (so a deal is not billed twice by accident, and Money can say which won deals still need an invoice).
   async function setDeal(id, dealId) {
     const ok = UUID.test(String(dealId || '')) && (await pool.query('select 1 from sales_deals where id=$1', [dealId])).rowCount;
     await pool.query('update money_invoices set deal_id=$2 where id=$1', [id, ok ? dealId : null]);
   }
-  app.get('/v1/money/me', { preHandler: pre }, async req => ({ ok: true, email: req.money.email }));
+  app.get('/v1/money/me', { preHandler: pre }, async req => ({ ok: true, email: req.money.email, payWith: { stripe: stripe.embedded(), quickbooks: true, shopify: Boolean(shopifyInvoiceLink) } }));
 
   // ---------- invoices ----------
   app.get('/v1/money/invoices', { preHandler: pre }, async req => {
@@ -350,12 +354,18 @@ export function registerMoneyRoutes(app, d) {
     if (!needId(req, reply)) return; const cur = await one(req.params.id); if (!cur) return bad(reply, 'Not found', 404);
     if (['paid', 'void'].includes(cur.status)) return bad(reply, `A ${cur.status} invoice needs no payment link`, 409);
     if (cur.pay_url && req.body?.refresh !== true) return { invoice: view(cur), made: false };
-    if (!cur.work_kind) return bad(reply, 'Say what kind of work this is first: product development pays through Shopify, software development through QuickBooks', 409);
+    const channel = payChannelOf(cur.pay_with, cur.work_kind);
+    if (!channel) return bad(reply, 'Choose how the client pays (our pay page, QuickBooks or Shopify), or say what kind of work this is: product development pays through Shopify, software development through QuickBooks', 409);
+    if (channel === 'stripe') {
+      if (!stripe.embedded()) return bad(reply, 'Stripe is not set up for invoices: add STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY to the service', 409);
+      await pool.query(`update money_invoices set pay_url=$2, pay_channel='stripe', status=case when status in ('draft','unrecorded') then 'sent' else status end, sent_at=coalesce(sent_at, now()), updated_at=now() where id=$1`, [cur.id, `${hubUrl}/pay/${payToken(cur.id)}`]);
+      await onChange('pay-link', cur.id); return reply.code(201).send({ invoice: view(await one(cur.id)), made: true });
+    }
     const balance = rawOwed(cur), due = cur.due_now_cents == null ? balance : Math.min(Number(cur.due_now_cents), balance);
     if (due <= 0) return bad(reply, 'Nothing is owed on this invoice', 409);
     try {
-      if (cur.work_kind === 'software') {
-        const ctx = await qbContext(); if (!ctx) return bad(reply, 'Software development is paid through QuickBooks, and it is not connected. Connect it in Money → Settings.', 409);
+      if (channel === 'quickbooks') {
+        const ctx = await qbContext(); if (!ctx) return bad(reply, 'This invoice is paid through QuickBooks, and it is not connected. Connect it in Money → Settings.', 409);
         if (!cur.contact_email) return bad(reply, 'Add the client\'s email to the invoice first: QuickBooks only gives a payment link to an invoice it can email', 409);
         let qbId = cur.qb_id;
         if (!qbId) {
@@ -370,7 +380,7 @@ export function registerMoneyRoutes(app, d) {
         const r = await shopifyInvoiceLink({ title: `Invoice ${cur.number}: ${cur.company}`, amountCents: due, currency: cur.currency, email: cur.contact_email, note: `Future Basics invoice ${cur.number}`, number: cur.number });
         await pool.query(`update money_invoices set pay_url=$2, pay_channel='shopify', shopify_draft_id=$3, status=case when status in ('draft','unrecorded') then 'sent' else status end, sent_at=coalesce(sent_at, now()), updated_at=now() where id=$1`, [cur.id, r.url, r.draftId || '']);
       }
-    } catch (e) { if (cur.work_kind === 'software') await failed(e); return bad(reply, e.message || 'The payment link could not be made', 502); }
+    } catch (e) { if (channel === 'quickbooks') await failed(e); return bad(reply, e.message || 'The payment link could not be made', 502); }
     await onChange('pay-link', cur.id); return reply.code(201).send({ invoice: view(await one(cur.id)), made: true });
   });
   // A Shopify payment link whose checkout has been paid: record the payment once and settle the invoice.
@@ -410,6 +420,113 @@ export function registerMoneyRoutes(app, d) {
     try { return { ok: true, ...(await syncQuickBooks()) }; } catch (e) { return bad(reply, e.message, 502); }
   });
   void log;
+
+  // ---------- an invoice paid on our own pay page (pay.html), through Stripe ----------
+  // The invoice's link is /pay/<id>.<signature>: anyone with it can see what is owed and pay it, and nothing else. The page shows the invoice,
+  // Apple Pay (Google Pay on Android and Chrome) first, and the card or bank form behind "More payment options". Stripe takes the money; here it is
+  // recorded once against the invoice, put in QuickBooks when connected, and the client is emailed the receipt with its PDF.
+  function payToken(id) { return `${id}.${createHmac('sha256', String(stateSecret)).update(`invoice-pay:${id}`).digest('base64url').slice(0, 32)}`; }
+  async function byPayToken(req, reply) {
+    const [id, sig] = String(req.params.token || '').split('.'), want = UUID.test(id || '') ? payToken(id).split('.')[1] : '';
+    if (!want || !sig || sig.length !== want.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(want))) { bad(reply, 'This payment link is not valid. Ask us for a new one.', 404); return null; }
+    const r = await one(id); if (!r) { bad(reply, 'This invoice is no longer open. Ask us for a new link.', 404); return null; }
+    return r;
+  }
+  const hits = new Map();
+  const slow = (key, limit) => { const now = Date.now(), h = (hits.get(key) || []).filter(t => now - t < 3600_000); h.push(now); hits.set(key, h); if (hits.size > 5000) hits.clear(); return h.length > limit; };
+  const dueNow = r => { const owed = rawOwed(r); return r.due_now_cents == null ? owed : Math.min(Number(r.due_now_cents), owed); };
+  const PAY_CSP = () => `upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'${stripe.publishableKey() ? ' https://js.stripe.com https://*.js.stripe.com' : ''}; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self'${stripe.publishableKey() ? ' https://api.stripe.com https://*.stripe.com' : ''}${stripe.publishableKey() ? '; frame-src https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com https://*.stripe.com' : ''}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
+  app.get('/pay/:token', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('referrer-policy', 'no-referrer').header('content-security-policy', PAY_CSP())
+    .header('permissions-policy', `camera=(), microphone=(), geolocation=()${stripe.publishableKey() ? ', payment=(self "https://js.stripe.com" "https://*.js.stripe.com")' : ''}`).type('text/html').send(readFileSync(new URL('./pay.html', import.meta.url), 'utf8')));
+  const publicInvoice = async r => {
+    const st = invoiceState({ ...r, due_on: iso(r.due_on) }, Number(r.paid_cents), today()), open = r.pay_channel === 'stripe' && !['paid', 'void', 'draft'].includes(r.status) && dueNow(r) > 0;
+    let pending = false; if (open && r.stripe_pi) { try { pending = (await stripe.readPayment(r.stripe_pi)).status === 'pending'; } catch { /* asked again on the next visit */ } }
+    if (open && !pending && stripe.embedded()) stripe.registerDomain(new URL(hubUrl).host).catch(() => {}); // Apple Pay shows only on a domain Stripe knows
+    return { number: r.number, company: r.company, contactName: r.contact_name, issuedOn: iso(r.issued_on), dueOn: iso(r.due_on), terms: r.terms, currency: r.currency || 'USD', status: r.status === 'void' ? 'void' : st.state, overdue: st.overdue,
+      lines: (r.lines || []).map(l => ({ description: l.description, qty: Number(l.qty), rateCents: Number(l.rateCents), amountCents: Math.round(Number(l.qty) * Number(l.rateCents)) })), subtotalCents: Number(r.subtotal_cents), taxCents: Number(r.tax_cents), taxRatePct: Number(r.tax_rate),
+      totalCents: Number(r.total_cents), credits: r.credits || [], paidCents: Number(r.paid_cents), dueNowCents: dueNow(r), dueNowLabel: r.due_now_label || 'Total due', notes: r.notes || '', instructions: await instructions(),
+      pay: { open: open && !pending, pending, channel: r.pay_channel || '', otherUrl: r.pay_channel && r.pay_channel !== 'stripe' ? r.pay_url : '', publishableKey: open ? stripe.publishableKey() || null : null, testMode: !stripe.live() }, receipt: Number(r.paid_cents) > 0 };
+  };
+  app.get('/v1/public/invoices/:token', async (req, reply) => {
+    if (slow(`inv-view:${req.ip}`, 300)) return bad(reply, 'Too many tries from here. Please wait a few minutes.', 429);
+    const r = await byPayToken(req, reply); if (!r) return; return reply.header('cache-control', 'no-store').send(await publicInvoice(r));
+  });
+  app.get('/v1/public/invoices/:token/pdf', async (req, reply) => {
+    const r = await byPayToken(req, reply); if (!r) return; const st = invoiceState({ ...r, due_on: iso(r.due_on) }, Number(r.paid_cents), today());
+    const buf = await moneyInvoicePdf({ ...r, issued_on: iso(r.issued_on), due_on: iso(r.due_on), pay_url: ['paid', 'void'].includes(r.status) ? '' : r.pay_url }, { instructions: await instructions() }, st);
+    return reply.type('application/pdf').header('cache-control', 'no-store').header('content-disposition', disposition(pdfName(r.company, `Invoice ${r.number}`), { inline: req.query?.dl !== '1' })).send(buf);
+  });
+  app.get('/v1/public/invoices/:token/receipt.pdf', async (req, reply) => {
+    const r = await byPayToken(req, reply); if (!r) return; if (!(Number(r.paid_cents) > 0)) return bad(reply, 'Nothing has been paid on this invoice yet', 409);
+    const input = await receiptInput(r); return reply.type('application/pdf').header('cache-control', 'no-store').header('content-disposition', disposition(receiptEmail(input).filename, { inline: req.query?.dl !== '1' })).send(await receiptPdf(input));
+  });
+  // The page asks for a payment for what is due now. One PaymentIntent per invoice is kept (stripe_pi) and reused while it is still open,
+  // so pressing twice or coming back later never makes a second charge; a bank payment already on its way is not started again.
+  app.post('/v1/public/invoices/:token/payment-intent', async (req, reply) => {
+    if (slow(`inv-pay:${req.ip}`, 40)) return bad(reply, 'Too many tries from here. Please wait a few minutes.', 429);
+    const r = await byPayToken(req, reply); if (!r) return;
+    if (r.pay_channel !== 'stripe') return bad(reply, 'This invoice is paid another way: use the link on the invoice', 409);
+    if (['paid', 'void', 'draft'].includes(r.status) || dueNow(r) <= 0) return bad(reply, 'Nothing is owed on this invoice', 409);
+    if (!stripe.embedded()) return bad(reply, 'Online payment is not available just yet. Please use the payment details on the invoice.', 503);
+    const amount = dueNow(r);
+    try {
+      if (r.stripe_pi) {
+        const was = await stripe.readPayment(r.stripe_pi);
+        if (was.status === 'pending') return bad(reply, 'Your bank payment is already on its way. We email your receipt when it clears.', 409);
+        if (was.status === 'succeeded') { await settle(r, was); return bad(reply, 'This invoice has just been paid. Refresh the page for your receipt.', 409); }
+        if (was.raw.startsWith('requires_') && was.metadata?.invoice === r.id) {
+          const same = was.amountCents === amount ? was : await stripe.updatePaymentAmount(was.id, amount);
+          return { clientSecret: same.clientSecret || was.clientSecret, amountCents: amount };
+        }
+      }
+      const cust = await stripe.ensureCustomer({ id: r.stripe_customer_id || '', email: r.contact_email || '', name: r.contact_name || r.company, metadata: { company: String(r.company || '').slice(0, 200) } });
+      const pi = await stripe.startPayment({ amountCents: amount, currency: r.currency || 'USD', customerId: cust.id, description: `Future Basics invoice ${r.number}`, metadata: { invoice: r.id, number: String(r.number) }, idempotencyKey: `fb-inv-${r.id}-${amount}-${Number(r.paid_cents)}-${Date.now() >> 16}` });
+      await pool.query('update money_invoices set stripe_pi=$2, stripe_customer_id=$3, updated_at=now() where id=$1', [r.id, pi.id, cust.id]);
+      return { clientSecret: pi.clientSecret, amountCents: amount };
+    } catch (e) { log.warn?.({ money: true, err: String(e.message).slice(0, 200) }, 'starting an invoice payment failed'); return bad(reply, 'The payment could not be started. Try again in a minute.', 502); }
+  });
+  app.post('/v1/public/invoices/:token/complete', async (req, reply) => {
+    if (slow(`inv-done:${req.ip}`, 60)) return bad(reply, 'Too many tries from here. Please wait a few minutes.', 429);
+    const r = await byPayToken(req, reply); if (!r) return; const piId = String(req.body?.paymentIntentId || '');
+    if (!/^pi_\w{1,200}$/.test(piId)) return bad(reply, 'The payment form did not say what happened. Try again.');
+    let pi; try { pi = await stripe.readPayment(piId); } catch { return bad(reply, 'Could not confirm the payment just yet. Refresh this page in a minute.', 502); }
+    if (pi.metadata?.invoice !== r.id) return bad(reply, 'This payment belongs to a different invoice', 403);
+    const out = await settle(r, pi); if (out.error) return bad(reply, out.error, out.status || 409);
+    return { ok: true, ...out, invoice: await publicInvoice(await one(r.id)) };
+  });
+  // Stripe said what happened: record a payment that succeeded (the bank payments that settle days later come this way), once.
+  async function settle(r, pi) {
+    if (pi.status === 'pending') { await pool.query('update money_invoices set stripe_pi=$2 where id=$1', [r.id, pi.id]); return { pending: true, message: 'Your bank payment is on its way. It takes a few business days to clear, and we email your receipt when it does.' }; }
+    if (pi.status !== 'succeeded') return { error: pi.reason || 'The payment did not go through. Try again, or use another card.', status: 402 };
+    const label = pi.instrument?.label || 'Stripe', method = pi.instrument?.kind === 'bank' ? 'ach' : 'card', paidOn = today();
+    const ins = await pool.query(`insert into money_payments(invoice_id, source, method, company, amount_cents, currency, paid_on, reference, note) select $1,'stripe',$2,$3,$4,$5,$6,$7,$8 where not exists (select 1 from money_payments where source='stripe' and reference=$7) returning id`,
+      [r.id, method, r.company, pi.amountCents, pi.currency || r.currency || 'USD', paidOn, pi.id, `Paid online through Stripe (${label})`]);
+    if (!ins.rowCount) return { already: true };
+    const after = await one(r.id); if (after && after.status !== 'paid' && after.status !== 'void' && rawOwed(after) === 0) await pool.query(`update money_invoices set status='paid', paid_at=now(), updated_at=now() where id=$1`, [r.id]);
+    await pool.query(`update money_invoices set stripe_pi='' where id=$1 and stripe_pi=$2`, [r.id, pi.id]);
+    // the books: the invoice and the payment go into QuickBooks when it is connected (the payment sync then knows it by the same key and never counts it twice)
+    try {
+      const ctx = await qbContext();
+      if (ctx) {
+        let inv = await one(r.id); if (!inv.qb_id) { await pushAndSave(ctx, inv); inv = await one(r.id); }
+        const cust = await qbEnsureCustomer(ctx, { company: inv.company, contact_name: inv.contact_name, contact_email: inv.contact_email, address: inv.address });
+        const p = await qbRecordPayment(ctx, { customerId: cust.id, invoiceId: inv.qb_id, amountCents: pi.amountCents, paidOn, reference: pi.id.slice(0, 21), note: `Paid online through Stripe (${label}), invoice ${inv.number}` });
+        await pool.query('update money_payments set qb_id=$2 where id=$1', [ins.rows[0].id, `${p.id}:${inv.qb_id}`]);
+      }
+    } catch (e) { await pool.query(`update money_payments set note=note || ' (not in QuickBooks yet: record it there)' where id=$1`, [ins.rows[0].id]); log.warn?.({ money: true, err: String(e.message).slice(0, 200) }, 'a Stripe invoice payment could not be put in QuickBooks'); }
+    // the client's receipt, with its PDF
+    try {
+      const rc = await receiptFor(r.id, { relabel: { [pi.id]: label } });
+      if (rc && sendHubEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rc.to)) { const sent = await sendHubEmail({ to: rc.to, subject: rc.email.subject, html: hubEmailShell('Payment received', rc.email.body), attachments: [{ filename: rc.email.filename, content: rc.pdf }] }).catch(() => false); if (sent) await receiptSent(r.id, rc.to); }
+    } catch (e) { log.warn?.({ money: true, err: String(e.message).slice(0, 200) }, 'the receipt for a Stripe invoice payment was not sent'); }
+    await onChange('paid', r.id);
+    return { paid: true, method: label };
+  }
+  async function stripeInvoiceEvent(evt) {
+    const o = evt?.data?.object || {}, id = o.metadata?.invoice; if (!UUID.test(String(id || '')) || !String(evt?.type || '').startsWith('payment_intent.')) return { ignored: 'not an invoice payment' };
+    const r = await one(id); if (!r) return { ignored: 'unknown invoice' };
+    const out = await settle(r, await stripe.readPayment(o.id)); return { invoice: r.number, ...(out.paid ? { paid: true } : out.pending ? { pending: true } : out.already ? { already: true } : { declined: true }) };
+  }
 
   // ---------- the ledger and the overview ----------
   async function ledger(limit = 400) {
@@ -508,5 +625,5 @@ export function registerMoneyRoutes(app, d) {
     if (lines.length > 12 || lines.some(l => l.length > 120)) return bad(reply, 'Payment instructions are at most 12 lines of 120 characters');
     await setSetting('moneyPayment', { instructions: lines.join('\n') }); return { ok: true, instructions: lines.join('\n') };
   });
-  return { syncQuickBooks, syncShopifyLinks, syncPayouts, qbContext, qbFailed: failed, pushAndSave, bookAutopay, invoiceOne: one, receiptFor, receiptSent };
+  return { syncQuickBooks, syncShopifyLinks, syncPayouts, qbContext, qbFailed: failed, pushAndSave, bookAutopay, invoiceOne: one, receiptFor, receiptSent, stripeInvoiceEvent, payToken };
 }

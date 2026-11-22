@@ -27,6 +27,20 @@ The kind of work decides how a client pays, and the link prints in the PDF's "Ho
 - Editing an invoice drops its Shopify link (the amount may have changed): make it again from the invoice. A paid or void invoice prints no link.
 - The QuickBooks email to the client, when you use "Create and email from QuickBooks", is QuickBooks's own design. The PDF from Money, the work console and the hub is the Future Basics one.
 
+## How the client pays an invoice
+
+Each invoice says how it is paid, chosen in the editor under **The client pays through** (`money_invoices.pay_with`):
+
+- **By the kind of work** (the default): software development through a QuickBooks pay link, product development through a Shopify checkout.
+- **Our pay page (Stripe)**: the invoice's link is `/pay/<id>.<signature>` on the hub (`src/pay.html`). The client sees the invoice and what is due, with **Apple Pay** first (Google Pay on Android and Chrome; Stripe's Express Checkout Element). Under it, **More payment options** opens Stripe's card and US bank form, in our type and colours. Nothing to sign in to. The link only shows and pays that invoice.
+  - The page asks the hub for a PaymentIntent for the amount due now (`POST /v1/public/invoices/:token/payment-intent`). One is kept per invoice (`stripe_pi`) and reused while it is open, so pressing twice never charges twice.
+  - A card payment is recorded at once (`.../complete`). A bank payment is "on its way" for a few business days, the page says so and takes no second payment, and Stripe's webhook (`payment_intent.succeeded`) records it when it clears.
+  - When it is paid: one Money payment (source `stripe`, method card or ACH, reference the Stripe payment). The invoice is paid when nothing is owed. The invoice and the payment go into QuickBooks when it is connected (the payment sync knows it by the same key, so it is never counted twice; if QuickBooks is down the payment's note says to record it there). The client is emailed the receipt with its PDF, and the page shows **Download receipt**.
+  - Needs `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY` (and `STRIPE_WEBHOOK_SECRET` for bank payments). Money greys the choice out until they are set. Journey J322.
+- **QuickBooks pay link** or **Shopify checkout**, whatever the kind of work.
+
+Changing the choice on an invoice drops a link already made for the old one; **Make the payment link** makes the new one.
+
 ## What PDFs are called
 
 Every invoice, receipt and agreement PDF is named for the client, then what it is and its number: `Comet over Delphi - Invoice 1043.pdf`, `Comet over Delphi - Receipt R-1043.pdf`, `Comet over Delphi - Agreement FB-C-2026-004 (signed).pdf` (`src/pdf-name.js`). The download buttons in the work console, Money, Contracts, the client's hub and the signing page save the file under that name, and the emails attach it under the same name, so a phone keeps it instead of calling it "Unknown.pdf".
