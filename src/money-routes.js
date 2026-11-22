@@ -14,7 +14,7 @@
 import { payoutRow, payoutTotals, needsScope } from './shopify-payouts.js';
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber, invoiceState, aging, parseInvoiceCsv, METHODS } from './money.js';
 import { moneyInvoicePdf } from './money-pdf.js';
-import { receiptPdf, receiptEmail } from './receipt-pdf.js';
+import { receiptPdf, receiptEmail, receiptNumber } from './receipt-pdf.js';
 import { qbConfig, signState, readState, authUrl, endpoints, exchangeCode, revoke, companyInfo, pushInvoice, invoiceLink, paymentsSince, methodOf, recordPayment as qbRecordPayment, SCOPE, PAYMENT_SCOPE } from './quickbooks.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -112,6 +112,27 @@ export function registerMoneyRoutes(app, d) {
     return { invoiceNumber: r.number, company: r.company, contactName: r.contact_name, contactEmail: r.contact_email, address: r.address, issuedOn: iso(r.issued_on), currency: r.currency || 'USD',
       lines: r.lines || [], subtotalCents: Number(r.subtotal_cents), taxCents: Number(r.tax_cents), taxRatePct: Number(r.tax_rate), totalCents: Number(r.total_cents), credits: r.credits || [],
       payments: pays.map(p => ({ paidOn: iso(p.paid_on), method: p.method, reference: p.reference, note: p.note, amountCents: Number(p.amount_cents) })), notes: r.project_name ? `Project: ${r.project_name}` : '' };
+  }
+  // A receipt made by the server itself (a contract's payment came in): the PDF, its email and who it goes to. extra: a payment that was taken
+  // but is not in the ledger yet (QuickBooks was busy), so the receipt still shows it. relabel: { [reference]: words } (a card's label for a charge id).
+  async function receiptFor(id, { extra = null, relabel = {} } = {}) {
+    const r = await one(id); if (!r || r.status === 'void') return null;
+    const input = await receiptInput(r);
+    if (extra && !input.payments.some(p => p.reference && p.reference === extra.reference)) input.payments.push(extra);
+    input.payments = input.payments.map(p => (relabel[p.reference] ? { ...p, reference: relabel[p.reference] } : p));
+    if (!input.payments.some(p => Number(p.amountCents) > 0)) return null;
+    const signer = r.contract_id ? (await pool.query('select content from contracts where id=$1', [r.contract_id]).catch(() => ({ rows: [] }))).rows[0]?.content?.client?.signerEmail : '';
+    return { invoice: r, input, number: receiptNumber(r.number), pdf: await receiptPdf(input), email: receiptEmail(input, { esc: emailEscape }), to: String(r.contact_email || signer || '').trim().toLowerCase() };
+  }
+  const receiptSent = (id, to) => pool.query('update money_invoices set receipt_sent_at=now(), receipt_sent_to=$2, updated_at=now() where id=$1', [id, to]);
+  // A payment on a contract's invoice that came in on its own (the client paid the QuickBooks link): the client is sent the receipt with its PDF.
+  // Only a payment from the last few days, so connecting QuickBooks again never mails receipts for old payments.
+  async function autoReceipt(invoiceId, paidOn) {
+    if (!sendHubEmail || !paidOn || paidOn < iso(new Date(Date.now() - 4 * 86400000))) return false;
+    const inv = await one(invoiceId); if (!inv?.contract_id) return false;
+    const rc = await receiptFor(invoiceId).catch(() => null); if (!rc || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rc.to)) return false;
+    const sent = await sendHubEmail({ to: rc.to, subject: rc.email.subject, html: hubEmailShell('Payment received', rc.email.body), attachments: [{ filename: rc.email.filename, content: rc.pdf }] }).catch(() => false);
+    if (sent) await receiptSent(invoiceId, rc.to); return Boolean(sent);
   }
   const receiptReady = r => (r.status === 'void' ? 'A void invoice has no receipt' : Number(r.paid_cents) > 0 ? '' : 'Nothing has been paid on this invoice yet: record the payment first');
   app.get('/v1/money/invoices/:id/receipt.pdf', { preHandler: pre }, async (req, reply) => {
@@ -377,7 +398,7 @@ export function registerMoneyRoutes(app, d) {
         if (!inv && p.paidOn < connectedOn) continue; // money QuickBooks took before we were connected, for invoices we never made: leave it out of our ledger
         const r = await pool.query(`insert into money_payments(invoice_id, source, method, company, amount_cents, currency, paid_on, reference, note, qb_id) values($1,'quickbooks',$2,$3,$4,$5,$6,$7,$8,$9) on conflict (qb_id) where qb_id is not null do nothing`,
           [inv?.id || null, methodOf(p.method), inv?.company || p.customer, a.amountCents, inv?.currency || 'USD', p.paidOn || iso(new Date()), p.reference, inv ? '' : `QuickBooks invoice ${a.invoiceId}`, `${p.id}:${a.invoiceId}`]);
-        if (r.rowCount) { added++; if (inv) { const after = await one(inv.id); if (after && after.status !== 'paid' && after.status !== 'void' && rawOwed(after) === 0) await pool.query(`update money_invoices set status='paid', paid_at=now(), updated_at=now() where id=$1`, [inv.id]); } } else kept++;
+        if (r.rowCount) { added++; if (inv) { const after = await one(inv.id); if (after && after.status !== 'paid' && after.status !== 'void' && rawOwed(after) === 0) await pool.query(`update money_invoices set status='paid', paid_at=now(), updated_at=now() where id=$1`, [inv.id]); await autoReceipt(inv.id, p.paidOn).catch(() => false); } } else kept++;
       }
       await pool.query(`update money_connections set last_sync_at=now(), sync_cursor=$1, last_error='', updated_at=now() where provider='quickbooks'`, [new Date(startedAt.getTime() - 5 * 60_000)]);
       return { added, kept, seen: list.length };
@@ -486,5 +507,5 @@ export function registerMoneyRoutes(app, d) {
     if (lines.length > 12 || lines.some(l => l.length > 120)) return bad(reply, 'Payment instructions are at most 12 lines of 120 characters');
     await setSetting('moneyPayment', { instructions: lines.join('\n') }); return { ok: true, instructions: lines.join('\n') };
   });
-  return { syncQuickBooks, syncShopifyLinks, syncPayouts, qbContext, qbFailed: failed, pushAndSave, bookAutopay, invoiceOne: one };
+  return { syncQuickBooks, syncShopifyLinks, syncPayouts, qbContext, qbFailed: failed, pushAndSave, bookAutopay, invoiceOne: one, receiptFor, receiptSent };
 }

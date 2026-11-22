@@ -170,7 +170,7 @@ export const FLOWS = {
     ['money','A contract is built from the plan, or from an accepted quote priced per unit with its setup and freight lines and sales tax on the products only by where they are delivered (we collect in Pennsylvania only), signed online, and turned into invoices. It moves its deal as it goes: a draft at Meeting, sent at Proposal, signed by both at Won, with the contract\'s total as the deal\'s value.'],
     ['links','The client signs and adds a card or bank account from a private link.'],
     ['qbo','Autopay charges on schedule through QuickBooks Payments or Stripe; QuickBooks gets the books.'],
-    ['money','Once the client has paid (a Shopify checkout, a transfer), staff send a branded receipt from Money or the project: what was paid, when, how, and a balance of $0.'],
+    ['money','Once the client has paid, they get a branded receipt PDF: on its own for a contract\'s payments (autopay, or its QuickBooks link), or sent by staff from Money or the project for a Shopify checkout or a transfer.'],
     ['builds','The project ships: a theme is pushed to the client\'s own store, and the live site is watched.']]},
   request:{name:'How a request is checked',lede:'Every call passes the same checks in order before any service runs.',steps:[
     ['staff','A person makes a request (here, staff opening a client\'s Lab work).'],

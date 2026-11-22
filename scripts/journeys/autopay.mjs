@@ -15,6 +15,8 @@ const kyle = await forge({ sub: await staff('kyle@thefuturebasics.com'), clientI
 const C = (path, o = {}) => call('/v1/contracts' + path, { token: colby, ...o }), K = (path, o = {}) => call('/v1/contracts' + path, { token: kyle, ...o });
 const tokenOf = link => String(link).split('/sign/')[1], P = (token, path = '', o = {}) => call(`/v1/public/contracts/${token}${path}`, o);
 const outbox = async to => (await call(`/v1/dev/outbox?to=${encodeURIComponent(to)}`)).json.emails || [];
+// the receipt email carries the branded receipt PDF
+const receiptPdfOn = e => !!e && e.attachments.some(a => /^TFB Receipt R-.+\.pdf$/.test(a.filename) && a.head === '%PDF-') && /receipt, R-.+ is attached as a PDF/.test(e.text);
 const SIGNER = `pay-${stamp}@salon.test`, SIGNER2 = `pay2-${stamp}@salon.test`, SIGNER3 = `pay3-${stamp}@salon.test`, SIGNER4 = `pay4-${stamp}@salon.test`, SIGNER5 = `pay5-${stamp}@salon.test`, SIGNER6 = `pay6-${stamp}@salon.test`;
 const body = (n, email, plan, over = {}) => ({ title: `Autopay site ${n} ${stamp}`, kind: 'website', client: { company: `Pay Salon ${n} ${stamp}`, address: '1 Main St, Norristown PA 19401', signerName: 'Pat Payer', signerTitle: 'Owner', signerEmail: email }, project: { name: 'Salon website' }, scope: ['A five-page website', 'Booking link'], fee: { totalCents: 300000 }, timeline: { effectiveOn: '2026-11-01', startOn: '2026-11-03', completionOn: '2027-02-15' }, plan, ...over });
 const sign = (o = {}) => ({ name: 'Pat Payer', title: 'Owner', agree: true, esign: true, autopay: true, ...o });
@@ -22,7 +24,7 @@ const CARD = { card: { number: '4111111111111111', expMonth: '08', expYear: '203
 const BANK = { bankAccount: { name: 'Pat Payer', routingNumber: '322079353', accountNumber: '11000000333456781', accountType: 'BUSINESS_CHECKING', phone: '2155550123' } };
 
 // ---- the stand-in for Intuit: sign-in, the books, and the payment provider ----
-const qbm = { invoices: [], customers: [], payments: [], tokens: {}, instruments: {}, charges: [], echecks: {}, deleted: [], seen: [], declines: 0, paymentsDown: false, settle: false, refreshes: 0 };
+const qbm = { invoices: [], customers: [], payments: [], linkPaid: [], tokens: {}, instruments: {}, charges: [], echecks: {}, deleted: [], seen: [], declines: 0, paymentsDown: false, settle: false, refreshes: 0 };
 const send = (res, c, b) => { res.writeHead(c, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, request-id', 'access-control-allow-methods': 'POST, GET, OPTIONS' }); res.end(JSON.stringify(b)); };
 const mock = http.createServer((req, res) => {
   const chunks = []; req.on('data', c => chunks.push(c)); req.on('end', () => {
@@ -65,7 +67,7 @@ const mock = http.createServer((req, res) => {
       if (!/^Bearer AT\d$/.test(auth)) return send(res, 401, { Fault: { Error: [{ Message: 'AuthenticationFailed' }] } });
       const sub = u.pathname.replace('/v3/company/123', '');
       if (sub === '/companyinfo/123') return send(res, 200, { CompanyInfo: { CompanyName: 'Sandbox Company', LegalName: 'Sandbox Company', Country: 'US' } });
-      if (sub === '/query') { const q = u.searchParams.get('query') || ''; if (/from Customer/.test(q)) return send(res, 200, { QueryResponse: { Customer: qbm.customers.filter(c => q.includes(`'${c.DisplayName}'`)).map(c => ({ Id: c.Id, DisplayName: c.DisplayName })) } }); if (/from Item/.test(q)) return send(res, 200, { QueryResponse: { Item: [{ Id: '7', Name: 'Services' }] } }); if (/from Payment/.test(q)) return send(res, 200, { QueryResponse: { Payment: [] } }); return send(res, 200, { QueryResponse: {} }); }
+      if (sub === '/query') { const q = u.searchParams.get('query') || ''; if (/from Customer/.test(q)) return send(res, 200, { QueryResponse: { Customer: qbm.customers.filter(c => q.includes(`'${c.DisplayName}'`)).map(c => ({ Id: c.Id, DisplayName: c.DisplayName })) } }); if (/from Item/.test(q)) return send(res, 200, { QueryResponse: { Item: [{ Id: '7', Name: 'Services' }] } }); if (/from Payment/.test(q)) return send(res, 200, { QueryResponse: { Payment: qbm.linkPaid } }); return send(res, 200, { QueryResponse: {} }); }
       if (sub === '/customer' && req.method === 'POST') { const b = j(), c = { Id: String(55 + qbm.customers.length), DisplayName: b.DisplayName }; qbm.customers.push(c); return send(res, 200, { Customer: { Id: c.Id } }); }
       if (sub === '/invoice' && req.method === 'POST') { const b = j(), id = String(9001 + qbm.invoices.length); qbm.invoices.push({ id, body: b }); return send(res, 200, { Invoice: { Id: id, DocNumber: b.DocNumber, SyncToken: '0' } }); }
       const g = /^\/invoice\/(\d+)$/.exec(sub); if (g && req.method === 'GET') return send(res, 200, { Invoice: { Id: g[1], InvoiceLink: `https://pay.test/i/${g[1]}` } });
@@ -163,6 +165,7 @@ try {
     ok(sql(`select count(*) from money_payments where qb_id='${qbm.payments[0].id}:${qbm.invoices[0].id}' and source='quickbooks' and method='card' and amount_cents=60000`) === '1', 'and in our ledger, once, under the key the QuickBooks sync uses');
     ok(sql(`select status from money_invoices where contract_id='${A.id}' and contract_seq=1`) === 'paid', 'the invoice is paid');
     const mail = await outbox(SIGNER); ok(mail.some(e => /Receipt: \$600\.00/.test(e.subject)) && mail.some(e => /Payment details saved/.test(e.subject)), 'the client got a receipt, and a note that the card was saved');
+    ok(receiptPdfOn(mail.find(e => /Receipt: \$600\.00/.test(e.subject))) && sql(`select receipt_sent_to from money_invoices where contract_id='${A.id}' and contract_seq=1`) === SIGNER, 'the receipt PDF is attached, and Money shows the receipt as sent', mail.map(e => [e.subject, e.attachments]));
     const again = await run(today); ok(again.charged === 0 && qbm.charges.length === 1 && qbm.payments.length === 1, 'running the job again the same day takes nothing more');
     ok(sql(`select count(*) from contract_charges where contract_id='${A.id}'`) === '1', 'one attempt on record');
 
@@ -224,7 +227,7 @@ try {
     const w1 = await run(today); ov = (await K(`/${B.id}`)).json.autopay;
     ok(w1.polled === 1 && ov.installments[0].state === 'paid' && qbm.payments.length === before, 'the debit settled: the payment is marked taken');
     ok(ov.installments[0].attempts[0].notBooked === true && /Service unavailable|QuickBooks/.test(ov.installments[0].attempts[0].bookError || '') && sql(`select count(*) from money_payments where invoice_id in (select id from money_invoices where contract_id='${B.id}')`) === '0', 'but QuickBooks was down: it says "taken, not yet in QuickBooks" and nothing was booked twice or lost');
-    ok((await outbox(SIGNER2)).some(e => /Receipt: \$1,500\.00/.test(e.subject)), 'the client still gets their receipt');
+    ok(receiptPdfOn((await outbox(SIGNER2)).find(e => /Receipt: \$1,500\.00/.test(e.subject))), 'the client still gets their receipt, with its PDF, though the payment is not in the books yet');
     qbm.paymentsDown = false;
     const w2 = await run(today); ok(w2.booked === 1 && qbm.payments.length === before + 1 && qbm.payments.at(-1).body.PaymentRefNum === 'EC1', 'when QuickBooks is back the next run books it, once');
     await run(today); ok(qbm.payments.length === before + 1 && sql(`select count(*) from money_payments where invoice_id in (select id from money_invoices where contract_id='${B.id}')`) === '1', 'and never again');
@@ -296,6 +299,24 @@ try {
     await run('2031-01-01'); ok((await outbox(SIGNER3.replace('pay3', 'pay4'))).every(e => !/Add your payment details/.test(e.subject)), 'and is never asked once the details are on file');
   });
 
+  await journey('J320', 'A contract\'s invoice paid on its own (the client pays the QuickBooks link): the next sync sends the client the branded receipt with its PDF, once; a payment from weeks ago, read when QuickBooks is connected, sends nothing', async () => {
+    const S7 = SIGNER.replace('pay-', 'pay7-'), H = await make('H', S7, buildPlan({ type: 'split', totalCents: 300000, depositPct: 50, method: 'ach', autopay: false }).plan);
+    ok((await P(H.token, '/sign', { body: sign({ autopay: false }) })).status === 200 && (await K(`/${H.id}/countersign`, { body: {} })).status === 200, 'signed by both, paid by invoice');
+    await connect();
+    const inv = n => sql(`select id||'|'||total_cents||'|'||number from money_invoices where contract_id='${H.id}' and contract_seq=${n}`).split('|');
+    const [i1, t1, n1] = inv(1), [i2, t2] = inv(2); ok(i1 && i2 && Number(t1) === 150000, 'its two invoices are drafted', [i1, t1, i2, t2]);
+    sql(`update money_invoices set qb_id='QBL-${stamp}-1', status='sent' where id='${i1}'`); sql(`update money_invoices set qb_id='QBL-${stamp}-2', status='sent' where id='${i2}'`);
+    const paid = (id, qb, cents, on) => ({ Id: id, TxnDate: on, TotalAmt: cents / 100, PaymentRefNum: '4417', PaymentMethodRef: { name: 'Visa' }, CustomerRef: { name: 'Salon' }, Line: [{ Amount: cents / 100, LinkedTxn: [{ TxnId: qb, TxnType: 'Invoice' }] }] });
+    const old = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    qbm.linkPaid.push(paid(`PL${stamp}1`, `QBL-${stamp}-1`, Number(t1), today), paid(`PL${stamp}2`, `QBL-${stamp}-2`, 50000, old));
+    const sy = await call('/v1/money/quickbooks/sync', { token: kyle, body: {} }); ok(sy.status === 200 && sy.json.added >= 2, 'the sync reads both payments', sy.json);
+    const rec = (await outbox(S7)).filter(e => /^Receipt for invoice/.test(e.subject));
+    ok(rec.length === 1 && rec[0].subject.includes(n1) && /paid in full/.test(rec[0].subject) && rec[0].attachments.some(a => /^TFB Receipt R-.+\.pdf$/.test(a.filename) && a.head === '%PDF-'), 'the client gets one receipt, for the invoice just paid, with its PDF', rec.map(e => [e.subject, e.attachments]));
+    ok(sql(`select status||'|'||coalesce(receipt_sent_to,'') from money_invoices where id='${i1}'`) === `paid|${S7}` && sql(`select coalesce(receipt_sent_to,'-') from money_invoices where id='${i2}'`) === '-', 'Money shows that receipt as sent; the old payment sent none');
+    await call('/v1/money/quickbooks/sync', { token: kyle, body: {} }); ok((await outbox(S7)).filter(e => /^Receipt for invoice/.test(e.subject)).length === 1, 'syncing again sends nothing more');
+    qbm.linkPaid.length = 0;
+  });
+
   await journey('J173', 'Automatic payments through Stripe: cards (with Apple Pay), and bank debits, are added on Stripe\'s own page, charged once on their due date, and every payment is booked in QuickBooks with Stripe\'s fee kept', async () => {
     const set = await K('/autopay/processor', { method: 'PUT', body: { processor: 'stripe' } }); ok(set.status === 200 && set.json.payments.processor === 'stripe' && set.json.payments.stripe.configured, 'staff switch automatic payments to Stripe', set.json);
     ok((await C('/autopay/processor', { method: 'PUT', body: { processor: 'quickbooks' } })).status === 403, 'only a signer can switch it back');
@@ -321,6 +342,7 @@ try {
     ok(sql(`select count(*) from money_payments where reference='${pi.id}' and source='quickbooks' and method='card' and amount_cents=60000`) === '1', 'and in our ledger, once');
     await sleep(500); ok(sql(`select fee_cents||'|'||net_cents from contract_charges where contract_id='${F.id}' and seq=1`) === '1770|58230', 'Stripe\'s fee ($17.70) and what reaches the bank ($582.30) are kept with the payment', sql(`select fee_cents||'|'||net_cents from contract_charges where contract_id='${F.id}' and seq=1`));
     const mail = await outbox(SIGNER4); ok(mail.some(e => /Receipt: \$600\.00/.test(e.subject)) && mail.some(e => /Payment details saved/.test(e.subject)), 'the client got a receipt and a note that the details are saved');
+    ok(receiptPdfOn(mail.find(e => /Receipt: \$600\.00/.test(e.subject))), 'the receipt PDF is attached');
     const again = await run(today); ok(stm.seen.filter(x => x.path === '/v1/payment_intents' && x.raw.includes(encodeURIComponent(F.number))).length === 1, 'running the job again takes nothing more');
     // Stripe's webhook: refuses what is not signed by Stripe, and a repeat changes nothing
     ok((await hook('checkout.session.completed', { id: sid, mode: 'setup', metadata: { contract: F.id } }, { badSig: true })).status === 401 && (await hook('checkout.session.completed', { id: sid, mode: 'setup', metadata: { contract: F.id } }, { secret: 'whsec_other' })).status === 401, 'a webhook not signed by Stripe is refused');

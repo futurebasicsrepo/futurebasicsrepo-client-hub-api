@@ -15,7 +15,7 @@ Nothing changes for contracts without automatic payments, or while this is off: 
 1. The contract is sent with automatic payments on and card, ACH, or either. The client authorizes them when signing (a separate tick).
 2. Right after signing, the client's page asks for the card or bank account. The number goes **from the browser straight to Intuit**, which returns a one-time token; only the token reaches us. We save the card or account on file at Intuit and keep its id, the last four digits and the authorization that was shown (who, when, from where, the text).
 3. Once both sides have signed, the payments job (hourly, plus straight away when details are saved or the contract is countersigned) drafts the invoices from the schedule, puts each one in QuickBooks, and takes every payment that has fallen due, once.
-4. Three days before each payment the client is emailed the amount, date and card. After each payment they get a receipt.
+4. Three days before each payment the client is emailed the amount, date and card. After each payment they get a receipt, with the branded receipt PDF attached (`src/receipt-pdf.js`).
 5. A payment that is taken is recorded in QuickBooks as a Payment against that invoice (reference: the charge id) and in the ledger, and the invoice is marked paid.
 
 ## Rules

@@ -40,7 +40,7 @@ export function createAutopay(d) {
   const first = n => String(n || '').trim().split(/\s+/)[0] || 'there', iso = x => (x instanceof Date ? x.toISOString().slice(0, 10) : x ? String(x).slice(0, 10) : null);
   const ev = (id, kind, { actor = 'autopay', detail = '', meta = {} } = {}) => pool.query('insert into contract_events(contract_id,kind,actor,detail,meta) values($1,$2,$3,$4,$5::jsonb)', [id, kind, actor, String(detail).slice(0, 500), JSON.stringify(meta)]).catch(() => {});
   const linkOf = r => `${publicUrl}/sign/${signToken(secret, r.id, r.token_version)}`;
-  const email = (r, subject, title, body) => sendHubEmail({ to: r.content.client.signerEmail, subject, html: hubEmailShell(title, `<p>Hi ${emailEscape(first(r.content.client.signerName))},</p>${body}`) }).catch(() => false);
+  const email = (r, subject, title, body, attachments) => sendHubEmail({ to: r.content.client.signerEmail, subject, html: hubEmailShell(title, `<p>Hi ${emailEscape(first(r.content.client.signerName))},</p>${body}`), ...(attachments ? { attachments } : {}) }).catch(() => false);
   const signedOn = r => iso(r.client_signature?.at || r.executed_at) || todayISO();
   const sched = r => schedule(r.content.plan, { signedOn: signedOn(r), deliveryOn: iso(r.delivered_on) || r.content.timeline?.completionOn || null }).map((p, i) => ({ ...p, seq: i + 1 }));
   const activeMethod = async id => (await pool.query(`select * from contract_payment_methods where contract_id=$1 and status='active'`, [id])).rows[0] || null;
@@ -186,8 +186,11 @@ export function createAutopay(d) {
     if (m && procOf(m.processor)?.fees) procOf(m.processor).fees(chargeId).then(f => f && pool.query('update contract_charges set fee_cents=$2, net_cents=$3 where id=$1', [fresh.id, f.feeCents, f.netCents])).catch(() => {});
     if (!fresh.receipt_sent_at) {
       const left = sched(r).length - (await pool.query(`select count(distinct seq)::int n from contract_charges where contract_id=$1 and status='succeeded'`, [r.id])).rows[0].n;
-      await email(r, `Receipt: ${dollars(fresh.amount_cents, fresh.currency)} for ${r.content.title}`, 'Payment received', `<p>We received <b>${emailEscape(dollars(fresh.amount_cents, fresh.currency))}</b> for <b>${emailEscape(r.content.title)}</b> (${emailEscape(r.number)}), paid by ${emailEscape(m?.label || 'your payment method')}.</p><p>${left > 0 ? `${left} payment${left === 1 ? '' : 's'} left in the schedule.` : 'That was the last payment in the schedule. Thank you.'}</p>`);
+      // the branded receipt PDF (receipt-pdf.js) goes with it: made from the payment's invoice, with this payment on it even if QuickBooks has not booked it yet
+      const rc = inv && money.receiptFor ? await money.receiptFor(inv.id, { extra: { paidOn: today, method: (m?.kind || fresh.kind) === 'card' ? 'card' : 'ach', reference: chargeId || '', amountCents: Number(fresh.amount_cents) }, relabel: chargeId && m?.label ? { [chargeId]: m.label } : {} }).catch(e => { log.warn?.({ payments: true, err: String(e.message).slice(0, 200) }, 'the receipt PDF could not be made'); return null; }) : null;
+      const sent = await email(r, `Receipt: ${dollars(fresh.amount_cents, fresh.currency)} for ${r.content.title}`, 'Payment received', `<p>We received <b>${emailEscape(dollars(fresh.amount_cents, fresh.currency))}</b> for <b>${emailEscape(r.content.title)}</b> (${emailEscape(r.number)}), paid by ${emailEscape(m?.label || 'your payment method')}.</p><p>${left > 0 ? `${left} payment${left === 1 ? '' : 's'} left in the schedule.` : 'That was the last payment in the schedule. Thank you.'}</p>${rc ? `<p>Your receipt, ${emailEscape(rc.number)}, is attached as a PDF for your records.</p>` : ''}`, rc ? [{ filename: rc.email.filename, content: rc.pdf }] : undefined);
       await pool.query('update contract_charges set receipt_sent_at=now() where id=$1', [fresh.id]);
+      if (rc && sent && money.receiptSent) await money.receiptSent(inv.id, String(r.content.client.signerEmail || '').toLowerCase()).catch(() => {});
     }
   }
   async function fail(r, row, reason, today = todayISO()) {
