@@ -1,7 +1,7 @@
 // Contracts for digital work, end to end over HTTP (server G, which keeps the emails it would send): built from a deal, sent, opened, signed from the private link,
 // countersigned, turned into invoices; and everything that should be refused: edits after sending, a replaced link, a second signature, an expired contract.
 import { createRequire } from 'node:module';
-import { journey, ok, summary, api, jpeg, sleep, sql, stamp, forge } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, sleep, sql, stamp, forge, signWithFinger } from './lib.mjs';
 let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
 import { buildPlan } from '../../src/contracts.js';
 const BASE = 'http://127.0.0.1:3130', call = api(BASE);
@@ -160,14 +160,23 @@ await journey('J165', 'Contracts in a browser: staff draft one from a deal with 
     ok(await cp.isDisabled('#sGo'), 'the sign button waits for everything it needs');
     await cp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/contract-phone.png`, fullPage: false });
     await cp.fill('#sName', 'Olive Owner'); await cp.check('#sAgree'); await cp.check('#sEsign'); ok(await cp.isDisabled('#sGo'), 'it stays off until the automatic-payment authorization and the payment method are chosen too');
-    await cp.check('#sAuto'); await cp.check('input[name=m][value=card]'); ok(!(await cp.isDisabled('#sGo')), 'then it turns on');
+    await cp.check('#sAuto'); await cp.check('input[name=m][value=card]'); ok(await cp.isDisabled('#sGo'), 'and until they sign in the box');
+    // a tap is not a signature; a line drawn with a finger is
+    await cp.locator('#sPad canvas').scrollIntoViewIfNeeded(); const pb = await cp.locator('#sPad canvas').boundingBox(); await cp.touchscreen.tap(pb.x + pb.width / 2, pb.y + pb.height / 2); ok(await cp.isDisabled('#sGo'), 'a tap on the pad does not count as a signature');
+    const y0 = await cp.evaluate(() => scrollY); await signWithFinger(cp, '#sPad');
+    ok(!(await cp.isDisabled('#sGo')), 'signing with a finger turns the button on'); ok(await cp.evaluate(() => scrollY) === y0, 'and the page does not scroll under the finger while signing');
     await cp.locator('#sign').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/contract-signform.png` });
     await cp.click('#sGo'); await cp.waitForSelector('.banner.ok', { timeout: 15000 }); ok(/You have signed/.test(await cp.innerText('.banner.ok')) && await cp.locator('#sign').count() === 0, 'signing shows a confirmation and removes the form');
+    ok(await cp.locator(`img.ink[alt="Signature of Olive Owner"]`).count() === 1, 'and the client\'s signature shows in ink on the page');
+    const inkId = sql(`select client_signature->>'ink' from contracts where title='Salon app ${stamp}' order by created_at desc limit 1`);
+    ok(/^[0-9a-f-]{36}$/.test(inkId) && sql(`select count(*) from signature_marks where id='${inkId}' and user_id is null`) === '1', 'the drawing is kept as a mark of its own, in ink', inkId);
+    const inkRes = await cp.request.get(`${BASE}/v1/public/signature-marks/${inkId}`); ok(inkRes.ok() && /image\/png/.test(inkRes.headers()['content-type'] || ''), 'and served as a picture by its id');
 
     // staff: countersign, invoices
     await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#rows tr.click'); const row = page.locator('#rows tr.click', { hasText: `Salon app ${stamp}` }).first();
     ok(/Needs our signature/i.test(await row.innerText()), 'the list shows it needs our signature'); await row.click(); await page.waitForSelector('[data-a]');
     ok(/pays by card/.test(await page.innerText('#dBody')) && /autopay on/.test(await page.innerText('#dBody')), 'the contract shows who signed, the payment method they chose and that autopay is on');
+    ok(await page.locator('#dBody img.ink[alt="Signature of Olive Owner"]').count() === 1, 'with the client\'s signature in ink');
     await page.click('#acts button:has-text("Sign for Future Basics")'); await page.click('dialog[open] button:has-text("Sign it"), .modal button:has-text("Sign it"), button:has-text("Sign it")'); await page.waitForFunction(() => /fully signed/i.test(document.querySelector('#dBody')?.innerText || ''), null, { timeout: 15000 }); ok(true, 'Sign for Future Basics: the agreement is final');
     // paid by card, so the invoices are drafted on signing: nine, one per payment, with no button to press for them
     await page.waitForFunction(() => document.querySelectorAll('#dBody a[href^="/money?invoice="]').length === 9, null, { timeout: 15000 }); ok(await page.locator('#acts button:has-text("Draft the invoices")').count() === 0, 'fully signed, its nine invoices are drafted by themselves, one per payment');

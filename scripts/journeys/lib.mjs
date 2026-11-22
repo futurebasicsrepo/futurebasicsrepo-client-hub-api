@@ -82,6 +82,18 @@ import { crc32 } from 'node:zlib';
 export const hugeHeaderPng = async () => { const b = await sharp({ create: { width: 100, height: 100, channels: 3, background: '#888' } }).png().toBuffer(); b.writeUInt32BE(20000, 16); b.writeUInt32BE(20000, 20); b.writeUInt32BE(crc32(b.subarray(12, 29)) >>> 0, 29); return `data:image/png;base64,${b.toString('base64')}`; };
 export const codeFrom = (log, email) => { const lines = readFileSync(log, 'utf8').trim().split('\n').reverse(); for (const l of lines) { try { const j = JSON.parse(l); if (j.email === email && j.code) return j.code; } catch {} } return null; };
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
+// a signature as the pad sends it: a blue line drawn on a clear background, as a PNG data URL
+export const drawnSignature = async () => { const W = 600, H = 200, raw = Buffer.alloc(W * H * 4); for (let x = 60; x < 520; x++) { const y = Math.round(100 + 40 * Math.sin(x / 30)); for (let d = -2; d <= 2; d++) raw.set([31, 47, 134, 255], ((y + d) * W + x) * 4); } return `data:image/png;base64,${(await sharp(raw, { raw: { width: W, height: H, channels: 4 } }).png().toBuffer()).toString('base64')}`; };
+// signs a signature pad (src/sign-pad.js) the way a finger does: real touch events through the browser, a looping line across the box
+export async function signWithFinger(page, padSel) {
+  await page.locator(`${padSel} canvas`).scrollIntoViewIfNeeded();
+  const box = await page.locator(`${padSel} canvas`).boundingBox(), cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 }).catch(() => {}); // a desktop page takes a finger too
+  const pts = Array.from({ length: 48 }, (_, i) => { const t = i / 47; return { x: box.x + box.width * (.1 + .75 * t), y: box.y + box.height * (.5 - .2 * Math.sin(t * Math.PI * 4) * (1 - t * .5)) }; });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [pts[0]] });
+  for (const p of pts.slice(1)) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [p] }); await sleep(8); }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await cdp.detach();
+}
 // The work console's menu (console-nav.js): a part of a section is a tab across the top, shown while you are in its section. navTo opens the
 // section from the sidebar when the part is not on screen, then presses the part.
 export async function navTo(page, href) {

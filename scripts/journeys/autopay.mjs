@@ -3,7 +3,7 @@
 // a bank debit settles later; a payment that was taken is booked in QuickBooks and the ledger exactly once, even when QuickBooks is down at that moment.
 import http from 'node:http';
 import { createRequire } from 'node:module';
-import { journey, ok, summary, api, jpeg, sleep, sql, stamp, forge, sharp } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, sleep, sql, stamp, forge, sharp, signWithFinger } from './lib.mjs';
 import { buildPlan } from '../../src/contracts.js';
 import { signWebhook } from '../../src/stripe-payments.js';
 let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
@@ -259,7 +259,7 @@ try {
       const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true }), page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
       const reqs = []; page.on('request', r => { if (r.method() === 'POST') reqs.push({ url: r.url(), data: r.postData() || '' }); });
       await page.goto(`${BASE}/sign/${E.token}`, { waitUntil: 'networkidle' });
-      await page.fill('#sName', 'Pat Payer'); await page.check('#sAuto'); await page.check('#sAgree'); await page.check('#sEsign'); await page.click('#sGo');
+      await page.fill('#sName', 'Pat Payer'); await signWithFinger(page, '#sPad'); await page.check('#sAuto'); await page.check('#sAgree'); await page.check('#sEsign'); await page.click('#sGo');
       await page.waitForSelector('#payBox .payform', { timeout: 10000 });
       ok(/Add your card/.test(await page.locator('#payBox h2').innerText()) && await page.locator('#payBox table tbody tr').count() === 4, 'right after signing the page asks for a card and shows the four payments it is for');
       ok(await page.locator('#pGo').isDisabled(), 'the button stays off until the authorization is ticked');

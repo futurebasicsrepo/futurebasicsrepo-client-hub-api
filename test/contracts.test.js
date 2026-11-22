@@ -266,3 +266,14 @@ test('a product contract chooses when its balance falls due: on final sample app
   const r2 = renderContract({ ...cleanContent({ ...prod, plan: sample }).value, number: 'FB-C-2026-010' }, {});
   assert.deepEqual(r2.sections.find(s => s.kind === 'schedule').rows.map(x => x.when), ['On signing', 'On final sample approval']);
 });
+
+test('a client who signs with a finger has their ink on the PDF', async () => {
+  const sharp = (await import('sharp')).default;
+  const { value } = cleanContent(withPlan(base(), { type: 'monthly', months: 6, firstDueOn: '2026-12-01', depositPct: 20, method: 'ach', autopay: true }));
+  const rendered = renderContract({ ...value, number: 'FB-C-2026-001', hosting: { included: true, monthlyCents: 9900, note: '' } });
+  const inkPng = await sharp({ create: { width: 300, height: 90, channels: 4, background: { r: 31, g: 47, b: 134, alpha: 1 } } }).png().toBuffer();
+  const images = buf => (buf.toString('latin1').match(/\/Subtype \/Image/g) || []).length;
+  const state = ink => ({ status: 'signed_by_client', hash: 'h', sentAt: '2026-11-01T10:00:00Z', clientSignature: { name: 'Olive Owner', at: '2026-11-02T15:04:00Z', esign: true, agree: true, ...ink }, providerSignature: null, events: [] });
+  const typed = await contractPdf(rendered, state({})), drawn = await contractPdf(rendered, state({ ink: '0b6c7c3e-1b2a-4c3d-9e8f-0123456789ab', inkPng }));
+  assert.ok(images(drawn) > images(typed), 'the drawn signature is on the signing line (a picture with its transparency)');
+});

@@ -91,6 +91,7 @@ import { registerMcpRoutes } from './mcp-routes.js';
 import { registerTeamChatRoutes } from './team-chat-routes.js';
 import { registerWorkspaceRoutes } from './workspace-routes.js';
 import { registerOrderQuoteRoutes } from './order-quote-routes.js';
+import { cleanAcceptSignature, signatureView } from './order-quotes.js';
 import { syncProductQuoteDeal, reconcileDeals } from './sales-deals.js';
 import { registerProductSheetRoutes } from './product-sheet-routes.js';
 import { registerRoomSitesRoutes } from './room-sites-routes.js';
@@ -837,7 +838,7 @@ registerTeamChatRoutes(app, { pool, authenticate, notifyStaff, sendHubEmail, hub
 registerWorkspaceRoutes(app, { pool, authenticate, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, log: app.log });
 registerRoomSitesRoutes(app, { pool, authenticate, adminOnly, notifyStaff, sendHubEmail, hubEmailShell, emailEscape, clientHubUrl, workHubUrl, log: app.log });
 registerProductSheetRoutes(app, { pool, authenticate, adminOnly, hasRenderingSql: HAS_RENDERING_SQL, renderingUrl });
-const orderQuoteDeals=registerOrderQuoteRoutes(app, { pool, authenticate, adminOnly, sendHubEmail, hubEmailShell, emailEscape, notifyRoomStaff, clientHubUrl, workHubUrl, shopifyReady: shopifyConfigured, log: app.log, hasRenderingSql: HAS_RENDERING_SQL, renderingUrl });
+const orderQuoteDeals=registerOrderQuoteRoutes(app, { signatures: { inkFromDrawing: (...a) => signatures.inkFromDrawing(...a) }, pool, authenticate, adminOnly, sendHubEmail, hubEmailShell, emailEscape, notifyRoomStaff, clientHubUrl, workHubUrl, shopifyReady: shopifyConfigured, log: app.log, hasRenderingSql: HAS_RENDERING_SQL, renderingUrl });
 registerLabSelfServeRoutes(app, { pool, authenticate, adminOnly, lab: labAccess, clientHubUrl, workHubUrl, notifyStaff, notifyClientContact, sendHubEmail, hubEmailShell, replyTo: intakeNotificationEmail, forgetUser, clientForEmail, log: app.log });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, publicUrl: clientHubUrl, log: app.log,
   // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
@@ -1085,6 +1086,7 @@ app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch
 app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 // The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
 // Pip, the helper mouse: a guide that follows the pointer and walks a person through the page (see helper.js and docs/helper-mouse.md)
+app.get('/sign-pad.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./sign-pad.js',import.meta.url),'utf8'))); // signing with a finger: contracts and quotes
 app.get('/feedback.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./feedback.js',import.meta.url),'utf8')));
 app.get('/helper.js',(_req,reply)=>reply.header('cache-control','no-cache').type('application/javascript').send(readFileSync(new URL('./helper.js',import.meta.url),'utf8')));
 app.get('/ball.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./ball.js',import.meta.url),'utf8')));
@@ -2843,7 +2845,7 @@ app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => 
     pool.query('select * from product_briefs where product_id=$1',[product.id]),
     pool.query('select * from milestones where product_id=$1 order by sort_order',[product.id]),
     pool.query(`select id,product_id,version,currency,quantity,tooling_cents,freight_cents,status,expires_at,created_at,wholesale_cents,srp_cents,notes,
-      decided_by,decided_at,decision_notes,
+      decided_by,decided_at,decision_notes,case when decision_signature is null then null else jsonb_build_object('name',decision_signature->>'name','at',decision_signature->>'at','ink',decision_signature->>'ink') end decision_signature,
       shopify_draft_order_name,shopify_draft_order_status,shopify_invoice_url,shopify_invoice_sent_at,shopify_order_id,shopify_financial_status,shopify_fulfillment_status
       from quotes where product_id=$1 order by version desc`,[product.id]),
     pool.query(`select ap.*,av.original_name,av.version asset_version,a.name asset_name,a.kind asset_kind
@@ -2890,8 +2892,13 @@ app.post('/v1/quotes/:id/decision', { preHandler: authenticate }, async (req, re
     const readiness=quoteReadiness({title:row.product_title,product_type:row.product_type},row.configuration,row);
     if(!readiness.ready)throw Object.assign(new Error(`Quote is not ready for approval: ${readiness.missing.join(', ')}`),{statusCode:409});
     const status=decision==='approved'?'accepted':'declined',notes=String(req.body?.notes||'').trim().slice(0,2000)||null;
-    const updated=(await client.query(`update quotes set status=$1,decided_by=$2,decided_at=now(),decision_notes=$3 where id=$4 and status='issued' returning *`,
-      [status,req.auth.sub,notes,row.id])).rows[0];
+    // approving is signing: the name, and the signature drawn with a finger in the hub, kept in ink (src/signatures.js)
+    let signature=null;
+    if(decision==='approved'){const who=(await client.query(`select coalesce(nullif(name,''),email) n from users where id=$1`,[req.auth.sub])).rows[0]?.n||'',sg=cleanAcceptSignature(req.body,who);let ink=null;
+      if(sg.image!=null){const m=await signatures.inkFromDrawing(sg.image,req.auth.sub);if(m.error)throw Object.assign(new Error(m.error),{statusCode:422});ink=m.id}
+      signature={name:sg.name||who,at:new Date().toISOString(),ip:req.ip||'',ua:String(req.headers['user-agent']||'').slice(0,300),...(ink?{ink}:{})}}
+    const updated=(await client.query(`update quotes set status=$1,decided_by=$2,decided_at=now(),decision_notes=$3,decision_signature=$5::jsonb where id=$4 and status='issued' returning *`,
+      [status,req.auth.sub,notes,row.id,signature?JSON.stringify(signature):null])).rows[0];
     if(!updated)throw Object.assign(new Error('This quote has already been decided'),{statusCode:409});
     if(decision==='approved')await client.query(`update products set status='in-development',risk_level='on-track',updated_at=now() where id=$1`,[row.product_id]);
     else await client.query(`update products set risk_level='attention',updated_at=now() where id=$1`,[row.product_id]);

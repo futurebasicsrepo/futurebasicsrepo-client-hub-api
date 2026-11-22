@@ -1,4 +1,4 @@
-import { journey, ok, summary, api, jpeg, png, bigJpeg, hugeHeaderPng, codeFrom, sleep, waitAi, forge, sql, stamp, S, setAsideOpportunities, withOpportunityLock, ownerOf } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, png, bigJpeg, hugeHeaderPng, codeFrom, sleep, waitAi, forge, sql, stamp, S, setAsideOpportunities, withOpportunityLock, ownerOf, drawnSignature } from './lib.mjs';
 import { readFileSync } from 'node:fs';
 const BASE = 'http://127.0.0.1:3123', LOG = `${S}/server-j-a.log`, call = api(BASE), runner = jpeg();
 let n = 0; const em = tag => `j${tag}-${stamp}-${++n}@chaos.test`;
@@ -573,8 +573,12 @@ await journey('J57', 'the handoff from submission to delivery: every step names 
   const quote = await adm(`/v1/admin/products/${id}/quotes/from-tier`, { method: 'POST', body: { priceTierId: tier.json.id, quantity: 100, depositPct: 40 } });
   ok(quote.status === 201 && quote.json.tech_pack_version === 3 && quote.json.deposit_pct === 40, 'the quote records the version it priced and its deposit', [quote.status, quote.json.tech_pack_version, quote.json.deposit_pct, quote.json.error]);
   w = at(); const wq = (await waiting()).find(x => x.kind === 'quote'); ok(w.owner === 'client' && wq && wq.totalCents === 410000 && wq.depositPct === 40, 'the quote waits on the client, with its total and deposit', [w, wq]);
-  const dec = await call(`/v1/quotes/${quote.json.id}/decision`, { method: 'POST', token: tok, body: { decision: 'approved' } });
+  const dec = await call(`/v1/quotes/${quote.json.id}/decision`, { method: 'POST', token: tok, body: { decision: 'approved', name: 'Sam Signer', ink: await drawnSignature() } });
   ok(dec.status === 200 && dec.json.deposit && dec.json.deposit.amountCents === 164000, 'accepting it invoices a 40% sample deposit', [dec.status, dec.json.deposit, dec.json.error]);
+  const qs = sql(`select (decision_signature->>'name')||'|'||coalesce(decision_signature->>'ink','') from quotes where id='${quote.json.id}'`).split('|');
+  ok(qs[0] === 'Sam Signer' && /^[0-9a-f-]{36}$/.test(qs[1]), 'approving it with a finger signature keeps the name and the ink on the quote', qs);
+  const shown = (await call(`/v1/products/${id}`, { token: tok })).json?.quotes?.find(q => q.id === quote.json.id)?.decision_signature;
+  ok(shown?.name === 'Sam Signer' && shown.ink === qs[1] && !('ip' in shown), 'the client sees who signed it and the ink, not where they signed from', shown);
   w = at(); ok(w.owner === 'client' && (await waiting()).some(x => x.kind === 'invoice' && /deposit/.test(x.title)), 'the deposit waits on the client', w);
   let sign = await adm(`/v1/admin/products/${id}/tech-pack/sign`, { method: 'POST', body: { name: 'Studio' } });
   ok(sign.status === 409 && sign.json.depositDue, 'Future Basics cannot sign before the deposit lands', [sign.status, sign.json.error]);

@@ -9,11 +9,12 @@
 //           POST   /v1/admin/order-quotes/:qid/payment-link        make the Shopify draft order for an accepted quote (again, if it failed)
 //           DELETE /v1/admin/order-quotes/:qid                     a draft only
 //   client  GET    /v1/order-quotes                                the room's sent and settled quotes (no costs)
-//           POST   /v1/order-quotes/:qid/decision                  { decision: 'accept' | 'changes', note? }
+//           POST   /v1/order-quotes/:qid/decision                  { decision: 'accept' | 'changes', note?, name?, ink? } accepting is signing: the name,
+//                                                                  and the signature drawn with a finger (a PNG data URL) kept in ink
 //
 // Sales: sending finds the client's contact (or makes one, tied to the room) and its company, and opens a deal at Proposal worth the quote's
 // total, on the quote's project; a new version updates the value. Accepting wins the deal; asking for changes logs the note on it.
-import { cleanQuote, matchRequest, clientQuote, quoteNumber, sizesWords, productFees, invoiceOf, cleanInvoiceAdjust } from './order-quotes.js';
+import { cleanQuote, matchRequest, clientQuote, cleanAcceptSignature, quoteNumber, sizesWords, productFees, invoiceOf, cleanInvoiceAdjust } from './order-quotes.js';
 import { shopifyGraphql, DRAFT_ORDER_CREATE, DRAFT_ORDER_UPDATE, requireNoUserErrors } from './shopify.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,7 +24,7 @@ const day = v => (v instanceof Date ? v.toISOString().slice(0, 10) : v ? String(
 const usd = c => '$' + (Number(c) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function registerOrderQuoteRoutes(app, d) {
-  const { pool, authenticate, adminOnly, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, emailEscape = s => String(s), notifyRoomStaff = async () => 0, clientHubUrl = '', workHubUrl = '', shopifyReady = () => true, log = console, makeDraftOrder = null, updateDraftOrder = null, hasRenderingSql = 'false has_rendering', renderingUrl = () => '' } = d;
+  const { signatures = null, pool, authenticate, adminOnly, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, emailEscape = s => String(s), notifyRoomStaff = async () => 0, clientHubUrl = '', workHubUrl = '', shopifyReady = () => true, log = console, makeDraftOrder = null, updateDraftOrder = null, hasRenderingSql = 'false has_rendering', renderingUrl = () => '' } = d;
   const pre = [authenticate, adminOnly];
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const uid = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
@@ -203,13 +204,17 @@ export function registerOrderQuoteRoutes(app, d) {
     const decision = req.body?.decision, note = String(req.body?.note || '').trim().slice(0, 2000);
     const who = (await pool.query(`select coalesce(nullif(name,''), email) n from users where id=$1`, [req.auth.sub])).rows[0]?.n || 'the client';
     if (decision === 'accept') {
-      const row = (await pool.query(`update order_quotes set status='accepted', accepted_at=now(), accepted_by=$2, reply=$3, updated_at=now() where id=$1 and status='sent' returning *`, [q.id, UUID.test(String(req.auth.sub || '')) ? req.auth.sub : null, note || null])).rows[0];
+      // accepting is signing: the name, and the signature drawn with a finger in the hub, turned into ink (src/signatures.js)
+      const sg = cleanAcceptSignature(req.body, who); let ink = null;
+      if (sg.image != null && signatures?.inkFromDrawing) { const m = await signatures.inkFromDrawing(sg.image, uid(req)); if (m.error) return bad(reply, m.error); ink = m.id; }
+      const signature = { name: sg.name || who, at: new Date().toISOString(), ip: req.ip || '', ua: String(req.headers['user-agent'] || '').slice(0, 300), ...(ink ? { ink } : {}) };
+      const row = (await pool.query(`update order_quotes set status='accepted', accepted_at=now(), accepted_by=$2, reply=$3, accepted_signature=$4::jsonb, updated_at=now() where id=$1 and status='sent' returning *`, [q.id, UUID.test(String(req.auth.sub || '')) ? req.auth.sub : null, note || null, JSON.stringify(signature)])).rows[0];
       if (!row) return bad(reply, 'This quote changed. Reload and try again.', 409);
       const pay = await paymentLink({ ...row, client_name: q.client_name });
       if (row.request_id) await pool.query(`update requests set status='done' where id=$1`, [row.request_id]).catch(() => {});
       await trackDeal(row, { stage: 'won', kind: 'stage', text: `${who} accepted quote ${row.number}: ${usd(row.total_cents)}${note ? ` · “${note}”` : ''}` });
       notifyRoomStaff(row.client_id, { subject: `${q.client_name} accepted quote ${row.number}: ${usd(row.total_cents)}`, type: 'order-quote-accepted', title: `Quote ${row.number} accepted`, entityType: 'order-quote', entityId: row.id,
-        body: `<p><strong>${emailEscape(who)}</strong> at <strong>${emailEscape(q.client_name)}</strong> accepted quote <strong>${emailEscape(row.number)}</strong>.</p>${linesHtml(row)}${note ? `<p style="white-space:pre-wrap">“${emailEscape(note)}”</p>` : ''}<p>${pay.ok ? `The payment link is made (Shopify ${emailEscape(pay.name)}) and is in their hub.` : `<strong>The payment link was not made:</strong> ${emailEscape(pay.error)}. Make it from the quote in the room.`}</p>`,
+        body: `<p><strong>${emailEscape(signature.name)}</strong> at <strong>${emailEscape(q.client_name)}</strong> accepted quote <strong>${emailEscape(row.number)}</strong>${ink ? ' and signed it' : ''}.</p>${linesHtml(row)}${note ? `<p style="white-space:pre-wrap">“${emailEscape(note)}”</p>` : ''}<p>${pay.ok ? `The payment link is made (Shopify ${emailEscape(pay.name)}) and is in their hub.` : `<strong>The payment link was not made:</strong> ${emailEscape(pay.error)}. Make it from the quote in the room.`}</p>`,
         link: `${workHubUrl}/clients/${row.client_id}#invoices` });
       return { quote: clientQuote(await one(row.id)), paymentLink: pay.ok ? pay.url : null };
     }

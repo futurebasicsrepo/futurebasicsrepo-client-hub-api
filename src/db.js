@@ -847,6 +847,8 @@ export async function migrate() {
     alter table quotes add column if not exists decided_by uuid references users(id);
     alter table quotes add column if not exists decided_at timestamptz;
     alter table quotes add column if not exists decision_notes text;
+    -- how the client signed when they approved a product's quote: { name, at, ip, ua, ink } (ink: a signature_marks id, drawn with a finger in the hub)
+    alter table quotes add column if not exists decision_signature jsonb;
     create table if not exists approvals (
       id uuid primary key default gen_random_uuid(),
       product_id uuid not null references products(id) on delete cascade,
@@ -2041,6 +2043,8 @@ export async function migrate() {
     );
     -- the invoice an accepted quote becomes: other lines comped ({comped: [their place]}) and a discount ({discount: {label, cents}}) (src/order-quotes.js invoiceOf)
     alter table order_quotes add column if not exists invoice_adjust jsonb;
+    -- how the client signed when they accepted: { name, at, ip, ua, ink } (ink: a signature_marks id, the signature drawn with a finger in the hub)
+    alter table order_quotes add column if not exists accepted_signature jsonb;
     create index if not exists order_quotes_client_idx on order_quotes (client_id, created_at desc);
     -- price ladders: a set of quantity price tiers saved once (a tee at 50/100/250/500, say) and put on any product (src/product-sheet-routes.js)
     create table if not exists price_ladders (

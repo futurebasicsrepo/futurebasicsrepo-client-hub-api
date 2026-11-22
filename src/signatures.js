@@ -11,6 +11,8 @@
 //   POST   /v1/me/signature/preview {image}   the same, not kept → a PNG, so the page can show the ink before it is saved
 //   DELETE /v1/me/signature          stop signing with it (documents signed with it keep theirs)
 //   GET    /v1/public/signature-marks/:id    the ink, a transparent PNG
+// A client signs with a finger on the contract signing page and when accepting a quote in the hub (src/sign-pad.js): inkFromDrawing turns that
+// drawing into the same ink and keeps it as a mark of its own, which the contract or the quote keeps.
 import sharp from 'sharp';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -90,6 +92,15 @@ export function registerSignatureRoutes(app, { pool, authenticate, adminOnly, lo
     const r = (await pool.query('select png from signature_marks where id=$1', [req.params.id])).rows[0]; if (!r) return reply.code(404).send({ error: 'Not found' });
     return reply.header('cache-control', 'private, max-age=31536000, immutable').header('x-robots-tag', 'noindex, nofollow').type('image/png').send(r.png);
   });
+  // A client signs with a finger on the page (src/sign-pad.js) as they sign a contract or accept a quote: the drawing is turned into ink and kept as
+  // a mark of its own, which that one document keeps. → { id } | { error } (a drawing with nothing in it, or a picture that is not one)
+  const inkFromDrawing = async (image, userId = null) => {
+    const buf = pictureOf(image); if (!buf || buf.length > 2_000_000) return { error: 'Sign in the box again: the signature did not come through' };
+    const ink = await inkify(buf).catch(e => { log.warn?.({ err: e.message }, 'client signature not read'); return null; });
+    if (!ink) return { error: 'Sign in the box again: we could not read the signature' };
+    const id = (await pool.query(`insert into signature_marks(user_id, png, width, height) values($1,$2,$3,$4) returning id`, [UUID.test(String(userId || '')) ? userId : null, ink.png, ink.width, ink.height])).rows[0].id;
+    return { id };
+  };
   // the signer's current ink, for a document being signed now (its id goes into the signature record)
-  return { markFor: async userId => (userId ? (await current(userId))?.id || null : null), pngOf: async id => (UUID.test(String(id || '')) ? (await pool.query('select png from signature_marks where id=$1', [id])).rows[0]?.png || null : null) };
+  return { markFor: async userId => (userId ? (await current(userId))?.id || null : null), pngOf: async id => (UUID.test(String(id || '')) ? (await pool.query('select png from signature_marks where id=$1', [id])).rows[0]?.png || null : null), inkFromDrawing };
 }
