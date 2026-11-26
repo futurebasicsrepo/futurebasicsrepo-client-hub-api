@@ -133,3 +133,20 @@ Moving a deal to **Won** is where the sale ends and the work begins. In the deal
 - sets the **account owner**: the person who created the deal, or whoever clicks if the deal had no owner. The owner shows on the deal window and on the project rows on Home.
 
 Asking again for the same deal says it already started (and links to it); `again` starts a second project in the same room, but the same name twice in one room is refused. A deal that is not won is refused ("Move the deal to Won first"). API: `POST /v1/sales/deals/:id/start-project { kind, name?, newBuild?, again? }` (staff). Rules in `src/start-project.js`. Journeys J157 (API) and J158 (browser). The invoice is still its own step: **Make an invoice** in the same window opens Money with the deal filled in.
+
+## Fake prospects from the website form
+
+The website's project brief form (`POST /v1/public/intakes`) makes a website lead for each brief. Bots and people selling to Future Basics fill it in too, so every brief is checked first (`src/intake-screen.js`). Each sign adds to a score:
+- a company name of the kind fake-data generators make ("Torphy - Wisoky", "Berge, Bechtelar and Ratke");
+- no project name (the form calls it "… launch");
+- the same text pasted into more than one field;
+- a filler line for a brief ("heard about this on …, decided to give it a try");
+- sales-pitch wording (a 15-minute call, per accepted hour, keywords and search pages, working capital, …);
+- a project that is a topic ("Partnerships", "Funding specialist");
+- a company or project that is just the person's name;
+- a target date that is not a real date;
+- a mail service only used for form spam.
+
+At 4 or more the brief is **held**: it is answered like any other, but no lead, project or request is made, and neither the "We have your brief" email (often to someone else's address) nor the staff email is sent. It is kept in `intake_screened`.
+
+On the **Clients** list, **Website leads** shows the leads already in, checked the same way, with the fakes ticked and why each is fake. **Archive the ticked** archives them in one go (`POST /v1/admin/leads/archive`; only leads, never an active client); **Restore** in Archived clients brings any back. **Held by the form** lists the held briefs; **It is real: let it in** saves one as the form would have and emails staff, still sending nothing to them (`POST /v1/admin/leads/held/:id/release`). The check itself: `GET /v1/admin/leads/screen`.

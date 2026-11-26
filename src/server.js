@@ -26,6 +26,7 @@ import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } fr
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
 import { registerMoneyRoutes } from './money-routes.js'
 import { registerContractRoutes } from './contracts-routes.js'
+import { screenIntake } from './intake-screen.js';
 import { registerSignatureRoutes } from './signatures.js'
 import { makeViews, viewsToDraw, viewSketch, placeViews, isDrawnView } from './views.js'
 import { registerFactoryRoutes } from './factories-routes.js'
@@ -558,10 +559,35 @@ app.post('/v1/public/intakes',async(req,reply)=>{
       budgetRange:intakeValue(fields,'budgetRange',120),targetDate:intakeValue(fields,'targetDate',40),channels:intakeValue(fields,'channels',600),
       services:intakeValue(fields,'services',600),shopifyStatus:intakeValue(fields,'shopifyStatus',300),inspirationLinks:intakeValue(fields,'inspirationLinks',1500),
       referralSource:intakeValue(fields,'referralSource',300),notes:intakeValue(fields,'notes',3000),submittedAt:new Date().toISOString()};
-    const details=[`Product / category: ${data.productCategory||'Not specified'}`,`Project brief: ${data.projectBrief}`,`Audience: ${data.audience||'Not specified'}`,
-      `Target quantity: ${data.targetQuantity||'Not specified'}`,`Budget: ${data.budgetRange||'Not specified'}`,`Target launch: ${data.targetDate||'Not specified'}`,
-      `Channels: ${data.channels||'Not specified'}`,`Help requested: ${data.services||'Not specified'}`,`Shopify: ${data.shopifyStatus||'Not specified'}`,
-      `Inspiration: ${data.inspirationLinks||'Not specified'}`,`Referral: ${data.referralSource||'Not specified'}`,`Additional notes: ${data.notes||'None'}`].join('\n');
+    // a fake prospect (a bot, or someone selling to us) is held for review: no room, no lead, and no email to the address it gave (src/intake-screen.js)
+    const sc=screenIntake(data);
+    if(sc.spam){spam=true;await pool.query(`insert into intake_screened(data,score,reasons,ip) values($1,$2,$3,$4)`,[JSON.stringify(data),sc.score,sc.reasons,String(req.ip||'').slice(0,64)]).catch(e=>app.log.warn({err:e.message},'a held intake was not recorded'));return null}
+    intake=await saveIntake(data);return intake;
+  };
+  for await(const part of req.parts()){
+    if(part.type==='file'){
+      await createIntake();
+      if(spam){for await(const _chunk of part.file){};continue}
+      uploads.push(await storeProjectFile(intake.project,null,'client',part,intake.message.id));
+    }else fields[part.fieldname]=part.value;
+  }
+  await createIntake();
+  // held: answered like a sent brief (the same words, no ids), so a bot learns nothing
+  if(spam)return reply.code(202).send({ok:true,message:'Your project brief is in. Future Basics will review it and follow up by email.'});
+  let notificationEmailSent=false,confirmationEmailSent=false;
+  try{notificationEmailSent=await sendIntakeNotification(intake,uploads)}catch(error){app.log.error({error,projectId:intake.project.id,to:intakeNotificationEmail},'Project intake was saved but notification email failed')}
+  try{confirmationEmailSent=await sendIntakeConfirmation(intake)}catch(error){app.log.error({error,projectId:intake.project.id,to:intake.data.email},'Project intake was saved but confirmation email failed')}
+  return reply.code(201).send({ok:true,clientId:intake.client.id,projectId:intake.project.id,requestId:intake.request.id,files:uploads.length,
+    notificationEmail:intakeNotificationEmail,notificationEmailSent,confirmationEmailSent,
+    message:'Your project brief is in. Future Basics will review it and follow up by email.'});
+});
+// A brief from the website, saved: the lead's room (the lead with that email again, or a new one), the project, the intake request and the first message.
+async function saveIntake(data){
+  const {companyName,contactName,email,projectName,projectBrief}=data;
+  const details=[`Product / category: ${data.productCategory||'Not specified'}`,`Project brief: ${data.projectBrief}`,`Audience: ${data.audience||'Not specified'}`,
+    `Target quantity: ${data.targetQuantity||'Not specified'}`,`Budget: ${data.budgetRange||'Not specified'}`,`Target launch: ${data.targetDate||'Not specified'}`,
+    `Channels: ${data.channels||'Not specified'}`,`Help requested: ${data.services||'Not specified'}`,`Shopify: ${data.shopifyStatus||'Not specified'}`,
+    `Inspiration: ${data.inspirationLinks||'Not specified'}`,`Referral: ${data.referralSource||'Not specified'}`,`Additional notes: ${data.notes||'None'}`].join('\n');
     const db=await pool.connect();
     try{
       await db.query('begin');
@@ -587,25 +613,9 @@ app.post('/v1/public/intakes',async(req,reply)=>{
         [project.id,client.id,`${contactName} submitted a new project brief. ${projectBrief}`.slice(0,5000)])).rows[0];
       await db.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'public-intake',$2,'project',$3)`,
         [client.id,`New project intake from ${companyName}: ${projectName}`,project.id]);
-      await db.query('commit');intake={client,project,request,message,data};return intake;
+      await db.query('commit');return {client,project,request,message,data};
     }catch(error){await db.query('rollback');throw error}finally{db.release()}
-  };
-  for await(const part of req.parts()){
-    if(part.type==='file'){
-      await createIntake();
-      if(spam){for await(const _chunk of part.file){};continue}
-      uploads.push(await storeProjectFile(intake.project,null,'client',part,intake.message.id));
-    }else fields[part.fieldname]=part.value;
-  }
-  await createIntake();
-  if(spam)return reply.code(202).send({ok:true});
-  let notificationEmailSent=false,confirmationEmailSent=false;
-  try{notificationEmailSent=await sendIntakeNotification(intake,uploads)}catch(error){app.log.error({error,projectId:intake.project.id,to:intakeNotificationEmail},'Project intake was saved but notification email failed')}
-  try{confirmationEmailSent=await sendIntakeConfirmation(intake)}catch(error){app.log.error({error,projectId:intake.project.id,to:intake.data.email},'Project intake was saved but confirmation email failed')}
-  return reply.code(201).send({ok:true,clientId:intake.client.id,projectId:intake.project.id,requestId:intake.request.id,files:uploads.length,
-    notificationEmail:intakeNotificationEmail,notificationEmailSent,confirmationEmailSent,
-    message:'Your project brief is in. Future Basics will review it and follow up by email.'});
-});
+}
 
 // Someone who asked for a sign-in code and was turned away. A website lead is waiting at the door, so staff get one email per lead per day;
 // an email we have never seen is only listed in the console (it is often a client using a different address than the one on their room).
@@ -1712,6 +1722,36 @@ app.post('/v1/admin/clients/:id/archive',{preHandler:[authenticate,adminOnly]},a
     where id=$1 and slug<>'future-basics' returning *`,[req.params.id])).rows[0];
   if(!row)return reply.code(404).send({error:'Client not found'});
   return row;
+});
+// ---- fake prospects (src/intake-screen.js) ----
+// The leads in the console, each checked the way the brief form now checks a new one (from the brief it sent), and the submissions the form held.
+app.get('/v1/admin/leads/screen',{preHandler:[authenticate,adminOnly]},async()=>{
+  const rows=(await pool.query(`select c.id,c.name,c.contact_name,c.contact_email,c.created_at,
+      (select r.intake_data from requests r where r.client_id=c.id and r.type='project-intake' and r.intake_data is not null order by r.created_at desc limit 1) intake
+    from clients c where c.status='lead' and c.archived_at is null and c.slug<>'future-basics' order by c.created_at desc limit 500`)).rows;
+  const leads=rows.map(r=>{const d=r.intake||null,sc=d?screenIntake(d):{score:0,spam:false,reasons:[]};
+    return {id:r.id,name:r.name,contactName:r.contact_name||'',contactEmail:r.contact_email||'',createdAt:r.created_at,fromForm:Boolean(d),project:d?.projectName||'',brief:String(d?.projectBrief||'').slice(0,240),score:sc.score,fake:sc.spam,reasons:sc.reasons}});
+  const held=(await pool.query(`select id,created_at,data,score,reasons from intake_screened where released_at is null order by created_at desc limit 200`)).rows
+    .map(h=>({id:h.id,createdAt:h.created_at,company:h.data.companyName||'',contactName:h.data.contactName||'',email:h.data.email||'',project:h.data.projectName||'',brief:String(h.data.projectBrief||'').slice(0,240),score:h.score,reasons:h.reasons||[]}));
+  return {leads,held,fake:leads.filter(l=>l.fake).length};
+});
+// archive several leads at once (as Archive client does, so Restore brings each back); only leads, never an active client
+app.post('/v1/admin/leads/archive',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ids=[...new Set((Array.isArray(req.body?.ids)?req.body.ids:[]).filter(x=>/^[0-9a-f-]{36}$/i.test(String(x))))].slice(0,500);
+  if(!ids.length)return reply.code(400).send({error:'Pick the leads to archive'});
+  const rows=(await pool.query(`update clients set archived_at=now(),archive_previous_status=status,status='archived'
+    where id=any($1::uuid[]) and status='lead' and archived_at is null and slug<>'future-basics' returning id`,[ids])).rows;
+  return {archived:rows.length,ids:rows.map(r=>r.id)};
+});
+// a held submission that was real after all: saved as the form would have (the lead, its project, the brief), and staff are emailed about it
+app.post('/v1/admin/leads/held/:id/release',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!/^[0-9a-f-]{36}$/i.test(req.params.id))return reply.code(404).send({error:'Not found'});
+  const h=(await pool.query(`update intake_screened set released_at=now() where id=$1 and released_at is null returning *`,[req.params.id])).rows[0];
+  if(!h)return reply.code(404).send({error:'That submission is not held any more'});
+  let intake;try{intake=await saveIntake(h.data)}catch(e){await pool.query('update intake_screened set released_at=null where id=$1',[h.id]);throw e}
+  await pool.query('update intake_screened set client_id=$2 where id=$1',[h.id,intake.client.id]);
+  try{await sendIntakeNotification(intake,[])}catch(error){app.log.warn({error},'a released brief was saved but the staff email failed')}
+  return {clientId:intake.client.id};
 });
 app.post('/v1/admin/clients/:id/restore',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const row=(await pool.query(`update clients set archived_at=null,status=coalesce(archive_previous_status,'active'),archive_previous_status=null
