@@ -145,7 +145,8 @@ The website's project brief form (`POST /v1/public/intakes`) makes a website lea
 Both come from the Cloudflare dashboard: Turnstile → Add widget, with the website's domains (thefuturebasics.com and www.thefuturebasics.com) and the Managed mode. If Cloudflare cannot be reached, the brief goes on to the screening below rather than turning a real person away. The form itself is the `contact-form` snippet in the live Shopify theme.
 
 **The screening (`src/intake-screen.js`).** A brief that passes the captcha is still checked, since people selling to us pass captchas. Each sign adds to a score:
-- a company name of the kind fake-data generators make ("Torphy - Wisoky", "Berge, Bechtelar and Ratke");
+- a company name of the kind fake-data generators make ("Torphy - Wisoky", "Berge, Bechtelar and Ratke"; "Mayert Inc" and "Adams and Sons" count for less, since real firms are named that way too);
+- a company that is not a business ("Self-employed", "Freelancer");
 - no project name (the form calls it "… launch");
 - the same text pasted into more than one field;
 - a filler line for a brief ("heard about this on …, decided to give it a try");
