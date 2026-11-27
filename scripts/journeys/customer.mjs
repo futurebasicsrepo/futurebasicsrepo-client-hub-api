@@ -1957,4 +1957,57 @@ await journey('J289', 'Sites in a room, part two: Open goes to the build\'s prot
   ok((await call(`/v1/admin/clients/${m.cid}/projects/${pid}/go-live`, { method: 'POST', token: m.token, body: {} })).status === 403, 'a client cannot push a checklist');
 });
 
+await journey('J326', 'Fake prospects: the brief form holds a bot\'s brief and a sales pitch (no lead, and no email to the address given), lets a real brief in; the console checks the leads already in, ticks the fakes, archives them in one go (Restore brings one back, an active client is never touched), and a held brief that was real can be let in', async () => {
+  const post = fields => { const fd = new FormData(); for (const [k, v] of Object.entries(fields)) fd.append(k, v); return call('/v1/public/intakes', { raw: fd }); };
+  const outbox = async to => (await call(`/v1/dev/outbox?to=${encodeURIComponent(to)}`)).json.emails || [];
+  const filler = 'heard about this on dance-rock radio, decided to give it a try.';
+  const botEmail = `victim-${stamp}@example.net`, pitchEmail = `mike-${stamp}@pitch.example`, realEmail = `owner-${stamp}@realbrand.example`;
+  // 0. the captcha (src/captcha.js) stays off without its keys: the form is told there is none, and a brief is not asked for one
+  const cfg = await call('/v1/public/intake-config');
+  ok(cfg.status === 200 && cfg.json.captcha === null, '0. with no captcha keys set the form is told there is no captcha to show', cfg.json);
+  // 1. the form
+  const bot = await post({ companyName: 'Torphy - Wisoky', contactName: 'Kaylie Marvin', email: botEmail, productCategory: 'Apparel', projectBrief: filler, inspirationLinks: filler });
+  ok(bot.status === 202 && /brief is in/.test(bot.json.message || '') && !bot.json.clientId, '1. a bot\'s brief is answered like any other, and nothing about it is given back', bot.json);
+  ok(sql(`select count(*) from clients where contact_email='${botEmail}'`) === '0' && (await outbox(botEmail)).length === 0, '   no lead is made, and the address it gave (someone else\'s) is sent nothing');
+  const heldBot = sql(`select score||'|'||array_to_string(reasons,' ; ') from intake_screened where data->>'email'='${botEmail}'`).split('|');
+  ok(Number(heldBot[0]) >= 4 && /fake-data generator/.test(heldBot[1]) && /filler line/.test(heldBot[1]), '   it is held, with its reasons in words', heldBot);
+  const pitch = await post({ companyName: `Data Partners ${stamp}`, contactName: 'Mike Turner', email: pitchEmail, projectName: 'Partnerships', projectBrief: 'Hi Kyle, AI labs are paying businesses for first-person video of their crew at work, $10 per accepted hour. Open to a 15-minute call? If it\'s not a fit, we won\'t reach out again.' });
+  ok(pitch.status === 202 && sql(`select count(*) from clients where contact_email='${pitchEmail}'`) === '0' && sql(`select count(*) from intake_screened where data->>'email'='${pitchEmail}'`) === '1', '   a sales pitch sent through the form is held the same way');
+  const real = await post({ companyName: `Real Brand ${stamp}`, contactName: 'Rita Owner', email: realEmail, projectName: 'Spring caps', projectBrief: 'We need 300 embroidered caps and 200 heavyweight tees for our spring launch.' });
+  ok(real.status === 201 && real.json.clientId && sql(`select status from clients where id='${real.json.clientId}'`) === 'lead' && (await outbox(realEmail)).some(e => /^We have your brief/.test(e.subject)), '2. a real brief goes in as before: a website lead, and they are told it arrived', [real.status, real.json.error]);
+  // 2. the leads already in: one fake from before the form checked, seeded as the form used to save it
+  const oldFake = sql(`insert into clients(slug,name,status,contact_name,contact_email,notes) values('berge-${stamp}','Berge, Bechtelar and Ratke','lead','Lukas Blank','old-${stamp}@example.net','Website intake') returning id`).split('\n')[0];
+  sql(`insert into requests(client_id,type,title,details,status,intake_data) values('${oldFake}','project-intake','New project intake','x','submitted','${JSON.stringify({ companyName: 'Berge, Bechtelar and Ratke', contactName: 'Lukas Blank', email: `old-${stamp}@example.net`, projectName: 'Berge, Bechtelar and Ratke launch', projectBrief: filler, inspirationLinks: filler }).replace(/'/g, "''")}')`);
+  const m = await room('326'), admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (p, o = {}) => call(p, { token: admin, ...o });
+  ok([401, 403].includes((await call('/v1/admin/leads/screen', { token: m.token })).status), '3. a client cannot see the check');
+  let sc = (await adm('/v1/admin/leads/screen')).json, f = sc.leads?.find(l => l.id === oldFake), r = sc.leads?.find(l => l.id === real.json.clientId);
+  ok(f && f.fake === true && f.reasons.some(x => /fake-data generator/.test(x)) && r && r.fake === false, '   staff see the leads checked: the old fake is marked fake with its reasons, the real one is not', { fake: f && [f.fake, f.score], real: r && [r.fake, r.score] });
+  ok(sc.held.some(h => h.email === botEmail) && sc.held.some(h => h.email === pitchEmail), '   and the briefs the form held');
+  // 3. archive the fakes; Restore brings one back; an active client is never archived this way
+  const ar = await adm('/v1/admin/leads/archive', { method: 'POST', body: { ids: [oldFake, m.cid] } });
+  ok(ar.status === 200 && ar.json.archived === 1 && sql(`select status||'|'||archive_previous_status from clients where id='${oldFake}'`) === 'archived|lead' && sql(`select status from clients where id='${m.cid}'`) !== 'archived', '4. Archive archives the fake lead, and leaves an active client alone', ar.json);
+  ok((await adm(`/v1/admin/clients/${oldFake}/restore`, { method: 'POST', body: {} })).status === 200 && sql(`select status from clients where id='${oldFake}'`) === 'lead', '   Restore brings it back as a lead');
+  // 4. a held brief that was real is let in
+  const hid = sc.held.find(h => h.email === pitchEmail).id, rel = await adm(`/v1/admin/leads/held/${hid}/release`, { method: 'POST', body: {} });
+  ok(rel.status === 200 && sql(`select status from clients where id='${rel.json.clientId}'`) === 'lead' && sql(`select count(*) from projects where client_id='${rel.json.clientId}' and name='Partnerships'`) === '1' && (await outbox(pitchEmail)).length === 0, '5. a held brief let in becomes a lead with its project, and still nothing is sent to them', rel.json);
+  ok((await adm(`/v1/admin/leads/held/${hid}/release`, { method: 'POST', body: {} })).status === 404 && !(await adm('/v1/admin/leads/screen')).json.held.some(h => h.id === hid), '   once let in, it is not held any more');
+  sql(`update clients set status='archived', archived_at=now(), archive_previous_status='lead' where id='${rel.json.clientId}'`); // out of the way of the next step
+  // 5. in the console, on a phone: the fake is ticked; Archive the ticked
+  if (playwright) {
+    const b = await playwright.chromium.launch(); const errs = [];
+    try {
+      const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const pg = await ctx.newPage(); pg.on('pageerror', e => errs.push(String(e))); pg.on('dialog', d => d.accept());
+      await pg.goto(`${BASE}/admin`, { waitUntil: 'networkidle' }); await pg.waitForSelector(`#leadScreen input[data-ls="${oldFake}"]`, { timeout: 15000 });
+      const panel = await pg.evaluate(id => ({ ticked: document.querySelector(`#leadScreen input[data-ls="${id}"]`)?.checked, text: document.getElementById('leadScreen').innerText.replace(/\s+/g, ' '), fits: document.documentElement.scrollWidth <= innerWidth + 1 }), oldFake);
+      ok(panel.ticked === true && /looks? fake/.test(panel.text) && /fake-data generator/.test(panel.text) && /Held by the form/.test(panel.text) && panel.fits, '6. on a phone, the client list leads with the fakes ticked, why each is fake, and what the form held', panel.text.slice(0, 220));
+      ok(!(await pg.$(`#leadScreen input[data-ls="${real.json.clientId}"]`)), '   the real lead is not in it');
+      await pg.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP || '/tmp'}/j326-leads.png` }).catch(() => {});
+      await pg.click('#lsGo'); await pg.waitForFunction(id => !document.querySelector(`#leadScreen input[data-ls="${id}"]`), oldFake, { timeout: 15000 }).catch(() => {});
+      ok(sql(`select status from clients where id='${oldFake}'`) === 'archived' && sql(`select status from clients where id='${real.json.clientId}'`) === 'lead', '7. Archive the ticked: the fake is archived, the real lead stays');
+      ok(errs.length === 0, '   no page errors', errs);
+    } finally { await b.close(); }
+  }
+});
+
 summary(); process.exit(bad ? 1 : 0);

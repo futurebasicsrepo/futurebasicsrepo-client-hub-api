@@ -1392,6 +1392,18 @@ export async function migrate() {
     drop index if exists tech_pack_checks_submit_once;
     create unique index if not exists tech_pack_checks_submit_state on tech_pack_checks(tech_pack_id, pack_version, pack_updated_at) where trigger='submit';
     create table if not exists app_settings (key text primary key, value jsonb not null, updated_at timestamptz not null default now());
+    -- briefs from the website form held as fake prospects (src/intake-screen.js): kept to look over, and let in if one was real
+    create table if not exists intake_screened (
+      id uuid primary key default gen_random_uuid(),
+      created_at timestamptz not null default now(),
+      data jsonb not null,
+      score integer not null default 0,
+      reasons text[] not null default '{}',
+      ip text,
+      released_at timestamptz,
+      client_id uuid references clients(id) on delete set null
+    );
+    create index if not exists intake_screened_open_idx on intake_screened (created_at desc) where released_at is null;
     create table if not exists signin_attempts (
       email text primary key,
       client_id uuid references clients(id) on delete cascade,
