@@ -136,7 +136,15 @@ Asking again for the same deal says it already started (and links to it); `again
 
 ## Fake prospects from the website form
 
-The website's project brief form (`POST /v1/public/intakes`) makes a website lead for each brief. Bots and people selling to Future Basics fill it in too, so every brief is checked first (`src/intake-screen.js`). Each sign adds to a score:
+The website's project brief form (`POST /v1/public/intakes`) makes a website lead for each brief. Bots and people selling to Future Basics fill it in too, so there are two checks before a brief is saved.
+
+**The captcha (`src/captcha.js`).** The form shows Cloudflare Turnstile's check above the button. Most people see a tick and nothing to solve. The hub asks Cloudflare whether each answer is real, and refuses a brief without one, keeping nothing and telling the person to complete the check and send again. It is switched on by two settings on the hub's server, and is off until both are set:
+- `TURNSTILE_SITE_KEY`: the public key. The form reads it from `GET /v1/public/intake-config` and shows the widget only when there is one, so the form and the check always switch on together.
+- `TURNSTILE_SECRET_KEY`: the private key, used only by the hub.
+
+Both come from the Cloudflare dashboard: Turnstile → Add widget, with the website's domains (thefuturebasics.com and www.thefuturebasics.com) and the Managed mode. If Cloudflare cannot be reached, the brief goes on to the screening below rather than turning a real person away. The form itself is the `contact-form` snippet in the live Shopify theme.
+
+**The screening (`src/intake-screen.js`).** A brief that passes the captcha is still checked, since people selling to us pass captchas. Each sign adds to a score:
 - a company name of the kind fake-data generators make ("Torphy - Wisoky", "Berge, Bechtelar and Ratke");
 - no project name (the form calls it "… launch");
 - the same text pasted into more than one field;

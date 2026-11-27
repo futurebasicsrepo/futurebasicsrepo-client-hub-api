@@ -1962,6 +1962,9 @@ await journey('J326', 'Fake prospects: the brief form holds a bot\'s brief and a
   const outbox = async to => (await call(`/v1/dev/outbox?to=${encodeURIComponent(to)}`)).json.emails || [];
   const filler = 'heard about this on dance-rock radio, decided to give it a try.';
   const botEmail = `victim-${stamp}@example.net`, pitchEmail = `mike-${stamp}@pitch.example`, realEmail = `owner-${stamp}@realbrand.example`;
+  // 0. the captcha (src/captcha.js) stays off without its keys: the form is told there is none, and a brief is not asked for one
+  const cfg = await call('/v1/public/intake-config');
+  ok(cfg.status === 200 && cfg.json.captcha === null, '0. with no captcha keys set the form is told there is no captcha to show', cfg.json);
   // 1. the form
   const bot = await post({ companyName: 'Torphy - Wisoky', contactName: 'Kaylie Marvin', email: botEmail, productCategory: 'Apparel', projectBrief: filler, inspirationLinks: filler });
   ok(bot.status === 202 && /brief is in/.test(bot.json.message || '') && !bot.json.clientId, '1. a bot\'s brief is answered like any other, and nothing about it is given back', bot.json);

@@ -27,6 +27,7 @@ import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPaym
 import { registerMoneyRoutes } from './money-routes.js'
 import { registerContractRoutes } from './contracts-routes.js'
 import { screenIntake } from './intake-screen.js';
+import { checkCaptcha, captchaConfig, CAPTCHA_FIELD } from './captcha.js';
 import { registerSignatureRoutes } from './signatures.js'
 import { makeViews, viewsToDraw, viewSketch, placeViews, isDrawnView } from './views.js'
 import { registerFactoryRoutes } from './factories-routes.js'
@@ -544,12 +545,20 @@ app.get('/health', async () => {
   return { ok: true, service: 'client-hub-api' };
 });
 
+// What the brief form needs to know before it is filled in: the captcha's public site key, or none while the captcha is off.
+app.get('/v1/public/intake-config',async(req,reply)=>{
+  const cap=captchaConfig();reply.header('cache-control','public, max-age=300');
+  return {captcha:cap.on?{provider:cap.provider,siteKey:cap.siteKey,field:CAPTCHA_FIELD}:null};
+});
 app.post('/v1/public/intakes',async(req,reply)=>{
   if(!publicIntakeAllowed(req.ip))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
   const fields={},uploads=[];let intake=null,spam=false;
   const createIntake=async()=>{
     if(intake||spam)return intake;
     spam=Boolean(intakeValue(fields,'companyFax',200));if(spam)return null;
+    // the captcha (src/captcha.js), once its keys are set; a failed one is refused with words a person can act on, and nothing is kept
+    const cap=await checkCaptcha(fields[CAPTCHA_FIELD],req.ip,{log:app.log});
+    if(!cap.ok)throw Object.assign(new Error(cap.error),{statusCode:400,captcha:true});
     const companyName=intakeValue(fields,'companyName',140),contactName=intakeValue(fields,'contactName',140),email=intakeValue(fields,'email',200).toLowerCase();
     const projectName=intakeValue(fields,'projectName',160)||`${companyName} launch`,projectBrief=intakeValue(fields,'projectBrief',6000);
     if(companyName.length<2||contactName.length<2||!/^\S+@\S+\.\S+$/.test(email)||projectBrief.length<20)
